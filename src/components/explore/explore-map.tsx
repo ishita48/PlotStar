@@ -17,6 +17,7 @@ export default function ExploreMap({
   market,
   sites,
   selectedId,
+  pickId = null,
   onSelect,
   mode,
   polygon,
@@ -27,6 +28,7 @@ export default function ExploreMap({
   market: string;
   sites: ExploreSite[];
   selectedId: string | null;
+  pickId?: string | null;
   onSelect: (id: string) => void;
   mode: MapMode;
   polygon: Ring | null;
@@ -188,8 +190,8 @@ export default function ExploreMap({
     markers.current = sites.map((s) => {
       const v = verdict(s);
       const el = document.createElement('button');
-      el.className = `xp-marker xp-${v.tone} ${s.id === selectedId ? 'xp-selected' : ''}`;
-      el.innerHTML = `<b>${s.letter}</b>`;
+      el.className = `ws-marker ${v.tone} ${s.id === selectedId ? 'sel' : ''} ${s.id === pickId ? 'pick' : ''}`;
+      el.textContent = s.letter;
       el.title = `${s.name} · ${v.label}`;
       el.onclick = (ev) => {
         ev.stopPropagation();
@@ -197,7 +199,7 @@ export default function ExploreMap({
       };
       return new maplibregl.Marker({ element: el }).setLngLat([s.lng, s.lat]).addTo(m);
     });
-  }, [sites, selectedId, ready]);
+  }, [sites, selectedId, pickId, ready]);
 
   // fit to results
   useEffect(() => {
@@ -228,11 +230,11 @@ export default function ExploreMap({
       {mode === 'draw' && (
         <div className="xp-map-hint">
           {draft.length < 3
-            ? 'Click on the map to outline the area you want to search.'
-            : 'Click the first point (or double-click) to finish the area.'}
+            ? 'Click to add vertices around the search area.'
+            : 'Click the first vertex or double-click to close the polygon.'}
         </div>
       )}
-      {mode === 'pin' && <div className="xp-map-hint">Click anywhere to check that spot.</div>}
+      {mode === 'pin' && <div className="xp-map-hint">Click a location to run the screening gates at that point.</div>}
     </div>
   );
 }

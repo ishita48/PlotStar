@@ -83,4 +83,4 @@ listing or sale comp that supplied them. NULL = not in the data → shown as **U
 |---|---|
 | Matterport GraphQL (`https://api.matterport.com/api/models/graph`, basic auth key:token) | **Working.** e.g. model `oNAvrNiXZS7` → "Northwest Trade Center – 9750 Tanner Rd", public. Proxied by `GET /matterport/models/{id}`; token never reaches the browser |
 | Matterport SDK | Key set; domain allowlist is `localhost` only. Add the deployed domain before using it from AWS |
-| Vexcel imagery | Key set. **Adapter blocked:** the quickstart (endpoint, layers, auth scheme) is in the Discord "Both (zip)" download, which is not on disk yet, and public docs were unreachable |
+| Vexcel API v2 (`https://api.vexcelgroup.com/v2`, `x-api-key` header) | **Working.** `/ortho/extract` (7 cm orthophoto by point + buffer, XMP carries capture date and collection) proxied at `GET /vexcel/ortho/{parcel}.jpg`; `/3d/tileset` photogrammetric city mesh (3D Tiles, collection `us-tx-houstonr2-2023`, inner-loop Houston only) proxied and pruned at `GET /vexcel/3d/root`. Key stays server-side |

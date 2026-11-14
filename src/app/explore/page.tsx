@@ -1,12 +1,13 @@
 import type { Metadata } from 'next';
-import { PlotStarScreen } from '@/components/explore/plotstar-screen';
+import { Workspace } from '@/components/explore/workspace';
 import './explore.css';
+import './workspace.css';
 
 export const metadata: Metadata = {
-  title: 'Explore · PlotStar',
+  title: 'Site selection · PlotStar',
   description: 'Find buildable data center sites on real CoStar properties.',
 };
 
 export default function ExplorePage() {
-  return <PlotStarScreen />;
+  return <Workspace />;
 }

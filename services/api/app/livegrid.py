@@ -1,15 +1,13 @@
-"""Live Grid: telemetry from the two "data center" machines, the grid-day replay, the emergency button,
-and the Grid Passport record (PRD F-5, V-1, V-2, section 13).
+"""Live grid: two machines run the same fixed job continuously; the PlotStar machine follows the optimizer's
+hourly plan (and curtails to the plan's depth during a grid event), the baseline runs flat. Real machines post
+watts to POST /telemetry; when none has reported in 10 s the stream shows a labeled SIMULATION.
 
-Real hardware posts to POST /telemetry (bearer TELEMETRY_API_KEY). The workload controller polls
-GET /hardware/command to learn about an emergency. When no machine has reported in the last 10 s the
-stream falls back to a clearly labeled SIMULATION so the screen is never blank; the Grid Passport records
-which it was.
+The ERCOT day replays in REPLAY_S seconds. Energy, CO2 and cost are accumulated server-side per machine from
+watts x time, using the grid price and carbon at the replayed hour, so both machines are costed identically.
 """
 from __future__ import annotations
 
 import json
-import math
 import secrets
 import time
 from dataclasses import asdict, dataclass, field
@@ -27,8 +25,8 @@ CREATE TABLE IF NOT EXISTS telemetry (
     watts     REAL,
     progress  REAL,
     state     TEXT,
-    source    TEXT NOT NULL,   -- measured | estimated | simulated
-    meter     TEXT             -- wall-plug | chip | estimated | none
+    source    TEXT NOT NULL,
+    meter     TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_tel_machine_ts ON telemetry(machine, ts);
 CREATE TABLE IF NOT EXISTS passports (
@@ -40,8 +38,10 @@ CREATE TABLE IF NOT EXISTS passports (
 
 MACHINES = ("baseline", "plotstar")
 STALE_S = 10.0
-REPLAY_S = 60.0                      # one ERCOT day compressed to 60 seconds
-IDLE_W, LOAD_W = 10.0, 40.0          # laptop figures from the PRD (team measurement), used only in simulation
+REPLAY_S = 60.0
+IDLE_W, LOAD_W = 10.0, 40.0         # PRD laptop figures; simulation only
+JOB_S = 25.0                        # CPU-seconds of fixed work per job (simulation)
+GAP_S = 0.8                         # idle between jobs
 
 
 def init() -> None:
@@ -58,8 +58,8 @@ class Emergency:
     active: bool = False
     started: float | None = None
     until: float | None = None
-    requested_reduction: float = 0.5       # share of flexible load to shed
-    source: str = "software"                # software | button
+    facility_depth: float = 0.3        # share of facility load to shed (the plan's d)
+    source: str = "software"
 
 
 @dataclass
@@ -67,24 +67,53 @@ class SimMachine:
     progress: float = 0.0
     state: str = "running"
     watts: float = LOAD_W
-    finished_at: float | None = None
+    jobs_done: int = 0
+    idle_until: float | None = None
+
+
+@dataclass
+class Totals:
+    wh: float = 0.0
+    g_co2: float = 0.0
+    cents: float = 0.0
+    seconds: float = 0.0
 
 
 @dataclass
 class State:
     emergency: Emergency = field(default_factory=Emergency)
     replay_start: float = field(default_factory=_now)
-    schedule: list[float] | None = None        # optimizer's 24 x grid MW (relative shape), if provided
+    plan: dict[str, Any] | None = None              # run_id, site, d, f, flexible_share, schedule[24]
     sim: dict[str, SimMachine] = field(default_factory=lambda: {m: SimMachine() for m in MACHINES})
     sim_last: float = field(default_factory=_now)
-    job_seconds: float = 90.0                   # a fixed amount of work takes this long at full speed
+    totals: dict[str, Totals] = field(default_factory=lambda: {m: Totals() for m in MACHINES})
+    account_last: dict[str, float] = field(default_factory=dict)
     pre_emergency_watts: dict[str, float] = field(default_factory=dict)
+    during_watts: dict[str, float] = field(default_factory=dict)
     response_logged_at: float | None = None
     live_passport: dict[str, Any] | None = None
-    during_watts: dict[str, float] = field(default_factory=dict)   # lowest watts seen per machine during an event
 
 
 STATE = State()
+
+
+# ----------------------------------------------------------------------------- plan + replay
+
+def set_plan(plan: dict[str, Any] | None) -> None:
+    STATE.plan = plan
+
+
+def replay_hour() -> float:
+    return ((_now() - STATE.replay_start) % REPLAY_S) / REPLAY_S * 24.0
+
+
+def plan_duty(hour_idx: int, price: list[float]) -> float:
+    """PlotStar machine duty for a replay hour: the plan's hourly load as a share of its maximum."""
+    sched = (STATE.plan or {}).get("schedule")
+    if sched and max(sched) > 0:
+        return max(0.2, sched[hour_idx] / max(sched))
+    dear = sorted(range(24), key=lambda h: -price[h])[:6]   # no plan yet: ease off in the 6 dearest hours
+    return 0.55 if hour_idx in dear else 1.0
 
 
 # ----------------------------------------------------------------------------- telemetry in
@@ -96,8 +125,7 @@ def check_token(auth_header: str | None) -> bool:
     return secrets.compare_digest(auth_header[7:].strip(), key)
 
 
-def record(machine: str, watts: float | None, progress: float | None, state: str | None,
-           source: str, meter: str | None) -> None:
+def record(machine: str, watts: float | None, progress: float | None, state: str | None, source: str, meter: str | None) -> None:
     with session() as c:
         c.execute("INSERT INTO telemetry (ts, machine, watts, progress, state, source, meter) VALUES (?,?,?,?,?,?,?)",
                   (_now(), machine, watts, progress, state, source, meter))
@@ -116,25 +144,25 @@ def history(machine: str, seconds: float = 120.0) -> list[dict[str, Any]]:
     return [dict(r) for r in rows]
 
 
-# ----------------------------------------------------------------------------- emergency
+# ----------------------------------------------------------------------------- emergency + passport
 
-def start_emergency(duration_s: float, reduction: float, source: str) -> Emergency:
+def start_emergency(duration_s: float, facility_depth: float, source: str) -> Emergency:
     e = STATE.emergency
     now = _now()
-    STATE.pre_emergency_watts = {m: current(m)["watts"] for m in MACHINES}   # sample BEFORE throttling starts
+    STATE.pre_emergency_watts = {m: _current_watts(m) for m in MACHINES}
     STATE.during_watts = {}
-    e.active, e.started, e.until, e.requested_reduction, e.source = True, now, now + duration_s, reduction, source
     STATE.response_logged_at = None
+    e.active, e.started, e.until, e.facility_depth, e.source = True, now, now + duration_s, facility_depth, source
     STATE.live_passport = {
         "requested_at": datetime.fromtimestamp(now, timezone.utc).isoformat(timespec="seconds"),
-        "requested_reduction_share": reduction, "requested_duration_s": duration_s, "trigger": source,
+        "requested_depth": facility_depth, "requested_duration_s": duration_s, "trigger": source,
         "pre_watts": dict(STATE.pre_emergency_watts),
+        "plan": STATE.plan and {k: STATE.plan.get(k) for k in ("run_id", "site", "d", "f", "flexible_share")},
     }
     return e
 
 
 def _state_of(machine: str) -> tuple[str | None, str]:
-    """(job state, source) without advancing the simulation."""
     row = latest(machine)
     if row and _now() - row["ts"] <= STALE_S:
         return row["state"], row["source"]
@@ -145,24 +173,23 @@ def end_emergency() -> dict[str, Any] | None:
     e = STATE.emergency
     if not e.active:
         return None
-    e.active = False                       # first, so nothing below re-enters this function
+    e.active = False
     now = _now()
     p = STATE.live_passport or {}
     pre = STATE.pre_emergency_watts
     during = {m: STATE.during_watts.get(m, pre.get(m)) for m in MACHINES}
     states = {m: _state_of(m) for m in MACHINES}
+    measured = {m: (None if not pre.get(m) or during[m] is None else round(1 - during[m] / pre[m], 3)) for m in MACHINES}
+    need = float(p.get("requested_depth") or 0)
     p.update({
         "ended_at": datetime.fromtimestamp(now, timezone.utc).isoformat(timespec="seconds"),
         "duration_s": round(now - (e.started or now), 1),
         "response_time_s": None if STATE.response_logged_at is None else round(STATE.response_logged_at - (e.started or now), 1),
-        "watts_during": during,
-        "reduction_measured": {m: (None if not pre.get(m) or during[m] is None else round(1 - during[m] / pre[m], 3))
-                               for m in MACHINES},
-        "source": {m: states[m][1] for m in MACHINES},
-        "job_state": {m: states[m][0] for m in MACHINES},
-        "methodology": "Watts are per-machine readings (meter type recorded per sample); the reduction uses the lowest "
-                       "reading during the event against the reading just before it. Simulated values model the "
-                       "schedule and are not measurements. Scaling to a 100 MW site is modeled.",
+        "watts_during": during, "reduction_measured": measured,
+        "verified": None if measured["plotstar"] is None else bool(measured["plotstar"] + 1e-6 >= need * 0.9),
+        "source": {m: states[m][1] for m in MACHINES}, "job_state": {m: states[m][0] for m in MACHINES},
+        "methodology": "Reduction = 1 - (lowest reading during the event / reading just before it), per machine. "
+                       "Simulated readings model the plan and are not measurements.",
     })
     with session() as c:
         c.execute("INSERT INTO passports (created_at, payload_json) VALUES (?,?)",
@@ -176,8 +203,8 @@ def command() -> dict[str, Any]:
     e = STATE.emergency
     if e.active and e.until and _now() > e.until:
         end_emergency()
-    return {"emergency": e.active, "until": e.until, "requested_reduction": e.requested_reduction,
-            "replay_hour": replay_hour()}
+    return {"emergency": e.active, "until": e.until, "facility_depth": e.facility_depth,
+            "requested_reduction": e.facility_depth, "replay_hour": replay_hour()}
 
 
 def latest_passport() -> dict[str, Any] | None:
@@ -186,84 +213,108 @@ def latest_passport() -> dict[str, Any] | None:
     return {"created_at": row["created_at"], **json.loads(row["payload_json"])} if row else None
 
 
-# ----------------------------------------------------------------------------- replay + simulation
+# ----------------------------------------------------------------------------- simulation + accounting
 
-def replay_hour() -> float:
-    return ((_now() - STATE.replay_start) % REPLAY_S) / REPLAY_S * 24.0
-
-
-def grid_now(price: list[float], carbon: list[float], mix: list[dict[str, float]] | None) -> dict[str, Any]:
-    h = replay_hour()
-    i = int(h) % 24
-    out = {"hour": round(h, 2), "price": price[i], "carbon": carbon[i]}
-    if mix:
-        out["mix"] = mix[i]
-    return out
-
-
-def _advance_sim() -> None:
+def _advance_sim(price: list[float]) -> None:
     now = _now()
     dt = max(0.0, min(5.0, now - STATE.sim_last))
     STATE.sim_last = now
     e = STATE.emergency
     if e.active and e.until and now > e.until:
         end_emergency()
+    hour_idx = int(replay_hour()) % 24
     for m, s in STATE.sim.items():
-        if s.state == "done":
-            s.watts = IDLE_W
+        if s.idle_until and now < s.idle_until:
+            s.state, s.watts = "between jobs", IDLE_W
             continue
+        duty = 1.0 if m == "baseline" else plan_duty(hour_idx, price)
+        state = "running" if duty >= 0.95 else "eased off (plan)"
         if m == "plotstar" and e.active:
-            # defer the flexible share: throttle to the requested reduction
-            rate = 1.0 - e.requested_reduction
-            s.state = "throttled"
+            # a facility-level cut of depth d means TOTAL draw falls by d from the pre-event reading
+            pre = STATE.pre_emergency_watts.get(m) or s.watts
+            duty = max(0.0, min(duty, (pre * (1.0 - e.facility_depth) - IDLE_W) / (LOAD_W - IDLE_W)))
+            state = "curtailed (grid event)"
             if STATE.response_logged_at is None:
                 STATE.response_logged_at = now
-        else:
-            rate = 1.0
-            s.state = "running"
-        s.watts = IDLE_W + (LOAD_W - IDLE_W) * rate
-        s.progress = min(1.0, s.progress + dt * rate / STATE.job_seconds)
+        s.state = state
+        s.watts = IDLE_W + (LOAD_W - IDLE_W) * duty
+        s.progress += dt * duty / JOB_S
         if s.progress >= 1.0:
-            s.state, s.finished_at = "done", now
+            s.jobs_done += 1
+            s.progress = 0.0
+            s.idle_until = now + GAP_S
 
 
-def current(machine: str) -> dict[str, Any]:
+def _account(m: str, watts: float, price: list[float], carbon: list[float]) -> None:
+    now = _now()
+    last = STATE.account_last.get(m)
+    STATE.account_last[m] = now
+    if last is None:
+        return
+    dt = max(0.0, min(5.0, now - last))
+    i = int(replay_hour()) % 24
+    wh = watts * dt / 3600.0
+    t = STATE.totals[m]
+    t.wh += wh
+    t.g_co2 += wh / 1000.0 * carbon[i]          # kWh x g/kWh
+    t.cents += wh / 1e6 * price[i] * 100.0      # MWh x $/MWh x 100
+    t.seconds += dt
+
+
+def _current_watts(m: str) -> float:
+    row = latest(m)
+    if row and _now() - row["ts"] <= STALE_S and row["watts"] is not None:
+        return float(row["watts"])
+    return STATE.sim[m].watts
+
+
+def current(machine: str, price: list[float]) -> dict[str, Any]:
     row = latest(machine)
     if row and _now() - row["ts"] <= STALE_S:
-        if machine == "plotstar" and STATE.emergency.active and STATE.response_logged_at is None \
-           and STATE.pre_emergency_watts.get(machine) and row["watts"] is not None \
-           and row["watts"] < 0.9 * STATE.pre_emergency_watts[machine]:
-            STATE.response_logged_at = row["ts"]
-        if STATE.emergency.active and row["watts"] is not None:
-            STATE.during_watts[machine] = min(STATE.during_watts.get(machine, row["watts"]), row["watts"])
-        return {"machine": machine, "watts": row["watts"], "progress": row["progress"], "state": row["state"],
-                "source": row["source"], "meter": row["meter"], "age_s": round(_now() - row["ts"], 1)}
-    _advance_sim()
+        w = row["watts"]
+        if STATE.emergency.active and w is not None:
+            STATE.during_watts[machine] = min(STATE.during_watts.get(machine, w), w)
+            if machine == "plotstar" and STATE.response_logged_at is None and STATE.pre_emergency_watts.get(machine) \
+               and w < 0.9 * STATE.pre_emergency_watts[machine]:
+                STATE.response_logged_at = row["ts"]
+        return {"watts": w, "progress": row["progress"], "state": row["state"], "source": row["source"],
+                "meter": row["meter"], "jobs_done": None}
+    _advance_sim(price)
     s = STATE.sim[machine]
     if STATE.emergency.active:
         STATE.during_watts[machine] = min(STATE.during_watts.get(machine, s.watts), s.watts)
-    return {"machine": machine, "watts": round(s.watts, 1), "progress": round(s.progress, 3), "state": s.state,
-            "source": "simulated", "meter": "none", "age_s": 0.0}
+    return {"watts": round(s.watts, 1), "progress": round(s.progress, 3), "state": s.state, "source": "simulated",
+            "meter": None, "jobs_done": s.jobs_done}
 
 
 def reset_simulation() -> None:
     STATE.sim = {m: SimMachine() for m in MACHINES}
+    STATE.totals = {m: Totals() for m in MACHINES}
+    STATE.account_last = {}
     STATE.sim_last = _now()
     STATE.replay_start = _now()
     STATE.emergency = Emergency()
+    STATE.live_passport = None
 
 
 def snapshot(price: list[float], carbon: list[float], mix: list[dict[str, float]] | None) -> dict[str, Any]:
     cmd = command()
-    machines = {m: current(m) for m in MACHINES}
+    machines = {m: current(m, price) for m in MACHINES}
+    for m in MACHINES:
+        if machines[m]["watts"] is not None:
+            _account(m, float(machines[m]["watts"]), price, carbon)
+    h = replay_hour()
+    i = int(h) % 24
+    e = STATE.emergency
     return {
         "t": _now(),
-        "grid": grid_now(price, carbon, mix),
+        "replay": {"hour": round(h, 2), "hour_idx": i, "price": price[i], "carbon": carbon[i], "mix": mix[i] if mix else None,
+                   "day_s": REPLAY_S},
         "machines": machines,
-        "emergency": {**asdict(STATE.emergency), "remaining_s": None if not cmd["emergency"] or not cmd["until"]
-                      else round(max(0.0, cmd["until"] - _now()), 1)},
-        "passport_live": STATE.live_passport,
-        "labels": {m: ("Measured" if machines[m]["source"] == "measured" else
-                       "Estimated" if machines[m]["source"] == "estimated" else "Simulated") for m in MACHINES},
+        "totals": {m: asdict(STATE.totals[m]) for m in MACHINES},
+        "plan": STATE.plan and {k: STATE.plan.get(k) for k in ("run_id", "site", "d", "f", "flexible_share")},
+        "plan_duty": None if STATE.plan is None else round(plan_duty(i, price), 2),
+        "emergency": {**asdict(e), "remaining_s": None if not cmd["emergency"] or not cmd["until"] else round(max(0.0, cmd["until"] - _now()), 1)},
+        "labels": {m: ("Measured" if machines[m]["source"] == "measured" else "Estimated" if machines[m]["source"] == "estimated" else "Simulated") for m in MACHINES},
         "telemetry_configured": bool(config.TELEMETRY_API_KEY),
     }

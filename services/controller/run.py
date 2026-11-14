@@ -71,7 +71,7 @@ def main() -> None:
             last_poll = now
             try:
                 cmd = http(f"{a.api}/hardware/command")
-                duty = (1.0 - float(cmd.get("requested_reduction", 0.5))) if cmd.get("emergency") else 1.0
+                duty = (1.0 - float(cmd.get("facility_depth", 0.3))) if cmd.get("emergency") else 1.0
                 state = "throttled" if cmd.get("emergency") else "running"
             except (urllib.error.URLError, ValueError):
                 pass

@@ -11,6 +11,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from .. import grid as G
 from .. import livegrid as L
+from .. import optimizer as O
 
 router = APIRouter(tags=["live-grid"])
 
@@ -39,16 +40,41 @@ def hardware_command() -> dict[str, Any]:
     return L.command()
 
 
+class PlanIn(BaseModel):
+    run_id: str
+
+
+@router.post("/livegrid/plan")
+def set_plan(body: PlanIn) -> dict[str, Any]:
+    """Make the PlotStar machine follow this run's recommended hourly plan (and curtail to its depth on an event)."""
+    loaded = O.load_run(body.run_id)
+    if not loaded:
+        raise HTTPException(404, "Unknown run_id")
+    req, res = loaded
+    o = res.get("optimized")
+    if not o:
+        L.set_plan(None)
+        return {"plan": None}
+    plan = {"run_id": body.run_id, "site": o.get("site_name"), "d": float(o.get("d") or 0), "f": o.get("f"),
+            "flexible_share": float(req.get("flexible_share") or 0), "schedule": o.get("schedule")}
+    L.set_plan(plan)
+    return {"plan": {k: plan[k] for k in ("run_id", "site", "d", "f", "flexible_share")}}
+
+
 class EmergencyIn(BaseModel):
     duration_s: float = Field(20, ge=3, le=600)
-    reduction: float = Field(0.5, ge=0.1, le=1.0, description="share of flexible load to shed")
+    depth: float | None = Field(None, ge=0.05, le=1.0, description="facility-level share to shed; defaults to the plan's d")
     source: Literal["software", "button"] = "software"
 
 
 @router.post("/hardware/emergency")
 def emergency(body: EmergencyIn) -> dict[str, Any]:
-    e = L.start_emergency(body.duration_s, body.reduction, body.source)
-    return {"emergency": e.active, "until": e.until, "requested_reduction": e.requested_reduction}
+    """Start a grid event. Depth defaults to the curtailment depth the recommended plan relies on."""
+    plan = L.STATE.plan
+    depth = body.depth if body.depth is not None else (float(plan["d"]) if plan and plan.get("d") else 0.3)
+    e = L.start_emergency(body.duration_s, depth, body.source)
+    return {"emergency": e.active, "until": e.until, "facility_depth": e.facility_depth,
+            "plan": plan and {k: plan.get(k) for k in ("run_id", "site", "d", "f", "flexible_share")}}
 
 
 @router.post("/hardware/emergency/end")

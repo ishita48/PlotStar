@@ -1,6 +1,7 @@
 'use client';
-// Real 3D plot of a site: Vexcel photorealistic city mesh (where Vexcel has 3D coverage) or the Vexcel
-// aerial photo as the ground (everywhere else), with a generated data-center campus sized from the MW target.
+// Real 3D of a site: Vexcel photogrammetric city mesh where covered, otherwise the Vexcel orthophoto as ground.
+// Overlays are analytical, not a design: the parcel's square-equivalent footprint and a translucent conceptual
+// envelope (data hall, generator yard, switchyard) sized from the MW target at the team's density assumptions.
 import { Component, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useLoader, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
@@ -12,78 +13,66 @@ import { GLTFExtensionsPlugin, ReorientationPlugin } from '3d-tiles-renderer/plu
 import { vexcel3dRootUrl, vexcelOrthoUrl } from '@/lib/plotstar-api';
 
 const DEG = Math.PI / 180;
-const GROUND_HALF = 200; // metres; matches the ortho buffer
+const GROUND_HALF = 200; // m; matches the ortho buffer
+const SQM_PER_ACRE = 4046.8564224;
 
-/** Conceptual campus layout. Every dimension is a planning assumption, not a design. */
 export function campusLayout(mw: number, floors = 2) {
-  const gfa = mw * 230; // m² gross floor area per MW IT (same constant as the design engine)
+  const gfa = mw * 230; // m² GFA per MW IT (team assumption, shared with the design engine)
   const footprint = gfa / floors;
   const width = Math.sqrt(footprint * 1.6);
   const depth = footprint / width;
   const height = floors * 6;
   const generators = Math.ceil(mw / 2.5); // 2.5 MW gensets, N (team assumption)
-  const rooftopUnits = Math.max(4, Math.round(mw * 0.8));
-  return { gfa, footprint, width, depth, height, generators, rooftopUnits };
+  const genYard = { w: Math.min(generators, 10) * 8 + 10, d: Math.ceil(generators / 10) * 7 + 10 };
+  const switchyard = { w: 45, d: 32 };
+  return { gfa, footprint, width, depth, height, floors, generators, genYard, switchyard };
 }
 
-function Campus({ mw, y = 0 }: { mw: number; y?: number }) {
+function Outline({ w, d, y, color = '#1f2a24' }: { w: number; d: number; y: number; color?: string }) {
+  const geo = useMemo(() => new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(-w / 2, y, -d / 2), new THREE.Vector3(w / 2, y, -d / 2),
+    new THREE.Vector3(w / 2, y, d / 2), new THREE.Vector3(-w / 2, y, d / 2),
+  ]), [w, d, y]);
+  return <lineLoop renderOrder={11}><primitive object={geo} attach="geometry" /><lineBasicMaterial color={color} depthTest={false} /></lineLoop>;
+}
+
+
+function Envelope({ mw, ground, acres }: { mw: number; ground: number; acres: number | null }) {
   const L = useMemo(() => campusLayout(mw), [mw]);
-  const cols = Math.ceil(Math.sqrt(L.rooftopUnits * (L.width / L.depth)));
-  const rows = Math.ceil(L.rooftopUnits / cols);
-  const genCols = Math.min(L.generators, 12);
+  const side = acres ? Math.sqrt(acres * SQM_PER_ACRE) : null;
+  const edges = useMemo(() => new THREE.EdgesGeometry(new THREE.BoxGeometry(L.width, L.height, L.depth)), [L]);
+  const y0 = ground + 0.25;
+  const hallZ = -L.depth / 2 - 6;              // hall toward the back, yards in front
+  const genX = -L.width / 2 + L.genYard.w / 2;
+  const genZ = L.depth / 2 + 10 + L.genYard.d / 2 - 6;
+  const swX = L.width / 2 - L.switchyard.w / 2;
+  const swZ = genZ;
   return (
-    <group position={[0, y, 0]}>
-      {/* data hall */}
-      <mesh position={[0, L.height / 2, 0]} castShadow receiveShadow>
-        <boxGeometry args={[L.width, L.height, L.depth]} />
-        <meshStandardMaterial color="#eef1ea" roughness={0.7} />
-      </mesh>
-      {/* lime brand stripe */}
-      <mesh position={[0, L.height - 0.6, L.depth / 2 + 0.05]}>
-        <boxGeometry args={[L.width, 1.2, 0.1]} />
-        <meshStandardMaterial color="#adc479" />
-      </mesh>
-      {/* rooftop cooling units */}
-      {Array.from({ length: L.rooftopUnits }).map((_, i) => {
-        const cx = (i % cols) - (cols - 1) / 2,
-          cz = Math.floor(i / cols) - (rows - 1) / 2;
-        return (
-          <mesh
-            key={i}
-            position={[(cx * L.width * 0.85) / cols, L.height + 1.2, (cz * L.depth * 0.8) / rows]}
-            castShadow
-          >
-            <boxGeometry args={[Math.min(8, (L.width * 0.6) / cols), 2.4, Math.min(5, (L.depth * 0.5) / rows)]} />
-            <meshStandardMaterial color="#a9b8a4" roughness={0.6} />
+    <group>
+      {side && (
+        <>
+          <mesh position={[0, y0, 0]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={9}>
+            <planeGeometry args={[side, side]} />
+            <meshBasicMaterial color="#264d39" transparent opacity={0.10} depthWrite={false} depthTest={false} />
           </mesh>
-        );
-      })}
-      {/* generator yard */}
-      {Array.from({ length: L.generators }).map((_, i) => (
-        <mesh
-          key={`g${i}`}
-          position={[
-            -L.width / 2 + 8 + (i % genCols) * 9,
-            1.6,
-            L.depth / 2 + 14 + Math.floor(i / genCols) * 6,
-          ]}
-          castShadow
-        >
-          <boxGeometry args={[7, 3.2, 3]} />
-          <meshStandardMaterial color="#3b4a40" roughness={0.8} />
+          <Outline w={side} d={side} y={y0 + 0.05} color="#264d39" />
+        </>
+      )}
+      <group position={[0, 0, hallZ]}>
+        <mesh position={[0, y0 + L.height / 2, 0]} renderOrder={10}>
+          <boxGeometry args={[L.width, L.height, L.depth]} />
+          <meshStandardMaterial color="#9fb7a6" transparent opacity={0.35} depthWrite={false} depthTest={false} roughness={0.9} />
         </mesh>
-      ))}
-      {/* substation pad */}
-      <mesh position={[L.width / 2 + 40, 0.3, -L.depth / 4]} receiveShadow>
-        <boxGeometry args={[50, 0.6, 36]} />
-        <meshStandardMaterial color="#c9cfc4" />
-      </mesh>
-      {[0, 1, 2].map((i) => (
-        <mesh key={`t${i}`} position={[L.width / 2 + 25 + i * 15, 3, -L.depth / 4]} castShadow>
-          <boxGeometry args={[6, 6, 6]} />
-          <meshStandardMaterial color="#6f7c72" />
-        </mesh>
-      ))}
+        <lineSegments position={[0, y0 + L.height / 2, 0]} renderOrder={11}><primitive object={edges} attach="geometry" /><lineBasicMaterial color="#1f2a24" depthTest={false} /></lineSegments>
+      </group>
+      <group position={[genX, 0, genZ]}>
+        <mesh position={[0, y0, 0]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={9}><planeGeometry args={[L.genYard.w, L.genYard.d]} /><meshBasicMaterial color="#6b5e4e" transparent opacity={0.35} depthWrite={false} depthTest={false} /></mesh>
+        <Outline w={L.genYard.w} d={L.genYard.d} y={y0 + 0.05} />
+      </group>
+      <group position={[swX, 0, swZ]}>
+        <mesh position={[0, y0, 0]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={9}><planeGeometry args={[L.switchyard.w, L.switchyard.d]} /><meshBasicMaterial color="#2d5f8f" transparent opacity={0.32} depthWrite={false} depthTest={false} /></mesh>
+        <Outline w={L.switchyard.w} d={L.switchyard.d} y={y0 + 0.05} />
+      </group>
     </group>
   );
 }
@@ -93,153 +82,119 @@ function AerialGround({ parcelId }: { parcelId: string }) {
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 8;
   return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+    <mesh rotation={[-Math.PI / 2, 0, 0]}>
       <planeGeometry args={[GROUND_HALF * 2, GROUND_HALF * 2]} />
       <meshStandardMaterial map={tex} roughness={1} />
     </mesh>
   );
 }
 
-/** Finds the mesh surface under the site so the campus sits on the ground. */
-function GroundProbe({ target, onGround }: { target: React.RefObject<THREE.Group | null>; onGround: (y: number) => void }) {
-  const ray = useMemo(() => new THREE.Raycaster(new THREE.Vector3(0, 2000, 0), new THREE.Vector3(0, -1, 0)), []);
-  const done = useRef(false);
+/** Lowest mesh surface across the footprint (a grid of rays), so the overlay sits on the ground, not on a roof. */
+function GroundProbe({ target, span, onGround }: { target: React.RefObject<THREE.Group | null>; span: number; onGround: (y: number) => void }) {
+  const ray = useMemo(() => new THREE.Raycaster(), []);
   const frames = useRef(0);
+  const last = useRef<number | null>(null);
   useFrame(() => {
-    if (done.current || !target.current || frames.current++ % 20) return;
-    const hits = ray.intersectObject(target.current, true);
-    if (hits.length) {
-      // lowest hit under a small footprint approximates the ground, not a rooftop
-      onGround(hits[hits.length - 1].point.y);
-      if (frames.current > 400) done.current = true;
+    if (!target.current || frames.current++ % 30) return;
+    let minY: number | null = null;
+    const n = 5;
+    for (let i = 0; i < n; i++)
+      for (let j = 0; j < n; j++) {
+        const x = (i / (n - 1) - 0.5) * span, z = (j / (n - 1) - 0.5) * span;
+        ray.set(new THREE.Vector3(x, 3000, z), new THREE.Vector3(0, -1, 0));
+        const hits = ray.intersectObject(target.current, true);
+        if (hits.length) {
+          const y = hits[hits.length - 1].point.y;
+          minY = minY == null ? y : Math.min(minY, y);
+        }
+      }
+    if (minY != null && (last.current == null || Math.abs(minY - last.current) > 0.2)) {
+      last.current = minY;
+      onGround(minY);
     }
   });
   return null;
 }
 
-function VexcelMesh({ url, lat, lon, mw }: { url: string; lat: number; lon: number; mw: number }) {
+function VexcelMesh({ url, lat, lon, mw, acres, concept }: { url: string; lat: number; lon: number; mw: number; acres: number | null; concept: boolean }) {
   const gl = useThree((s) => s.gl);
-  const ext = useMemo(
-    () => ({
-      dracoLoader: new DRACOLoader().setDecoderPath('/decoders/draco/'),
-      ktxLoader: new KTX2Loader().setTranscoderPath('/decoders/basis/').detectSupport(gl),
-    }),
-    [gl],
-  );
+  const ext = useMemo(() => ({
+    dracoLoader: new DRACOLoader().setDecoderPath('/decoders/draco/'),
+    ktxLoader: new KTX2Loader().setTranscoderPath('/decoders/basis/').detectSupport(gl),
+  }), [gl]);
   const orient = useMemo(() => ({ lat: lat * DEG, lon: lon * DEG, height: 0, up: '+y', recenter: true }), [lat, lon]);
   const group = useRef<THREE.Group>(null);
-  const tilesRef = useRef<any>(null); // eslint-disable-line @typescript-eslint/no-explicit-any
   const [ground, setGround] = useState(0);
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'production') return;
-    let t: any = null; // eslint-disable-line @typescript-eslint/no-explicit-any
-    let n = 0;
-    const onModel = () => {
-      n++;
-      if (n <= 3 || n % 10 === 0) {
-        const b = new THREE.Box3().setFromObject(t.group);
-        console.info('[plotstar-3d] models', n, 'bounds', b.min.toArray().map(Math.round), b.max.toArray().map(Math.round));
-      }
-    };
-    const onErr = (e: { error?: Error; url?: string }) => console.info('[plotstar-3d] load-error', e.url, e.error?.message);
-    const timer = setInterval(() => {
-      if (t || !tilesRef.current) return;
-      t = tilesRef.current;
-      console.info('[plotstar-3d] attached', !!t.addEventListener);
-      t.addEventListener('load-model', onModel);
-      t.addEventListener('load-error', onErr);
-      t.addEventListener('load-tileset', (e: { url: string }) => console.info('[plotstar-3d] tileset', e.url.slice(-80)));
-      setTimeout(() => {
-        console.info('[plotstar-3d] after 20s: visible', t.visibleTiles?.size, 'active', t.activeTiles?.size, JSON.stringify(t.stats));
-      }, 20000);
-    }, 200);
-    return () => {
-      clearInterval(timer);
-      t?.removeEventListener('load-model', onModel);
-      t?.removeEventListener('load-error', onErr);
-    };
-  }, [url]);
+  const span = Math.max(80, Math.sqrt((acres ?? 10) * SQM_PER_ACRE));
   return (
     <>
       <group ref={group}>
-        <TilesRenderer ref={tilesRef} url={url} errorTarget={40} loadSiblings={false} maxDepth={12}>
+        <TilesRenderer url={url} errorTarget={40} loadSiblings={false} maxDepth={12}>
           <TilesPlugin plugin={GLTFExtensionsPlugin} args={[ext]} />
           <TilesPlugin plugin={ReorientationPlugin} args={[orient]} />
         </TilesRenderer>
       </group>
-      <GroundProbe target={group} onGround={setGround} />
-      <Campus mw={mw} y={ground + 0.2} />
+      <GroundProbe target={group} span={span} onGround={setGround} />
+      {concept && <Envelope mw={mw} ground={ground} acres={acres} />}
     </>
   );
 }
 
 class Boundary extends Component<{ children: React.ReactNode; fallback: React.ReactNode }, { error: boolean }> {
   state = { error: false };
-  static getDerivedStateFromError() {
-    return { error: true };
-  }
-  render() {
-    return this.state.error ? this.props.fallback : this.props.children;
-  }
+  static getDerivedStateFromError() { return { error: true }; }
+  render() { return this.state.error ? this.props.fallback : this.props.children; }
 }
 
-export default function Site3D({
-  parcelId,
-  lat,
-  lng,
-  mw,
-}: {
-  parcelId: string;
-  lat: number;
-  lng: number;
-  mw: number;
-}) {
+export default function Site3D({ parcelId, lat, lng, mw, acres = null }: { parcelId: string; lat: number; lng: number; mw: number; acres?: number | null }) {
   const [mesh, setMesh] = useState<{ url: string; collection: string } | null | undefined>(undefined);
+  const [concept, setConcept] = useState(true);
   useEffect(() => {
     let alive = true;
     fetch(vexcel3dRootUrl(lat, lng))
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => alive && setMesh(d ? { url: d.tileset_url, collection: d.collection } : null))
       .catch(() => alive && setMesh(null));
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, [lat, lng]);
   const L = campusLayout(mw);
-  const span = Math.max(L.width, L.depth) + 120;
-
+  const span = Math.max(L.width, L.depth, acres ? Math.sqrt(acres * SQM_PER_ACRE) : 0) + 140;
   return (
     <div className="real-3d-wrap">
       {mesh === undefined ? (
-        <div className="real-3d-status">Loading the real site…</div>
+        <div className="real-3d-status">Loading site…</div>
       ) : (
         <Boundary fallback={<div className="real-3d-status">3D view unavailable on this device.</div>}>
-          <Canvas shadows camera={{ position: [span * 0.9, span * 0.75, span * 0.9], fov: 45, near: 1, far: 20000 }}>
-            <color attach="background" args={['#dfe5da']} />
-            <hemisphereLight args={['#ffffff', '#b9c4b0', 0.9]} />
-            <directionalLight position={[300, 500, 200]} intensity={1.6} castShadow />
+          <Canvas camera={{ position: [span * 0.7, span * 0.55, span * 0.7], fov: 42, near: 1, far: 20000 }}>
+            <color attach="background" args={['#dfe3da']} />
+            <hemisphereLight args={['#ffffff', '#b9c4b0', 1.0]} />
+            <directionalLight position={[300, 500, 200]} intensity={1.2} />
             <Suspense fallback={null}>
               {mesh ? (
-                <VexcelMesh url={mesh.url} lat={lat} lon={lng} mw={mw} />
+                <VexcelMesh url={mesh.url} lat={lat} lon={lng} mw={mw} acres={acres} concept={concept} />
               ) : (
                 <>
                   <AerialGround parcelId={parcelId} />
-                  <Campus mw={mw} />
+                  {concept && <Envelope mw={mw} ground={0} acres={acres} />}
                 </>
               )}
             </Suspense>
-            <OrbitControls makeDefault maxPolarAngle={Math.PI / 2.1} minDistance={40} maxDistance={2500} />
+            <OrbitControls makeDefault maxPolarAngle={Math.PI / 2.05} minDistance={30} maxDistance={3000} />
           </Canvas>
         </Boundary>
       )}
+      <div className="real-3d-legend">
+        {acres && <span><i style={{ background: 'rgba(38,77,57,0.25)', borderColor: '#264d39' }} />Parcel {acres.toFixed(1)} ac · square-equivalent {Math.round(Math.sqrt(acres * SQM_PER_ACRE))} m</span>}
+        <span><i style={{ background: 'rgba(159,183,166,0.6)' }} />Data hall {Math.round(L.width)} × {Math.round(L.depth)} m · {L.floors} floors · {Math.round(L.gfa).toLocaleString()} m² GFA</span>
+        <span><i style={{ background: 'rgba(107,94,78,0.5)' }} />Generator yard · {L.generators} × 2.5 MW</span>
+        <span><i style={{ background: 'rgba(45,95,143,0.45)' }} />Switchyard · {Math.round(mw * 1.4)} MW grid request</span>
+      </div>
       <div className="real-3d-note">
-        {mesh
-          ? `Real 3D city: Vexcel ${mesh.collection}. `
-          : mesh === null
-            ? 'Real aerial ground: Vexcel orthophoto. '
-            : ''}
-        Proposed campus is conceptual: {Math.round(L.footprint).toLocaleString()} m² hall, {L.generators} generators,
-        substation pad.
+        <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', marginRight: 10 }}>
+          <input type="checkbox" checked={concept} onChange={(e) => setConcept(e.target.checked)} /> Conceptual envelope
+        </label>
+        {mesh ? `Vexcel 3D mesh ${mesh.collection} (Sourced). ` : mesh === null ? 'Vexcel orthophoto ground (Sourced); no 3D mesh coverage here. ' : ''}
+        Overlay is drawn through the existing structure (x-ray) at probed ground level: a planning envelope at team density assumptions, not a design.
       </div>
     </div>
   );
