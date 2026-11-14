@@ -141,25 +141,37 @@ tests/                    Calculation, API, SSE, hardware, browser and mobile te
 
 Local mutation routes enforce same-origin browser requests and Zod input bounds; telemetry uses a constant-time bearer-token comparison and explicit device bindings. These measures do not replace multi-user identity and access control. `npm audit` is clean at verification time; the pinned Prisma 6 toolchain uses a patched `deepmerge-ts` override, checked through schema setup and builds.
 
-## Explore: find a real data center site (`/explore`)
+## The product: one screen, two questions (`/explore`)
 
-Open http://127.0.0.1:3000/explore with both servers running. The workflow mirrors a CoStar search, for buildable
-data-center sites instead of leases:
+**Where should it go?** Every real CoStar property in Houston (or Los Angeles) is scored three ways, Money, People,
+Planet, and checked against pass/fail gates: homes nearby (CoStar apartment communities + MLS listings), FEMA flood
+zone, WRI Aqueduct water stress, distance to a >= 138 kV substation (OpenStreetMap). A site that fails a gate is
+"Not suitable" whatever it costs. Draw an area, check any spot, filter by MW and must-haves, save a search and get
+alerts when a site, price or risk changes.
 
-| CoStar | PlotStar Explore |
-|---|---|
-| Draw a polygon | **Draw area** on the map; results update to the parcels inside it |
-| Filter by rent, size, type | Filter by MW, lot size, flood, heavy power, water cooling; adjust the homes distance limit |
-| View matching properties | Every CoStar industrial/flex/land property, marked **Good fit / Check first / Not suitable** |
-| Manually add a property | **Check a spot**: click anywhere and the same checks run on that point |
-| Generate a report | Site panel: verdict, Money / People / Planet, "if you build N MW here", sources |
-| Save search + alerts | **Save search**; the bell re-runs it and lists new sites, price and risk changes |
-| 3D | **3D**: Vexcel photorealistic city mesh (where covered) or Vexcel aerial, with a conceptual campus sized to the MW target; Matterport tour inside the building |
+**How should it run?** One optimizer picks the site, the cooling and the hourly schedule together (`POST /optimize`):
+it enumerates site x cooling x flexibility, drops anything that fails a gate or needs more curtailment than the
+flexible share allows, and places the day's flexible work into the cleanest, cheapest hours of the real ERCOT day
+(day-ahead prices, Sourced; carbon from the fuel mix, Estimated). It shows **PlotStar pick vs cost-first pick**
+with CO2, cost and MW-at-grid-peak deltas, and re-runs in about a second when you move the price or carbon slider.
+"Why this pick?" explains the decision from the run's own numbers (a LangChain deep agent when a model key is set).
 
-Checks are pass/fail, never averaged: homes (CoStar apartment communities + MLS listings), FEMA flood zone, WRI
-Aqueduct water stress, distance to a >= 138 kV OSM substation. Numbers carry a label (Sourced / Estimated / Unknown)
-and the Sources toggle shows the file, line and retrieval time behind each one. Grid capacity always "requires
-utility confirmation".
+**Prove it.** Two machines run the same job, cost-first and PlotStar. The grid day replays in 60 s; press
+**Grid emergency** and the PlotStar machine eases off while the cost-first one does not. The Grid Passport records
+response time, measured reduction, duration and whether the job finished. Without hardware the screen shows a
+simulation, labeled as such.
+
+Run the real machines with `services/controller/run.py` (standard library only):
+
+```powershell
+# in .env: TELEMETRY_API_KEY=<long random secret>  (restart the API)
+python services/controller/run.py --machine baseline --token <key>
+python services/controller/run.py --machine plotstar --token <key> --meter-cmd "<command printing watts>"
+```
+
+Every number carries a label: Measured, Sourced, Estimated or Simulated. Grid capacity and interconnection cost are
+scenarios until a utility confirms them. The older multi-use workspace (`/projects`: dorms, parks) is still in the
+repo but is no longer the product path.
 
 ## Real property data: CoStar backend (`services/api`)
 

@@ -162,3 +162,67 @@ i.xp-bad { background: #c4553d; }
 
 /* maplibre sets .maplibregl-map{position:relative}; keep the canvas filling the stage */
 .xp-map-canvas.maplibregl-map { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+/* header pillars */
+.xp-pillars { display: flex; align-items: center; gap: 6px; margin: 0 auto; }
+.xp-pillars span { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 999px; background: #eef3e4; color: var(--forest); font-size: 13px; font-weight: 600; }
+.xp-pillars small { margin-left: 8px; font-size: 11.5px; color: var(--muted); }
+
+/* run panel */
+.rp-lede { margin: 0; font-size: 13px; line-height: 1.55; }
+.rp-chart { width: 100%; height: auto; display: block; border: 1px solid var(--line); border-radius: 10px; background: #fff; padding: 6px; }
+.rp-nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.rp-num { border: 1px solid var(--line); background: #fff; border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 2px; }
+.rp-num svg { color: #5f8f45; }
+.rp-num small { font-size: 11px; color: var(--muted); }
+.rp-num b { font-size: 15px; font-weight: 600; }
+.rp-num span { font-size: 10.5px; color: var(--muted); }
+.rp-num span.rp-good { color: #2f6b2c; }
+.rp-num span.rp-bad { color: #a33a26; }
+.rp-whatif { border-top: 1px dashed var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+
+/* pick bar under the map */
+.pick-bar { display: grid; grid-template-columns: 1fr 1fr 1.3fr; gap: 10px; align-items: stretch; margin: 10px 14px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 14px; background: #fff; position: relative; }
+.pick-bar > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pick-bar small { font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.pick-bar b { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pick-bar span { font-size: 12px; color: var(--muted); }
+.pick-delta { border-left: 1px solid var(--line); padding-left: 12px; }
+.pick-delta b { color: #2f6b2c; }
+.pick-note { position: absolute; right: 12px; top: -8px; background: var(--cream); padding: 0 6px; letter-spacing: 0; text-transform: none; }
+.xp-card.pick { border-color: #5f8f45; }
+
+/* meters */
+.mt-wrap { position: absolute; inset: 0; overflow: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; background: #eef1e8; }
+.mt-grid { display: grid; grid-template-columns: 0.9fr 1fr 1fr; gap: 12px; }
+.mt-card { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.mt-card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.mt-card-head b { font-size: 13.5px; }
+.mt-card-head small { font-size: 11px; color: var(--muted); }
+.mt-clock { font-size: 34px; font-weight: 500; letter-spacing: -0.02em; }
+.mt-kv { display: flex; justify-content: space-between; font-size: 13px; }
+.mt-kv span { color: var(--muted); }
+.mt-mix { display: flex; height: 10px; border-radius: 99px; overflow: hidden; background: #e6ebdf; }
+.mt-mix i { display: block; height: 100%; }
+.mt-watts { font-size: 34px; font-weight: 500; letter-spacing: -0.02em; display: flex; align-items: baseline; gap: 6px; }
+.mt-watts small { font-size: 14px; color: var(--muted); }
+.mt-state { margin-left: auto; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; background: #eef3e4; color: #2f6b2c; }
+.mt-state.throttled { background: #fbf0d6; color: #8a6210; }
+.mt-state.done { background: #e4f2d6; color: #2f6b2c; }
+.mt-spark { width: 100%; height: 70px; display: block; background: #f7f8f3; border-radius: 8px; }
+.mt-progress { height: 8px; border-radius: 99px; background: #e6ebdf; overflow: hidden; }
+.mt-progress i { display: block; height: 100%; background: #5f8f45; border-radius: 99px; transition: width 0.5s linear; }
+.mt-machine.plotstar { border-color: #9ec172; }
+.mt-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.mt-emergency { display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: 12px; background: #c4553d; color: #fff; padding: 12px 18px; font-size: 14px; font-weight: 700; cursor: pointer; box-shadow: 0 6px 18px rgba(196, 85, 61, 0.3); }
+.mt-emergency:disabled { background: #e0a090; cursor: wait; box-shadow: none; }
+.mt-diff { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--forest); background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; }
+.mt-passport { background: #fff; border: 1px solid #9ec172; border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.mt-passport > b { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #2f6b2c; }
+@media (max-width: 1100px) { .mt-grid { grid-template-columns: 1fr; } .pick-bar { grid-template-columns: 1fr; } }
+
+.pick-why { grid-column: 1 / -1; justify-self: start; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: #f3f7ea; border-radius: 999px; padding: 5px 12px; font-size: 12px; color: var(--forest); cursor: pointer; }
+.pick-why:disabled { opacity: 0.6; }
+.pick-why-box { margin: 8px 14px 0; padding: 12px 14px; border: 1px solid #9ec172; border-radius: 12px; background: #fff; font-size: 13px; line-height: 1.55; }
+.pick-why-box p { margin: 0 0 6px; }
+.pick-why-box small { color: var(--muted); font-size: 11px; }

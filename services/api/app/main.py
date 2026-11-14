@@ -8,7 +8,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import config, external
 from .db import db_ready
-from .routers import data, integrations, projects, screen, sites, vexcel
+from .routers import agent, data, integrations, livegrid, optimize, projects, screen, sites, vexcel
+from . import livegrid as livegrid_state
+from . import optimizer as optimizer_mod
 
 
 @asynccontextmanager
@@ -17,6 +19,8 @@ async def lifespan(_: FastAPI):
     integrations.init()
     external.init()
     screen.init()
+    optimizer_mod.init()
+    livegrid_state.init()
     yield
 
 
@@ -35,5 +39,6 @@ def health() -> dict:
 
 
 # screen.router first so /sites/candidates is not captured by /sites/{parcel_id}
-for r in (screen.router, sites.router, data.router, projects.router, integrations.router, vexcel.router):
+for r in (screen.router, sites.router, data.router, projects.router, integrations.router, vexcel.router,
+          optimize.router, livegrid.router, agent.router):
     app.include_router(r)

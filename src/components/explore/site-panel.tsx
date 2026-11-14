@@ -1,20 +1,12 @@
 'use client';
-import { useEffect, useState } from 'react';
-import { Box, Check, ChevronDown, Droplets, Factory, Flame, Leaf, Users, Wallet, X, Zap } from 'lucide-react';
-import { PUBLIC_DATA_API, vexcelOrthoUrl } from '@/lib/plotstar-api';
+import { useState } from 'react';
+import { Box, Check, ChevronDown, Leaf, Users, Wallet, X } from 'lucide-react';
+import { vexcelOrthoUrl } from '@/lib/plotstar-api';
+import type { OptimizeResult } from './optimize-types';
+import { RunPanel } from './run-panel';
 import { LabelTag, MatterportPanel } from '../site-evidence';
 import type { ExploreSite } from './types';
 import { fmtMoney, fmtNum, GATE_TITLE, plainGate, verdict } from './types';
-
-type Cooling = 'air' | 'hybrid' | 'water';
-interface Impact {
-  energy_gwh_per_year: number;
-  water_gal_per_day: number;
-  co2_t_per_year: number;
-  capex_usd: number;
-  peak_mw_facility: number;
-  formula: Record<string, string>;
-}
 
 function Ring({ value }: { value: number }) {
   const r = 34,
@@ -40,36 +32,22 @@ function Ring({ value }: { value: number }) {
 export function SitePanel({
   site,
   mw,
+  run,
+  runBusy,
+  onWhatIf,
   onOpen3d,
   onClose,
 }: {
   site: ExploreSite;
   mw: number;
+  run: OptimizeResult | null;
+  runBusy: boolean;
+  onWhatIf: (changes: Record<string, number>) => void;
   onOpen3d: () => void;
   onClose: () => void;
 }) {
   const v = verdict(site);
-  const waterOk = site.screen?.power.water_cooling_ok ?? false;
-  const [cooling, setCooling] = useState<Cooling>(waterOk ? 'hybrid' : 'air');
-  const [impact, setImpact] = useState<Impact | null>(null);
   const [sources, setSources] = useState(false);
-  const fits = site.supportableMw == null ? null : site.supportableMw >= mw;
-
-  useEffect(() => {
-    let alive = true;
-    fetch(`${PUBLIC_DATA_API}/impact`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mw_it: mw, cooling }),
-    })
-      .then((r) => r.json())
-      .then((d) => alive && setImpact(d))
-      .catch(() => alive && setImpact(null));
-    return () => {
-      alive = false;
-    };
-  }, [mw, cooling]);
-
   const p = site.screen?.power;
   return (
     <div className="xp-panel">
@@ -129,57 +107,7 @@ export function SitePanel({
           </div>
         </div>
 
-        <section className="xp-block">
-          <div className="xp-block-head">
-            <h3>If you build {mw} MW here</h3>
-            <LabelTag label="Estimated" />
-          </div>
-          {fits === false && (
-            <p className="xp-warn">
-              The lot fits about {site.supportableMw} MW at our density assumption. {mw} MW needs a bigger site or
-              phases.
-            </p>
-          )}
-          <div className="xp-cooling">
-            {(['air', 'hybrid', 'water'] as Cooling[]).map((c) => (
-              <button
-                key={c}
-                className={cooling === c ? 'on' : ''}
-                disabled={c === 'water' && !waterOk}
-                title={c === 'water' && !waterOk ? 'Water stress is too high for water cooling here' : ''}
-                onClick={() => setCooling(c)}
-              >
-                {c === 'air' ? 'Air cooled' : c === 'hybrid' ? 'Hybrid' : 'Water cooled'}
-              </button>
-            ))}
-          </div>
-          <div className="xp-tiles">
-            <div>
-              <Zap size={15} />
-              <small>Electricity</small>
-              <b>{impact ? `${fmtNum(impact.energy_gwh_per_year)} GWh/yr` : '…'}</b>
-            </div>
-            <div>
-              <Droplets size={15} />
-              <small>Water</small>
-              <b>{impact ? `${fmtNum(impact.water_gal_per_day / 1000)}K gal/day` : '…'}</b>
-            </div>
-            <div>
-              <Flame size={15} />
-              <small>Carbon</small>
-              <b>{impact ? `${fmtNum(impact.co2_t_per_year / 1000, 1)}K t/yr` : '…'}</b>
-            </div>
-            <div>
-              <Factory size={15} />
-              <small>Build cost</small>
-              <b>{impact ? fmtMoney(impact.capex_usd) : '…'}</b>
-            </div>
-          </div>
-          <p className="xp-fine">
-            Land {fmtMoney(site.landCost)} ({site.labels?.landCost ?? 'Unknown'}). Planning estimates from team assumptions;
-            carbon uses a placeholder grid factor until ERCOT hourly data is cached.
-          </p>
-        </section>
+        <RunPanel run={run} siteId={site.id} mw={mw} onWhatIf={onWhatIf} busy={runBusy} />
 
         <section className="xp-block">
           <div className="xp-block-head">
@@ -229,7 +157,6 @@ export function SitePanel({
                 {g.retrieved_at ? `, retrieved ${new Date(g.retrieved_at).toLocaleDateString()}` : ''}
               </p>
             ))}
-            {impact && Object.entries(impact.formula).map(([k, f]) => <p key={k}>{k}: {f}</p>)}
           </div>
         )}
       </div>

@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { ExploreApp } from '@/components/explore/explore-app';
+import { PlotStarScreen } from '@/components/explore/plotstar-screen';
 import './explore.css';
 
 export const metadata: Metadata = {
@@ -8,5 +8,5 @@ export const metadata: Metadata = {
 };
 
 export default function ExplorePage() {
-  return <ExploreApp />;
+  return <PlotStarScreen />;
 }

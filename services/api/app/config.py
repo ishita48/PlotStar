@@ -25,6 +25,8 @@ MATTERPORT_GRAPH_URL = "https://api.matterport.com/api/models/graph"
 
 VEXCEL_API_KEY = os.getenv("VEXCEL_API_KEY", "")
 
+TELEMETRY_API_KEY = os.getenv("TELEMETRY_API_KEY", "")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "")
 
