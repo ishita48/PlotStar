@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+twin/data/calibration.json
+hardware/firmware/**/build/
+.DS_Store
+protect/data/
