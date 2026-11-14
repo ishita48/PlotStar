@@ -3,8 +3,10 @@ import { useEffect, useRef, useState } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import type { Map as LibreMap } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import { setupMaplibre } from '@/lib/maplibre-setup';
+setupMaplibre();
 import type { AmenityResult, Site } from '@/lib/types';
-import { scoreSite } from '@/lib/engine';
+import { failsHardGate, isRealSite, scoreSite } from '@/lib/engine';
 export default function SiteMap({
   sites,
   selectedId,
@@ -30,8 +32,8 @@ export default function SiteMap({
     try {
       const m = new maplibregl.Map({
         container: container.current,
-        center: [-74.65, 40.34],
-        zoom: 12.2,
+        center: sites.length ? [sites[0].lng, sites[0].lat] : [-74.65, 40.34],
+        zoom: sites.some(isRealSite) ? 9.6 : 12.2,
         pitch: 0,
         style: {
           version: 8,
@@ -78,16 +80,32 @@ export default function SiteMap({
     } catch {
       setFailed(true);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // Fit all candidates once the map is ready (real sites span a whole metro).
+  useEffect(() => {
+    if (!map.current || !loaded || sites.length < 2) return;
+    const lngs = sites.map((s) => s.lng),
+      lats = sites.map((s) => s.lat);
+    map.current.fitBounds(
+      [
+        [Math.min(...lngs), Math.min(...lats)],
+        [Math.max(...lngs), Math.max(...lats)],
+      ],
+      { padding: 60, maxZoom: 13, duration: 0 },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded]);
   useEffect(() => {
     if (!map.current || !loaded) return;
     markers.current.forEach((m) => m.remove());
     markers.current = [];
     for (const s of sites) {
       const el = document.createElement('button');
-      el.className = `site-marker ${s.id === selectedId ? 'selected' : ''}`;
+      el.className = `site-marker ${s.id === selectedId ? 'selected' : ''} ${failsHardGate(s) ? 'site-marker-fail' : ''}`;
       el.setAttribute('aria-label', `Select ${s.name}`);
-      el.textContent = `${s.id.slice(-1).toUpperCase()} · ${scoreSite(s, weights)}`;
+      const letter = isRealSite(s) ? String.fromCharCode(65 + sites.indexOf(s)) : s.id.slice(-1).toUpperCase();
+      el.textContent = failsHardGate(s) ? `${letter} · FAIL` : `${letter} · ${scoreSite(s, weights)}`;
       el.onclick = () => callback.current(s.id);
       markers.current.push(
         new maplibregl.Marker({ element: el }).setLngLat([s.lng, s.lat]).addTo(map.current),
@@ -116,7 +134,11 @@ export default function SiteMap({
       {failed && (
         <div className="map-fallback">
           <b>Base map unavailable</b>
-          <span>Candidate locations remain illustrative. Select a site below.</span>
+          <span>
+            {sites.some(isRealSite)
+              ? 'CoStar property locations are listed below.'
+              : 'Candidate locations remain illustrative. Select a site below.'}
+          </span>
           <div>
             {sites.map((s) => (
               <button key={s.id} onClick={() => onSelect(s.id)}>
@@ -127,10 +149,26 @@ export default function SiteMap({
         </div>
       )}
       <div className="map-label">
-        <span className="pulse-dot" /> PRINCETON REGION <span>4 illustrative candidates</span>
+        {sites.some(isRealSite) ? (
+          <>
+            <span className="pulse-dot" /> COSTAR PROPERTIES <span>{sites.length} real candidates</span>
+          </>
+        ) : (
+          <>
+            <span className="pulse-dot" /> PRINCETON REGION <span>4 illustrative candidates</span>
+          </>
+        )}
       </div>
       <div className="map-legend">
-        <i /> Illustrative candidate <i className="amenity" /> Live mapped amenity
+        {sites.some(isRealSite) ? (
+          <>
+            <i /> Passes hard gates <i className="fail" /> Fails a hard gate
+          </>
+        ) : (
+          <>
+            <i /> Illustrative candidate <i className="amenity" /> Live mapped amenity
+          </>
+        )}
       </div>
     </div>
   );

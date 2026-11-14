@@ -115,17 +115,17 @@ export function CityArt({ small = false }: { small?: boolean }) {
           <rect x="12" y="415" width="163" height="49" rx="10" fill="#f7f7eb" />
           <circle cx="29" cy="433" r="4" fill="#58864a" />
           <text x="42" y="437" fill="#294b3c" fontWeight="bold">
-            CONNECTED BY DESIGN
+            REAL COSTAR SITES
           </text>
           <text x="28" y="453" fill="#7a8577">
-            Conceptual campus · live intelligence
+            Houston · ERCOT grid day · live meters
           </text>
           <rect x="418" y="94" width="152" height="53" rx="10" fill="#f7f7eb" />
           <text x="432" y="115" fill="#294b3c" fontWeight="bold">
-            One project. Every possibility.
+            One site. Money, people, planet.
           </text>
           <text x="432" y="132" fill="#7a8577">
-            Discover → Design → Protect
+            Where → How to run → Prove it
           </text>
         </g>
       )}

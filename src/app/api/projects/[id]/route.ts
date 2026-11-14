@@ -70,7 +70,17 @@ export async function PATCH(req: Request, ctx: Context) {
       await db.project.update({ where: { id }, data: { weights: JSON.stringify(input.weights) } });
     }
     if (input.action === 'select-site') {
-      if (!p.sites.some((s) => s.id === input.siteId)) throw new HttpError(400, 'Unknown site.');
+      const chosen = p.sites.find((s) => s.id === input.siteId);
+      if (!chosen) throw new HttpError(400, 'Unknown site.');
+      // Hard gates are pass/fail and cannot be bought back with a good financial score (PRD principle 1).
+      if (chosen.screen?.status === 'Fail')
+        throw new HttpError(
+          409,
+          `${chosen.name} fails a hard gate: ${chosen.screen.gates
+            .filter((g) => g.status === 'Fail')
+            .map((g) => g.gate)
+            .join(', ')}.`,
+        );
       if (p.selectedSiteId !== input.siteId || p.approvedDesignId)
         await db.$transaction([
           db.sensor.deleteMany({ where: { projectId: id } }),

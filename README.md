@@ -140,3 +140,60 @@ tests/                    Calculation, API, SSE, hardware, browser and mobile te
 ```
 
 Local mutation routes enforce same-origin browser requests and Zod input bounds; telemetry uses a constant-time bearer-token comparison and explicit device bindings. These measures do not replace multi-user identity and access control. `npm audit` is clean at verification time; the pinned Prisma 6 toolchain uses a patched `deepmerge-ts` override, checked through schema setup and builds.
+
+## The product: one screen, two questions (`/explore`)
+
+**Where should it go?** Every real CoStar property in Houston (or Los Angeles) is scored three ways, Money, People,
+Planet, and checked against pass/fail gates: homes nearby (CoStar apartment communities + MLS listings), FEMA flood
+zone, WRI Aqueduct water stress, distance to a >= 138 kV substation (OpenStreetMap). A site that fails a gate is
+"Not suitable" whatever it costs. Draw an area, check any spot, filter by MW and must-haves, save a search and get
+alerts when a site, price or risk changes.
+
+**How should it run?** One optimizer picks the site, the cooling and the hourly schedule together (`POST /optimize`):
+it enumerates site x cooling x flexibility, drops anything that fails a gate or needs more curtailment than the
+flexible share allows, and places the day's flexible work into the cleanest, cheapest hours of the real ERCOT day
+(day-ahead prices, Sourced; carbon from the fuel mix, Estimated). It shows **PlotStar pick vs cost-first pick**
+with CO2, cost and MW-at-grid-peak deltas, and re-runs in about a second when you move the price or carbon slider.
+"Why this pick?" explains the decision from the run's own numbers (a LangChain deep agent when a model key is set).
+
+**Prove it.** Two machines run the same job, cost-first and PlotStar. The grid day replays in 60 s; press
+**Grid emergency** and the PlotStar machine eases off while the cost-first one does not. The Grid Passport records
+response time, measured reduction, duration and whether the job finished. Without hardware the screen shows a
+simulation, labeled as such.
+
+Run the real machines with `services/controller/run.py` (standard library only):
+
+```powershell
+# in .env: TELEMETRY_API_KEY=<long random secret>  (restart the API)
+python services/controller/run.py --machine baseline --token <key>
+python services/controller/run.py --machine plotstar --token <key> --meter-cmd "<command printing watts>"
+```
+
+Every number carries a label: Measured, Sourced, Estimated or Simulated. Grid capacity and interconnection cost are
+scenarios until a utility confirms them. The older multi-use workspace (`/projects`: dorms, parks) is still in the
+repo but is no longer the product path.
+
+## Real property data: CoStar backend (`services/api`)
+
+The CoStar track kit (Houston + Los Angeles) is served by a Python FastAPI service next to the web app.
+It replaces illustrative candidates with real CoStar properties; every value traces to its source file and line.
+
+```powershell
+# one-time: extract the CoStar kit OUTSIDE the repo and set COSTAR_KIT_DIR in .env
+cd services/api
+python -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+.venv\Scripts\python -m app.costar.loader      # builds data/cache/plotstar.db (~3 s)
+.venv\Scripts\python -m pytest -q
+.venv\Scripts\python -m uvicorn app.main:app --reload --port 8000   # http://localhost:8000/docs
+```
+
+Endpoints: `POST /search` (polygon + filters), `POST /sites/evaluate` (any point), `POST /impact` (MW + cooling ->
+energy / water / carbon / capex), `GET /assumptions`, `/searches` (saved searches + alerts), `GET /sites`, `GET /sites/{id}`,
+`GET /audit/parcel/{id}/{field}` (evidence chain), `GET /data/summary`, `GET /matterport/models/{id}`
+(server-side proxy; the token never reaches the browser), `GET /vexcel/ortho/{id}.jpg` and `GET /vexcel/3d/root`
+(Vexcel key stays server-side; 3D Tiles are pruned to the cells around the site). Kit findings and schema:
+[docs/costar_data_dictionary.md](docs/costar_data_dictionary.md).
+
+Every number carries a label: Measured, Sourced, Estimated, Simulated or Utility-confirmed. Missing data is
+Unknown, never guessed. The CoStar kit, `.env` and SQLite caches are gitignored.

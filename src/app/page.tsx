@@ -6,9 +6,10 @@ import {
   Box,
   ShieldCheck,
   Building2,
-  Cpu,
-  Trees,
-  Store,
+  Wallet,
+  Users,
+  Leaf,
+  Zap,
   ScanLine,
   Sparkles,
   Check,
@@ -28,7 +29,7 @@ export default function Home() {
           <a href="#intelligence">Our approach</a>
         </div>
         <Button asChild variant="secondary">
-          <Link href="/projects">
+          <Link href="/explore">
             Open workspace <ArrowUpRight size={16} />
           </Link>
         </Button>
@@ -36,28 +37,29 @@ export default function Home() {
       <section className="hero">
         <div className="hero-copy">
           <div className="eyebrow">
-            <span className="pulse-dot" /> THE NEXT CHAPTER OF DEVELOPMENT
+            <span className="pulse-dot" /> DATA CENTERS · HOUSTON · REAL COSTAR PROPERTIES
           </div>
           <h1>
-            Find it.
+            Where to build.
             <br />
-            Design it.
+            How to run it.
             <br />
-            <span>Protect it.</span>
+            <span>Prove it.</span>
             <Star className="hero-star" />
           </h1>
           <p>
-            Great developments start with a better perspective. Bring site intelligence, conceptual
-            design, and building protection into one connected workspace.
+            Data centers get dropped into towns on cost alone. PlotStar checks every real site for
+            money, people and planet at the same time, moves the heavy work into clean, cheap hours,
+            and proves the savings on a real meter.
           </p>
           <div className="hero-actions">
             <Button asChild>
-              <Link href="/projects?new=1">
-                Start building <ArrowUpRight size={18} />
+              <Link href="/explore">
+                Find a site <ArrowUpRight size={18} />
               </Link>
             </Button>
-            <Link href="/projects/demo-1" className="text-link">
-              Explore the demo <ArrowRight size={17} />
+            <Link href="/explore" className="text-link">
+              See the Houston search <ArrowRight size={17} />
             </Link>
           </div>
           <div className="hero-note">
@@ -66,7 +68,7 @@ export default function Home() {
               <Box size={13} />
               <ShieldCheck size={13} />
             </span>{' '}
-            From first possibility to lasting impact.
+            Money · People · Planet. Pass or fail, never averaged.
           </div>
         </div>
         <div className="hero-visual">
@@ -75,34 +77,34 @@ export default function Home() {
             <span>
               <span className="pulse-dot" /> PLOTSTAR INTELLIGENCE
             </span>
-            <span>PRINCETON, NJ ↗</span>
+            <span>HOUSTON, TX ↗</span>
           </div>
           <CityArt />
           <div className="visual-bottom">
             <span>YOUR VISION. A CLEARER PATH.</span>
-            <span>40.3573° N · 74.6672° W</span>
+            <span>29.7604° N · 95.3698° W</span>
           </div>
           <div className="hero-visual-tag">
             <ShieldCheck size={18} />
             <span>
-              Every decision.
+              Every number.
               <br />
-              <b>Connected.</b>
+              <b>Sourced.</b>
             </span>
             <span className="tag-line" />
           </div>
         </div>
       </section>
       <div className="trust-strip">
-        <span>A NEW PERSPECTIVE ON THE BUILT WORLD</span>
+        <span>BUILT ON REAL DATA</span>
         <span>
-          <Building2 size={18} /> Development intelligence
+          <Building2 size={18} /> CoStar properties
         </span>
         <span>
-          <ScanLine size={18} /> Generative planning
+          <ScanLine size={18} /> Vexcel aerial + 3D
         </span>
         <span>
-          <ShieldCheck size={18} /> HAVEN protection
+          <Zap size={18} /> ERCOT grid day + live meters
         </span>
       </div>
       <section id="platform" className="platform-section">
@@ -110,44 +112,44 @@ export default function Home() {
           <div>
             <div className="eyebrow">ONE PLATFORM. FROM THE GROUND UP.</div>
             <h2>
-              See the whole picture.
+              Two questions.
               <br />
-              <span>Build with conviction.</span>
+              <span>Real numbers.</span>
             </h2>
           </div>
           <p>
-            Move from “what if” to “what’s next.”
+            Where should it go, and how should it run.
             <br />
-            Three powerful stages. One continuous project.
+            One screen. One honest decision.
           </p>
         </div>
         <div className="stage-cards">
           {[
             {
               n: '01',
-              title: 'Discover',
-              sub: 'The right place changes everything.',
-              text: 'Compare locations with intelligence built for your development. Understand the tradeoffs before you break ground.',
+              title: 'Where',
+              sub: 'Money. People. Planet.',
+              text: 'Every real CoStar site is checked for homes, floods, water and power. People and planet are pass/fail gates, so the cheapest site loses if it fails one.',
               icon: MapPin,
-              href: '/projects/demo-1',
+              href: '/explore',
               class: 'discover-mini',
             },
             {
               n: '02',
-              title: 'Design',
-              sub: 'Give your ambition a little dimension.',
-              text: 'Explore conceptual alternatives, shape a 3D vision, and see how every change affects your project.',
+              title: 'How to run',
+              sub: 'Clean, cheap hours.',
+              text: 'One optimizer picks the site, the cooling and the hourly schedule together, moving heavy jobs into the hours when ERCOT power is clean and cheap.',
               icon: Box,
-              href: '/projects/demo-2',
+              href: '/explore',
               class: 'design-mini',
             },
             {
               n: '03',
-              title: 'Protect',
-              sub: 'A smarter building starts here.',
-              text: 'Plan connected sensors, test incident response, and bring your conceptual digital twin to life with HAVEN.',
+              title: 'Prove it',
+              sub: 'On a real meter.',
+              text: 'Two machines run the same job, cost-first and PlotStar. Press the grid-emergency button and watch measured watts fall while the job still finishes.',
               icon: ShieldCheck,
-              href: '/projects/demo-3',
+              href: '/explore',
               class: 'protect-mini',
             },
           ].map((s, i) => (
@@ -197,30 +199,16 @@ export default function Home() {
       </section>
       <section id="possibilities" className="possibilities">
         <div>
-          <div className="eyebrow">DIFFERENT AMBITIONS. PURPOSE-BUILT INTELLIGENCE.</div>
-          <h2>What will you build?</h2>
+          <div className="eyebrow">THE THREE PILLARS</div>
+          <h2>A site only wins if it wins all three.</h2>
         </div>
         <div className="use-cases">
           {[
-            {
-              icon: Building2,
-              name: 'Places to live',
-              detail: 'Student housing & residential',
-              demo: 1,
-            },
-            {
-              icon: Cpu,
-              name: 'Power for tomorrow',
-              detail: 'Data centers & infrastructure',
-              demo: 2,
-            },
-            { icon: Store, name: 'Room for business', detail: 'Commercial & mixed use', demo: 0 },
-            { icon: Trees, name: 'Space to connect', detail: 'Parks & community spaces', demo: 3 },
+            { icon: Wallet, name: 'Money', detail: 'Land, power price, distance to the grid' },
+            { icon: Users, name: 'People', detail: 'Homes nearby, water, noise. Pass or fail.' },
+            { icon: Leaf, name: 'Planet', detail: 'Grid carbon by the hour, water stress, cooling' },
           ].map((s) => (
-            <Link
-              href={s.demo ? `/projects/demo-${s.demo}` : '/projects?new=1&type=commercial'}
-              key={s.name}
-            >
+            <Link href="/explore" key={s.name}>
               <s.icon size={25} />
               <h3>{s.name}</h3>
               <p>{s.detail}</p>
@@ -232,55 +220,55 @@ export default function Home() {
       <section id="intelligence" className="intelligence-section">
         <div className="intelligence-orbit">
           <Star />
-          <span className="orbit-word a">LOCATION</span>
-          <span className="orbit-word b">DESIGN</span>
-          <span className="orbit-word c">PROTECTION</span>
+          <span className="orbit-word a">MONEY</span>
+          <span className="orbit-word b">PEOPLE</span>
+          <span className="orbit-word c">PLANET</span>
         </div>
         <div>
-          <div className="eyebrow">INTELLIGENCE WITH ITS FEET ON THE GROUND</div>
+          <div className="eyebrow">NOTHING TYPED IN BY HAND</div>
           <h2>
-            Your next move,
+            Every number
             <br />
-            better informed.
+            has a source.
           </h2>
           <p>
-            Ask better questions. Explore the alternatives. Understand what’s known, what’s assumed,
-            and what needs a closer look.
+            CoStar, Vexcel, FEMA, WRI Aqueduct, OpenStreetMap, ERCOT, or our own meter. Each figure
+            carries a label: Sourced, Estimated, Simulated or Measured.
           </p>
           <ul>
             <li>
-              <Check size={17} /> Development-specific scoring and transparent assumptions
+              <Check size={17} /> Real CoStar properties, Vexcel aerial and 3D, Matterport inside
             </li>
             <li>
-              <Check size={17} /> Interactive 3D concepts and connected financial scenarios
+              <Check size={17} /> ERCOT day-ahead prices and fuel-mix carbon, hour by hour
             </li>
             <li>
-              <Check size={17} /> Real sensor integration when your hardware is ready
+              <Check size={17} /> Measured watts from the machines; simulation is always labeled
             </li>
           </ul>
-          <Link href="/projects" className="text-link">
-            Meet your new workspace <ChevronRight size={17} />
+          <Link href="/explore" className="text-link">
+            Open the workspace <ChevronRight size={17} />
           </Link>
         </div>
       </section>
       <section className="landing-cta">
         <Star />
         <div>
-          <div className="eyebrow">THE FUTURE DOESN’T BUILD ITSELF.</div>
-          <h2>Let’s find your next possibility.</h2>
+          <div className="eyebrow">A COMPANY NEEDS 20 MW IN HOUSTON.</div>
+          <h2>Find the win-win-win site.</h2>
         </div>
         <Button asChild variant="secondary">
-          <Link href="/projects?new=1">
-            Start building <ArrowUpRight size={18} />
+          <Link href="/explore">
+            Find a site <ArrowUpRight size={18} />
           </Link>
         </Button>
       </section>
       <footer className="landing-footer">
         <Brand />
-        <span>Find it. Design it. Protect it.</span>
+        <span>Where should it go. How should it run. Prove it.</span>
         <p>© {new Date().getFullYear()} PlotStar · Conceptual intelligence. Human ambition.</p>
-        <Link href="/projects">
-          Enter workspace <ArrowUpRight size={14} />
+        <Link href="/explore">
+          Open workspace <ArrowUpRight size={14} />
         </Link>
       </footer>
     </main>

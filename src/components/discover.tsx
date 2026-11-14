@@ -20,7 +20,9 @@ import {
 } from 'lucide-react';
 import type { AmenityResult, Project, Requirements } from '@/lib/types';
 import {
+  failsHardGate,
   finances,
+  isRealSite,
   money,
   number,
   rankSites,
@@ -29,6 +31,7 @@ import {
   typeLabels,
 } from '@/lib/engine';
 import { Button } from './ui/button';
+import { AerialPanel, GateBadge, LabelTag, MatterportPanel, PowerPanel, ScreeningPanel } from './site-evidence';
 import type { Mutate } from './workspace';
 const SiteMap = dynamic(() => import('./site-map'), {
   ssr: false,
@@ -58,6 +61,8 @@ export function Discover({
     [lookup, setLookup] = useState(false),
     [scenario, setScenario] = useState(0),
     [compared, setCompared] = useState<string[]>(p.sites.map((s) => s.id));
+  const real = p.sites.some(isRealSite),
+    passing = p.sites.filter((s) => !failsHardGate(s)).length;
   const site = p.sites.find((s) => s.id === active) || ranked[0],
     f = finances(p.type, p.requirements, site, undefined, 1 + scenario / 100);
   async function select() {
@@ -117,10 +122,24 @@ export function Discover({
       </section>
       <div className="discover-toolbar">
         <div>
-          <h2>Four places. A world of possibility.</h2>
-          <span>
-            <i className="demo-dot" /> ILLUSTRATIVE CANDIDATES · NOT VERIFIED LISTINGS
-          </span>
+          {real ? (
+            <>
+              <h2>
+                {p.sites.length} real properties. {passing} clear the hard gates.
+              </h2>
+              <span>
+                <i className="demo-dot" /> COSTAR DATA EXTRACT · SCREENED WITH FEMA, WRI AQUEDUCT, OSM ·{' '}
+                {p.requirements.location.toUpperCase()}
+              </span>
+            </>
+          ) : (
+            <>
+              <h2>Four places. A world of possibility.</h2>
+              <span>
+                <i className="demo-dot" /> ILLUSTRATIVE CANDIDATES · NOT VERIFIED LISTINGS
+              </span>
+            </>
+          )}
         </div>
         <Button variant="outline" size="sm" onClick={() => setShowWeights(!showWeights)}>
           <Settings2 size={15} /> Scoring priorities <ChevronDown size={13} />
@@ -161,7 +180,7 @@ export function Discover({
           </Button>
         </section>
       )}
-      {!/princeton|plainsboro|west windsor/i.test(p.requirements.location) && (
+      {!real && !/princeton|plainsboro|west windsor/i.test(p.requirements.location) && (
         <div className="notice warning">
           Your requested location is outside the Princeton demo region. These candidates do not
           represent {p.requirements.location}.
@@ -181,8 +200,13 @@ export function Discover({
               <article className={`candidate-card ${site.id === s.id ? 'active' : ''}`} key={s.id}>
                 <button className="candidate-main" onClick={() => changeSite(s.id)}>
                   <div className="candidate-top">
-                    <span className="candidate-letter">{s.id.slice(-1).toUpperCase()}</span>
-                    {i === 0 ? (
+                    <span className="candidate-letter">
+                      {isRealSite(s) ? String.fromCharCode(65 + p.sites.indexOf(s)) : s.id.slice(-1).toUpperCase()}
+                    </span>
+                    {s.screen && <GateBadge status={s.screen.status} />}
+                    {failsHardGate(s) ? (
+                      <span className="candidate-rank">EXCLUDED</span>
+                    ) : i === 0 ? (
                       <span className="recommended">
                         <Sparkles size={11} /> TOP MATCH
                       </span>
@@ -202,11 +226,17 @@ export function Discover({
                   <div className="candidate-stats">
                     <span>
                       <small>SITE AREA</small>
-                      <b>{((s.width * s.depth) / 10000).toFixed(2)} ha</b>
+                      <b>
+                        {s.lotAcres != null
+                          ? `${s.lotAcres.toFixed(1)} ac`
+                          : `${((s.width * s.depth) / 10000).toFixed(2)} ha`}
+                      </b>
                     </span>
                     <span>
-                      <small>LAND ESTIMATE</small>
-                      <b>{money(s.landCost)}</b>
+                      <small>{isRealSite(s) ? 'ACQUISITION' : 'LAND ESTIMATE'}</small>
+                      <b>
+                        {money(s.landCost)} {s.labels?.landCost && <LabelTag label={s.labels.landCost} />}
+                      </b>
                     </span>
                   </div>
                   <div className="candidate-bars">
@@ -264,54 +294,75 @@ export function Discover({
             </div>
             <p>{siteRationale(site, p.type, p.weights)}</p>
           </div>
+          {isRealSite(site) ? (
+            <>
+              {site.photoUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img className="costar-photo" src={site.photoUrl} alt={`CoStar photo of ${site.name}`} />
+              )}
+              <p className="method-line provenance-line">
+                {site.context}
+                <br />
+                {site.provenance}
+                {site.landCostBasis ? ` Acquisition basis: ${site.landCostBasis}.` : ''}
+              </p>
+              <ScreeningPanel site={site} />
+              <PowerPanel site={site} />
+              <AerialPanel site={site} />
+              <MatterportPanel site={site} />
+            </>
+          ) : (
+            <>
           <div className="detail-section">
-            <div className="detail-heading">
-              <h3>The neighborhood</h3>
-              <span>DEMO COUNTS</span>
-            </div>
-            <div className="amenity-grid">
-              {[
-                { label: 'Schools', key: 'schools', icon: School },
-                { label: 'Dining', key: 'restaurants', icon: Utensils },
-                { label: 'Parks', key: 'parks', icon: Leaf },
-                { label: 'Transit', key: 'transit', icon: TrainFront },
-              ].map((a) => (
-                <div key={a.key}>
-                  <a.icon size={16} />
-                  <b>{site.amenities[a.key as keyof typeof site.amenities]}</b>
-                  <span>{a.label}</span>
+                <div className="detail-heading">
+                  <h3>The neighborhood</h3>
+                  <span>DEMO COUNTS</span>
                 </div>
-              ))}
-            </div>
-            <div className="population-line">
-              <span>Illustrative local population</span>
-              <b>{number(site.amenities.population)}</b>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="full-width"
-              disabled={lookup}
-              onClick={() => void fetchAmenities()}
-            >
-              <Globe size={14} />
-              {lookup ? 'Looking up mapped places…' : 'Look up live OSM amenities'}
-            </Button>
-            {amenities && (
-              <div className="lookup-result">
-                <b>
-                  {amenities.source} · {amenities.points.length} mapped places
-                </b>
-                <p>{amenities.message}</p>
-                <small>{new Date(amenities.fetchedAt).toLocaleString()}</small>
-                {amenities.points.slice(0, 6).map((a, i) => (
-                  <span key={`${a.id}-${i}`}>
-                    {a.name} · {a.type}
-                  </span>
-                ))}
+                <div className="amenity-grid">
+                  {[
+                    { label: 'Schools', key: 'schools', icon: School },
+                    { label: 'Dining', key: 'restaurants', icon: Utensils },
+                    { label: 'Parks', key: 'parks', icon: Leaf },
+                    { label: 'Transit', key: 'transit', icon: TrainFront },
+                  ].map((a) => (
+                    <div key={a.key}>
+                      <a.icon size={16} />
+                      <b>{site.amenities[a.key as keyof typeof site.amenities]}</b>
+                      <span>{a.label}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="population-line">
+                  <span>Illustrative local population</span>
+                  <b>{number(site.amenities.population)}</b>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="full-width"
+                  disabled={lookup}
+                  onClick={() => void fetchAmenities()}
+                >
+                  <Globe size={14} />
+                  {lookup ? 'Looking up mapped places…' : 'Look up live OSM amenities'}
+                </Button>
+                {amenities && (
+                  <div className="lookup-result">
+                    <b>
+                      {amenities.source} · {amenities.points.length} mapped places
+                    </b>
+                    <p>{amenities.message}</p>
+                    <small>{new Date(amenities.fetchedAt).toLocaleString()}</small>
+                    {amenities.points.slice(0, 6).map((a, i) => (
+                      <span key={`${a.id}-${i}`}>
+                        {a.name} · {a.type}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </>
+          )}
           <div className="detail-section">
             <div className="detail-heading">
               <h3>Look before you leap</h3>
@@ -324,14 +375,16 @@ export function Discover({
             ))}
           </div>
           <div className="site-select">
-            <Button className="full-width" disabled={busy} onClick={() => void select()}>
+            <Button className="full-width" disabled={busy || failsHardGate(site)} onClick={() => void select()}>
               {p.selectedSiteId === site.id && !p.approvedDesignId
                 ? 'Continue to design'
                 : 'Select this site'}
               <ArrowRight size={16} />
             </Button>
             <p>
-              {p.approvedDesignId
+              {failsHardGate(site)
+                ? 'This site fails a hard gate and cannot be selected.'
+                : p.approvedDesignId
                 ? 'Selecting again starts a revised concept and replaces its sensor plan and incident view.'
                 : 'Your next step: explore three conceptual designs.'}
             </p>
@@ -349,7 +402,7 @@ export function Discover({
             </h2>
             <p>{site.name} · Balanced concept · Unlevered planning estimates</p>
           </div>
-          <span className="badge">USD · ILLUSTRATIVE</span>
+          <span className="badge">{real ? 'USD · MODELED · TEAM ASSUMPTIONS' : 'USD · ILLUSTRATIVE'}</span>
         </div>
         <div className="finance-stat-grid">
           <Stat label="Total investment" value={money(f.total)} />

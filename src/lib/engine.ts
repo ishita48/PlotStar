@@ -9,7 +9,8 @@ export const typeLabels: Record<DevelopmentType, string> = {
 };
 export const weightDefaults: Record<DevelopmentType, Record<string, number>> = {
   residential: { walkability: 25, demand: 25, amenities: 20, affordability: 20, resilience: 10 },
-  'data-center': { power: 35, cooling: 20, resilience: 20, community: 15, affordability: 10 },
+  // Real-data metrics from services/api /sites/candidates (formulas in its `method` block).
+  'data-center': { power: 35, community: 25, resilience: 25, affordability: 15 },
   park: { underserved: 30, accessibility: 25, schools: 20, space: 15, affordability: 10 },
   commercial: { customers: 30, access: 25, demographics: 20, competition: 15, affordability: 10 },
 };
@@ -69,11 +70,16 @@ export function parseBrief(brief: string): {
       : type === 'park'
         ? 8e6
         : 28e6;
-  const location = /princeton/.test(b)
-    ? 'Princeton, New Jersey'
-    : brief
-        .match(/(?:near|in|around)\s+([A-Za-z][a-zA-Z .-]+?)(?:,|\s+with|\s+for|\.|$)/)?.[1]
-        ?.trim() || 'Princeton, New Jersey';
+  const fallbackLocation = type === 'data-center' ? 'Houston, Texas' : 'Princeton, New Jersey';
+  const location = /houston/.test(b)
+    ? 'Houston, Texas'
+    : /los angeles/.test(b)
+      ? 'Los Angeles, California'
+      : /princeton/.test(b)
+        ? 'Princeton, New Jersey'
+        : brief
+            .match(/(?:near|in|around)\s+([A-Za-z][a-zA-Z .-]+?)(?:,|\s+with|\s+for|\.|$)/)?.[1]
+            ?.trim() || fallbackLocation;
   const floors = Number(
     b.match(/(\d+)\s*(?:floors?|stor(?:y|ies))/)?.[1] ||
       (type === 'park' ? 1 : type === 'data-center' ? 2 : 4),
@@ -253,8 +259,15 @@ export function scoreSite(site: Site, weights: Record<string, number>): number {
       ) / 10
     : 0;
 }
+/** Hard gates are pass/fail, never averaged in: a failing site ranks below every non-failing site. */
+export const failsHardGate = (s: Site) => s.screen?.status === 'Fail';
+export const isRealSite = (s: Site) => s.source === 'costar';
 export function rankSites(sites: Site[], weights: Record<string, number>) {
-  return [...sites].sort((a, b) => scoreSite(b, weights) - scoreSite(a, weights));
+  return [...sites].sort(
+    (a, b) =>
+      Number(failsHardGate(a)) - Number(failsHardGate(b)) ||
+      scoreSite(b, weights) - scoreSite(a, weights),
+  );
 }
 export function generateDesigns(type: DevelopmentType, r: Requirements, site: Site): Design[] {
   const isPark = type === 'park',
@@ -393,6 +406,17 @@ export function finances(
   };
 }
 export function siteRationale(site: Site, type: DevelopmentType, weights: Record<string, number>) {
+  if (isRealSite(site) && site.screen) {
+    const failed = site.screen.gates.filter((g) => g.status === 'Fail');
+    if (failed.length)
+      return `${site.name} fails ${failed.length === 1 ? 'a hard gate' : `${failed.length} hard gates`}: ${failed.map((g) => g.reason).join(' ')} Hard gates cannot be bought back with a better financial score, so it is excluded from the recommendation.`;
+    const top = Object.keys(weights)
+      .sort((a, b) => (site.metrics[b] ?? 0) * weights[b] - (site.metrics[a] ?? 0) * weights[a])
+      .slice(0, 2);
+    const p = site.screen.power;
+    const sub = p.nearest_substation;
+    return `${site.name} passes the community and environmental gates${site.screen.status === 'Needs review' ? ' with items flagged for review' : ''} and scores ${scoreSite(site, weights)}/100, led by ${top.map((k) => `${k} (${site.metrics[k]}/100)`).join(' and ')}. ${sub ? `Nearest ${sub.max_kv ?? '?'} kV substation is ${sub.distance_km} km away. ` : ''}${p.building_service_mw != null ? `Existing building service is about ${p.building_service_mw} MW (Estimated), so a ${type === 'data-center' ? 'large' : ''} facility needs a utility upgrade. ` : ''}Grid capacity requires utility confirmation.`;
+  }
   const drivers = Object.keys(weights)
     .sort((a, b) => site.metrics[b] * weights[b] - site.metrics[a] * weights[a])
     .slice(0, 2);
