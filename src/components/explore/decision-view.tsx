@@ -55,8 +55,8 @@ async function speak(text: string, audioRef: React.MutableRefObject<HTMLAudioEle
   return 'No voice available';
 }
 
-export function DecisionView({ run, sites, mw, busy, changedFrom, onWhatIf, onOpenSite, onLive }: {
-  run: OptimizeResult | null; sites: ExploreSite[]; mw: number; busy: boolean; changedFrom: string | null;
+export function DecisionView({ run, sites, mw, busy, changedFrom, hideExtras = false, onWhatIf, onOpenSite, onLive }: {
+  run: OptimizeResult | null; sites: ExploreSite[]; mw: number; busy: boolean; changedFrom: string | null; hideExtras?: boolean;
   onWhatIf: (c: Record<string, unknown>) => void; onOpenSite: (id: string) => void; onLive: () => void;
 }) {
   const req = run?.request;
@@ -102,7 +102,7 @@ export function DecisionView({ run, sites, mw, busy, changedFrom, onWhatIf, onOp
       {changedFrom && <div className="ws-flip" style={{ borderRadius: 6, border: '1px solid #c9dccb' }}>The recommendation changed: it was {changedFrom}, it is now {o.site_name}.</div>}
       <div className="dv-head">
         <div>
-          <small>Recommended development plan · {mw} MW IT · run {run.run_id}{busy ? ' · recalculating…' : ''}</small>
+          <small>Our recommendation for {mw} MW</small>
           <h1>{o.site_name}</h1>
           <p>{site?.area ?? ''}{site?.lotAcres ? ` · ${fmtNum(site.lotAcres, 1)} acres` : ''} · {COOL[o.cooling]} · {o.f > 0 ? `cuts ${Math.round(o.d * 100)}% of load for about ${Math.round(o.f * 8760)} hours a year` : 'runs at full power all year'}</p>
         </div>
@@ -147,6 +147,7 @@ export function DecisionView({ run, sites, mw, busy, changedFrom, onWhatIf, onOp
         <p className="ws-note">All three use the same properties, gates, capacity and 10-year horizon. Land is CoStar asking or sale price where recorded, otherwise an estimate from the market median. Costs use the editable assumptions sheet. Firm grid capacity is a scenario: a nearby substation does not show that power is available.</p>
       </section>
 
+      {!hideExtras && (<>
       <section>
         <h2>What would change this decision</h2>
         <div className="dv-controls">
@@ -163,6 +164,7 @@ export function DecisionView({ run, sites, mw, busy, changedFrom, onWhatIf, onOp
         <div><h2>Validate the operating plan</h2><p className="ws-note">The test machines follow this plan&apos;s hourly schedule. A grid event asks for {o.d > 0 ? `the ${Math.round(o.d * 100)}% cut this plan relies on` : 'a 30% cut (this plan needs none; the test shows the capability)'}. The hardware shows a workload can respond to a control signal. It does not show that a utility will approve the connection.</p></div>
         <button className="ws-btn primary" onClick={onLive}><Activity size={13} /> Open live grid test</button>
       </section>
+      </>)}
     </div>
   );
 }

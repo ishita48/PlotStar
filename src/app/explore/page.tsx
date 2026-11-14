@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Workspace } from '@/components/explore/workspace';
+import { Flow } from '@/components/explore/flow';
 import './explore.css';
 import './workspace.css';
 
@@ -9,5 +9,5 @@ export const metadata: Metadata = {
 };
 
 export default function ExplorePage() {
-  return <Workspace />;
+  return <Flow />;
 }
