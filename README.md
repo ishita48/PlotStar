@@ -1,6 +1,6 @@
-# PlotStar
+# SiteStar
 
-**PlotStar is an AI-powered platform that helps companies decide where to build data centers, whether the investment is profitable, and how to operate them efficiently.**
+**SiteStar is an AI-powered platform that helps companies decide where to build data centers, whether the investment is profitable, and how to operate them efficiently.**
 
 ## Core Modules
 
@@ -12,7 +12,7 @@
 
 ## The Big Idea
 
-Instead of choosing land, securing electricity, and planning operations separately, **PlotStar optimizes all three together**.
+Instead of choosing land, securing electricity, and planning operations separately, **SiteStar optimizes all three together**.
 
 ## Mission
 
@@ -20,4 +20,4 @@ Help businesses make smarter billion-dollar infrastructure decisions while reduc
 
 ## 30-Second Pitch
 
-Companies spend enormous amounts building data centers, but cheap land doesn't always mean a profitable project. A site might have expensive electricity, limited grid capacity, or environmental restrictions. PlotStar uses AI to find suitable properties, analyze investment costs and infrastructure risks, and determine the best way to operate a data center. It optimizes location and energy usage together, then demonstrates the operating strategy using real computing hardware.
+Companies spend enormous amounts building data centers, but cheap land doesn't always mean a profitable project. A site might have expensive electricity, limited grid capacity, or environmental restrictions. SiteStar uses AI to find suitable properties, analyze investment costs and infrastructure risks, and determine the best way to operate a data center. It optimizes location and energy usage together, then demonstrates the operating strategy using real computing hardware.
