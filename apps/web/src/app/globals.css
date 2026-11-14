@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+/* PlotStar design tokens. Dark, low-glare control-room palette with a warm "afterglow" accent. */
+:root {
+  --bg: #0b0d12;
+  --panel: #12151c;
+  --panel-2: #181c25;
+  --line: #252a36;
+  --text: #e8eaf0;
+  --muted: #8b93a7;
+  --accent: #f5a524;      /* afterglow amber */
+  --accent-2: #ff6b4a;    /* ember */
+  --ok: #3ccf91;
+  --warn: #f5c451;
+  --bad: #ff5d6c;
+
+  /* measurement-integrity labels (PRD section 11) */
+  --lbl-measured: #3ccf91;
+  --lbl-sourced: #5aa9ff;
+  --lbl-estimated: #f5c451;
+  --lbl-simulated: #c084fc;
+  --lbl-utility: #2dd4bf;
+  --lbl-unknown: #6b7280;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-line: var(--line);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-2: var(--accent-2);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+body {
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Leaflet dark-theme touch-ups */
+.leaflet-container {
+  background: var(--bg);
+  font-family: inherit;
+}
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  background: var(--panel-2);
+  color: var(--text);
+}
+.leaflet-control-attribution {
+  background: rgba(11, 13, 18, 0.7) !important;
+  color: var(--muted) !important;
+}
+.leaflet-control-attribution a {
+  color: var(--muted) !important;
+}

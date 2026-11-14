@@ -1,0 +1,30 @@
+# secrets
+.env
+.env.*
+!.env.example
+
+# data (CoStar kit is licensed; never commit)
+data/cache/
+data/raw/
+*.zip
+*.db
+*.sqlite
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# node
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# os / editor
+.DS_Store
+Thumbs.db
+.vscode/
