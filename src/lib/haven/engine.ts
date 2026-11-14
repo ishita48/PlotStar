@@ -1,6 +1,14 @@
 import { z } from 'zod';
 import { sensorDefaults, incidentDetails } from '../monitoring-rules';
-import { demoScenarios, evacuationPlans, MODEL_ID, type PlanId } from './config';
+import {
+  databotPlacements,
+  demoScenarios,
+  evacuationPlans,
+  MODEL_ID,
+  placementIds,
+  type PlacementId,
+  type PlanId,
+} from './config';
 
 export const protectionSchema = z.object({
   electricity: z.object({ enabled: z.boolean(), limit: z.number().finite().min(1).max(100000) }),
@@ -40,6 +48,12 @@ export interface Activity {
   message: string;
   at: string;
 }
+export interface Readings {
+  electricity: number;
+  waterUsage: number;
+  leak: number;
+  fire: number;
+}
 export interface ProtectionState {
   revision: number;
   facility: Facility;
@@ -49,10 +63,16 @@ export interface ProtectionState {
   configured: boolean;
   placed: boolean;
   plan: PlanId;
+  /** Where the DataBot sensor unit sits. Absent for workspaces saved before placements existed. */
+  placement?: PlacementId;
   deployed: boolean;
   recovering: boolean;
   mode: 'simulation';
-  readings: { electricity: number; waterUsage: number; leak: number; fire: number };
+  readings: Readings;
+  /** Normal readings this facility returns to on reset. Defaults to the HAVEN sample values. */
+  baseline?: Readings;
+  /** When monitoring was last deployed. Kept while protections are being edited. */
+  deployedAt?: string;
   incidents: DemoIncident[];
   timeline: Activity[];
   sequence: number;
@@ -60,7 +80,11 @@ export interface ProtectionState {
 export const actionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('accept-model') }),
   z.object({ action: z.literal('configure'), config: protectionSchema }),
-  z.object({ action: z.literal('place'), plan: z.enum(['east', 'north']) }),
+  z.object({
+    action: z.literal('place'),
+    plan: z.enum(['east', 'north']),
+    placement: z.enum(placementIds).optional(),
+  }),
   z.object({ action: z.literal('deploy') }),
   z.object({ action: z.literal('reconfigure') }),
   z.object({ action: z.literal('trigger'), kind: z.enum(['leak', 'fire', 'usage']) }),
@@ -252,6 +276,7 @@ export function transitionProtection(
       if (!routeAvailability(state)[action.plan])
         throw new Error('This route is blocked in the active scenario.');
       state.plan = action.plan;
+      if (action.placement) state.placement = action.placement;
       state.placed = true;
       activity(
         state,
@@ -259,11 +284,19 @@ export function transitionProtection(
         `${evacuationPlans[state.plan].name} selected from the predefined demo routes.`,
         now,
       );
+      if (action.placement)
+        activity(
+          state,
+          'Configuration',
+          `DataBot placed in the ${databotPlacements[action.placement].name}, Level 4.`,
+          now,
+        );
       break;
     case 'deploy':
       if (!state.modelAccepted || !state.configured || !state.placed)
         throw new Error('Select a model, configure protections and confirm a route first.');
       state.deployed = true;
+      state.deployedAt = now;
       evaluate(state, now);
       activity(
         state,
@@ -310,7 +343,7 @@ export function transitionProtection(
       break;
     }
     case 'reset':
-      state.readings = initialProtectionState(state.facility).readings;
+      state.readings = { ...(state.baseline || initialProtectionState(state.facility).readings) };
       for (const incident of activeIncidents(state)) incident.status = 'resolved';
       state.recovering = true;
       evaluate(state, now);

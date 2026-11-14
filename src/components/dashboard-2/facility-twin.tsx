@@ -171,7 +171,7 @@ export function FacilityTwin({
             onChange={(e) => setFloor(e.target.value === 'all' ? null : +e.target.value)}
           >
             <option value="all">All levels</option>
-            {[1, 2, 3, 4, 5, 6].map((n) => (
+            {[1, 2, 3, 4, 5, 6, 7].map((n) => (
               <option key={n} value={n}>
                 Level {n}
               </option>
@@ -211,7 +211,7 @@ export function FacilityTwin({
       )}
       <div className="hv-twin-caption">
         <span>
-          <Expand size={11} /> {operational ? 'HAVEN DIGITAL TWIN' : 'SAMPLE MODEL · HAVEN'}
+          <Expand size={11} /> {operational ? 'HAVEN DIGITAL TWIN · BLACKWELL HALL' : 'BLACKWELL HALL MODEL · HAVEN'}
         </span>
         <span>
           {view === '3d'

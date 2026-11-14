@@ -9,7 +9,7 @@ import {
 
 // Additive storage in the existing SQLite database. Parameterized SQL also works with
 // the current generated Prisma client while an original demo is running on Windows.
-async function ensureTable() {
+export async function ensureTable() {
   await db.$executeRaw`CREATE TABLE IF NOT EXISTS "ProtectionWorkspace" ("id" TEXT NOT NULL PRIMARY KEY, "snapshot" TEXT NOT NULL, "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`;
 }
 export async function loadProtection(facility: Facility): Promise<ProtectionState> {

@@ -80,8 +80,17 @@ export function useProtection(facility: Facility, enabled: boolean) {
       setBusy(false);
     }
   }, []);
+  // After the server copy is deleted, start this facility from a clean local state.
+  const forget = useCallback(() => {
+    loaded.current = null;
+    setState(initialProtectionState(currentFacility.current));
+    setError('');
+  }, []);
   return {
     state: state.facility.id === facility.id ? state : initialProtectionState(facility),
+    /** True once this facility's saved workspace has been read from the server. */
+    loaded: loaded.current === facility.id && state.facility.id === facility.id,
+    forget,
     loading: loading || (enabled && loaded.current !== facility.id && !error),
     busy,
     error,

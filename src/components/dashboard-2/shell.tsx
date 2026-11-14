@@ -10,10 +10,11 @@ import {
   ShieldCheck,
   Sun,
   PanelLeft,
+  Radar,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 
-export type Module = 'locate' | 'design' | 'protect';
+export type Module = 'locate' | 'design' | 'protect' | 'deploy';
 export type Status = 'pending' | 'active' | 'completed';
 
 export function StatusIndicator({ status }: { status: Status }) {
@@ -31,6 +32,7 @@ const modules = [
   { id: 'locate', label: 'Locate', detail: 'Find the right place', icon: MapPin },
   { id: 'design', label: 'Design', detail: 'Shape what comes next', icon: Layers3 },
   { id: 'protect', label: 'Protect', detail: 'Care for what you build', icon: ShieldCheck },
+  { id: 'deploy', label: 'Deploy', detail: 'Watch over it, live', icon: Radar },
 ] as const;
 
 export function Sidebar({
@@ -105,6 +107,7 @@ export function StepNavigation({
   busy,
   names = ['Describe', 'Pick', 'Finalize'],
   label = 'Locate',
+  linear = true,
 }: {
   step: number;
   completed: boolean[];
@@ -112,6 +115,8 @@ export function StepNavigation({
   busy: boolean;
   names?: string[];
   label?: string;
+  /** When false, every step stays selectable instead of unlocking in order. */
+  linear?: boolean;
 }) {
   return (
     <nav className="d2-stepbar" aria-label={`${label} steps`}>
@@ -122,7 +127,7 @@ export function StepNavigation({
             <button
               aria-current={step === index ? 'step' : undefined}
               className={step === index ? 'is-active' : ''}
-              disabled={busy || (index > 0 && !completed[index - 1])}
+              disabled={busy || (linear && index > 0 && !completed[index - 1])}
               onClick={() => onSelect(index)}
             >
               <StatusIndicator

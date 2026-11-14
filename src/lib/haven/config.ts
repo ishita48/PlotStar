@@ -2,7 +2,7 @@
 // Routes use stairs and are not step-free. No surveyed or approved real-world route is implied.
 export type Point3 = [number, number, number];
 export const MODEL_ID = 'haven-six-level-sample-v1';
-export const MODEL_NAME = 'HAVEN six-level cutaway';
+export const MODEL_NAME = 'Blackwell Hall model';
 export const MODEL_NOTE = 'Representative sample model · configured monitoring on Level 4 only';
 export const levelY = (floor: number) => 0.42 + (floor - 1) * 1.45;
 const y = levelY(4) + 0.3;
@@ -114,3 +114,34 @@ export const demoScenarios = {
     hazardPosition: [2.2, y, 0.55] as Point3,
   },
 } as const;
+
+// Where the single DataBot sensor unit can sit on Level 4 of the sample twin (plan x/z, metres).
+// Placement is recorded with the deployment. Simulated readings do not depend on it.
+export const databotPlacements = {
+  utility: {
+    name: 'Utility & electrical bay',
+    detail: 'Beside the water riser and main meter.',
+    bestFor: 'Best for leaks, water and power use',
+    plan: [5.3, -1.9] as [number, number],
+  },
+  east: {
+    name: 'East operations corridor',
+    detail: 'On the route to the east stairwell.',
+    bestFor: 'Best for smoke, heat and corridor leaks',
+    plan: [2.4, 0.55] as [number, number],
+  },
+  core: {
+    name: 'Operations room',
+    detail: 'The centre of Level 4, where people work.',
+    bestFor: 'Best for an overall view of the floor',
+    plan: [-0.65, 1.35] as [number, number],
+  },
+  west: {
+    name: 'West operations corridor',
+    detail: 'On the route to the west stairwell.',
+    bestFor: 'Best for watching the north exit route',
+    plan: [-3.1, 0.55] as [number, number],
+  },
+} as const;
+export type PlacementId = keyof typeof databotPlacements;
+export const placementIds = Object.keys(databotPlacements) as [PlacementId, ...PlacementId[]];

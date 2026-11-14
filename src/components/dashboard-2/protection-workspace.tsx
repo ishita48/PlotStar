@@ -20,10 +20,12 @@ import {
   Zap,
 } from 'lucide-react';
 import {
+  databotPlacements,
   evacuationPlans,
   monitoringPoints,
   MODEL_NAME,
-  MODEL_NOTE,
+  placementIds,
+  type PlacementId,
   type PlanId,
 } from '@/lib/haven/config';
 import {
@@ -39,34 +41,37 @@ import { PrimaryCard, StepNavigation } from './shell';
 import { FacilityTwin } from './facility-twin';
 
 type Act = (action: ProtectionAction) => Promise<ProtectionState | null>;
+// Alerts in the order people think about them: hazards first, then usage limits.
 const definitions = [
   {
-    id: 'electricity',
-    name: 'Electricity usage limit',
-    detail: 'Track the facility’s demand against a configured limit.',
-    icon: Zap,
-    unit: 'kW',
-    input: 'Electricity threshold',
+    id: 'leak',
+    name: 'Water Leak',
+    detail: 'Moisture sensors catch water where it should not be.',
+    trigger: 'Any moisture detected',
+    icon: Droplets,
+  },
+  {
+    id: 'fire',
+    name: 'Fire Detected',
+    detail: 'Smoke and heat sensors watch both operations corridors.',
+    trigger: 'Any smoke or heat alarm',
+    icon: Flame,
   },
   {
     id: 'waterUsage',
-    name: 'Water usage limit',
-    detail: 'Keep an eye on unexpected water consumption.',
+    name: 'Water Usage Limit Reached',
+    detail: 'Know when water flow climbs past the limit you set.',
     icon: Waves,
     unit: 'L/min',
     input: 'Water usage threshold',
   },
   {
-    id: 'leak',
-    name: 'Water leak detection',
-    detail: 'Moisture sensors at the riser and east corridor.',
-    icon: Droplets,
-  },
-  {
-    id: 'fire',
-    name: 'Fire hazard detection',
-    detail: 'Smoke / heat monitoring in both operations corridors.',
-    icon: Flame,
+    id: 'electricity',
+    name: 'Electricity Usage Limit Reached',
+    detail: 'Know when power demand climbs past the limit you set.',
+    icon: Zap,
+    unit: 'kW',
+    input: 'Electricity threshold',
   },
 ] as const;
 export function DesignModule({
@@ -333,20 +338,65 @@ export function ProtectModule({
   busy,
   act,
   onDesign,
+  live = false,
+  initialStep,
+  onBack,
+  onDeployed,
+  onEdit,
+  onOpenCommand,
 }: {
   state: ProtectionState;
   busy: boolean;
   act: Act;
   onDesign: () => void;
+  /** Render the Command Center once deployed. Otherwise Protect points to Deploy. */
+  live?: boolean;
+  initialStep?: number;
+  /** Back arrow at the top of the Command Center. */
+  onBack?: () => void;
+  onDeployed?: () => void;
+  /** Called after "Edit protections" returns the facility to setup. Stays inline when absent. */
+  onEdit?: () => void;
+  onOpenCommand?: () => void;
 }) {
-  const [step, setStep] = useState(state.placed ? 2 : state.configured ? 1 : 0);
+  const [step, setStep] = useState(initialStep ?? (state.placed ? 1 : 0));
+  const [placement, setPlacement] = useState<PlacementId>(state.placement || 'utility');
+  const [deploying, setDeploying] = useState(false);
   const [draft, setDraft] = useState<Protections>(state.config);
   const [plan, setPlan] = useState<PlanId>(state.plan);
   const available = routeAvailability(state);
   const choice = available[plan] ? plan : effectivePlan(state) || 'north';
   const health = buildingHealth(state);
   const healthClass = health === 'Critical incident' ? 'critical' : health.toLowerCase();
-  const enabled = monitoringPoints.filter((p) => state.config[p.protection].enabled);
+  const selectedAlerts = definitions.filter((d) => draft[d.id].enabled);
+  const skippedAlerts = definitions.filter((d) => !draft[d.id].enabled);
+  const anySelected = selectedAlerts.length > 0;
+  const limitsValid = (['electricity', 'waterUsage'] as const).every(
+    (id) => !draft[id].enabled || (draft[id].limit >= 1 && draft[id].limit <= 100000),
+  );
+  const coverage = monitoringPoints.filter((p) => draft[p.protection].enabled);
+  // Nothing is saved until Confirm Deploy: thresholds, then placement and route, then deploy.
+  async function confirmDeploy() {
+    setDeploying(true);
+    try {
+      const configured = await act({ action: 'configure', config: draft });
+      if (!configured) return;
+      const route = routeAvailability(configured)[plan]
+        ? plan
+        : effectivePlan(configured) || 'north';
+      if (!(await act({ action: 'place', plan: route, placement }))) return;
+      if (await act({ action: 'deploy' })) onDeployed?.();
+    } finally {
+      setDeploying(false);
+    }
+  }
+  async function edit() {
+    const next = await act({ action: 'reconfigure' });
+    if (!next) return;
+    if (onEdit) return onEdit();
+    setDraft(next.config);
+    setStep(0);
+  }
   if (!state.modelAccepted)
     return (
       <PrimaryCard className="hv-prerequisite">
@@ -360,11 +410,37 @@ export function ProtectModule({
         </button>
       </PrimaryCard>
     );
+  if (state.deployed && !live)
+    return (
+      <PrimaryCard className="hv-prerequisite">
+        <Radio size={42} />
+        <h1>Live in its Command Center.</h1>
+        <p>{state.facility.name} is deployed. Monitoring and incidents now run in Deploy.</p>
+        <div className="hv-prerequisite-actions">
+          <button className="d2-back" disabled={busy} onClick={edit}>
+            <Settings2 size={15} /> Edit protections
+          </button>
+          <button className="d2-button" onClick={onOpenCommand}>
+            Open Command Center <ArrowRight size={15} />
+          </button>
+        </div>
+      </PrimaryCard>
+    );
   if (state.deployed)
     return (
       <>
         <div className="hv-command-bar">
           <div>
+            {onBack && (
+              <button
+                className="hv-command-back"
+                onClick={onBack}
+                aria-label="Back to deployed projects"
+                title="Deployed projects"
+              >
+                <ArrowLeft size={16} />
+              </button>
+            )}
             <ShieldCheck size={19} />
             <span>
               HAVEN COMMAND CENTER<small>{state.facility.name}</small>
@@ -382,17 +458,7 @@ export function ProtectModule({
               {state.facility.city} · {MODEL_NAME}
             </p>
           </div>
-          <button
-            className="d2-back"
-            disabled={busy}
-            onClick={async () => {
-              const next = await act({ action: 'reconfigure' });
-              if (next) {
-                setDraft(next.config);
-                setStep(0);
-              }
-            }}
-          >
+          <button className="d2-back" disabled={busy} onClick={edit}>
             <Settings2 size={15} /> Edit protections
           </button>
         </div>
@@ -497,296 +563,240 @@ export function ProtectModule({
     );
   return (
     <>
+      {onBack && (
+        <button className="d2-back hv-setup-back" onClick={onBack}>
+          <ArrowLeft size={15} /> Deployed projects
+        </button>
+      )}
       <StepNavigation
         step={step}
-        completed={[state.configured, state.placed, state.deployed]}
+        completed={[(step > 0 || state.placed) && anySelected && limitsValid, state.deployed]}
         onSelect={setStep}
-        busy={busy}
-        names={['Select', 'Place', 'Deploy']}
+        busy={busy || deploying}
+        names={['Select', 'Deploy']}
         label="Protect"
       />
       {step === 0 && (
-        <PrimaryCard className="hv-select">
+        <PrimaryCard className="hv-select al-select">
           <div className="d2-card-top">
             <span className="d2-kicker">
-              <span /> PROTECTION, ON YOUR TERMS
+              <span /> WHAT SHOULD HAVEN WATCH FOR?
             </span>
-            <span className="d2-card-index">01 — 03</span>
+            <span className="d2-card-index">01 — 02</span>
           </div>
-          <h1>A little foresight.{'\n'}A lot more confidence.</h1>
+          <h1>Choose your alerts.</h1>
           <p className="d2-lede">
-            Choose what to watch over at {state.facility.name}.<br />
-            Start with the essentials. Make the limits yours.
+            Select every alert you want for {state.facility.name}. You can change them any time.
           </p>
-          <form
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (await act({ action: 'configure', config: draft })) setStep(1);
-            }}
-          >
-            <div className="hv-protection-grid">
-              {definitions.map((item) => {
-                const Icon = item.icon,
-                  config = draft[item.id];
-                return (
-                  <section
-                    className={`hv-protection-card ${config.enabled ? 'is-enabled' : ''}`}
-                    key={item.id}
-                  >
-                    <div>
-                      <span className="hv-protection-icon">
-                        <Icon size={24} strokeWidth={1.5} />
-                      </span>
-                      <label className="hv-switch">
+          <div className="al-grid" role="group" aria-label="Monitoring alerts">
+            {definitions.map((item) => {
+              const Icon = item.icon;
+              const config = draft[item.id];
+              return (
+                <div key={item.id} className={`al-card ${config.enabled ? 'is-selected' : ''}`}>
+                  <label className="al-card-main">
+                    <input
+                      type="checkbox"
+                      checked={config.enabled}
+                      aria-label={item.name}
+                      onChange={(e) =>
+                        setDraft({
+                          ...draft,
+                          [item.id]: { ...config, enabled: e.target.checked },
+                        })
+                      }
+                    />
+                    <span className="al-icon">
+                      <Icon size={20} strokeWidth={1.6} />
+                    </span>
+                    <span className="al-check" aria-hidden="true">
+                      {config.enabled && <Check size={12} strokeWidth={3} />}
+                    </span>
+                    <b>{item.name}</b>
+                    <small>{item.detail}</small>
+                  </label>
+                  {'unit' in item && (
+                    <div className="al-limit">
+                      <span>Alert above</span>
+                      <span className="al-limit-field">
                         <input
-                          type="checkbox"
-                          role="switch"
-                          aria-label={`${item.name} monitoring`}
-                          checked={config.enabled}
+                          type="number"
+                          min="1"
+                          max="100000"
+                          disabled={!config.enabled}
+                          aria-label={item.input}
+                          value={draft[item.id].limit}
                           onChange={(e) =>
                             setDraft({
                               ...draft,
-                              [item.id]: { ...config, enabled: e.target.checked },
+                              [item.id]: { ...draft[item.id], limit: Number(e.target.value) },
                             })
                           }
                         />
-                        <span />
-                      </label>
-                    </div>
-                    <h2>{item.name}</h2>
-                    <p>{item.detail}</p>
-                    {item.id === 'electricity' || item.id === 'waterUsage' ? (
-                      <label className="hv-limit">
-                        <span>Alert above</span>
-                        <div>
-                          <input
-                            type="number"
-                            min="1"
-                            max="100000"
-                            required
-                            disabled={!config.enabled || busy}
-                            aria-label={item.input}
-                            value={draft[item.id].limit}
-                            onChange={(e) =>
-                              setDraft({
-                                ...draft,
-                                [item.id]: { ...draft[item.id], limit: Number(e.target.value) },
-                              })
-                            }
-                          />
-                          <span>{item.unit}</span>
-                        </div>
-                      </label>
-                    ) : (
-                      <span className="hv-detection-note">
-                        <CheckCircle2 size={13} />
-                        {config.enabled ? 'Detection enabled' : 'Detection paused'}
+                        {item.unit}
                       </span>
-                    )}
-                  </section>
-                );
-              })}
-            </div>
-            <div className="hv-mode-note">
-              <Radio size={17} />
-              <div>
-                <b>Start in simulation mode</b>
-                <p>
-                  Readings and incidents are deterministic demos. No physical device is connected.
-                </p>
-              </div>
-              <span>SIMULATION</span>
-            </div>
-            <div className="d2-form-footer">
-              <button type="button" className="d2-back" onClick={onDesign}>
-                <ArrowLeft size={15} /> Back to Design
-              </button>
-              <button
-                type="submit"
-                className="d2-button"
-                disabled={busy || !Object.values(draft).some((c) => c.enabled)}
-              >
-                {busy ? 'Saving…' : 'Save & continue'}
-                <ArrowRight size={16} />
-              </button>
-            </div>
-          </form>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <div className="d2-form-footer">
+            <button type="button" className="d2-back" onClick={onDesign}>
+              <ArrowLeft size={15} /> Back to Design
+            </button>
+            <span className="al-count">
+              {selectedAlerts.length} of {definitions.length} selected
+            </span>
+            <button
+              className="d2-button"
+              disabled={!anySelected || !limitsValid}
+              onClick={() => setStep(1)}
+            >
+              Continue
+              <ArrowRight size={16} />
+            </button>
+          </div>
         </PrimaryCard>
       )}
       {step === 1 && (
-        <>
-          <PrimaryCard className="hv-place">
-            <div className="d2-card-top">
-              <span className="d2-kicker">
-                <span /> KNOW THE WAY FORWARD
-              </span>
-              <span className="d2-card-index">02 — 03</span>
-            </div>
-            <h1>Every point.{'\n'}A purpose.</h1>
-            <p className="d2-lede">
-              Inspect the monitoring points and choose a predefined demo evacuation plan.
-            </p>
-            <div className="hv-model-title">
-              <div>
-                <b>{state.facility.name}</b>
-                <span>{MODEL_NOTE}</span>
-              </div>
-              <span className="d2-sample-tag">{enabled.length} monitoring points</span>
-            </div>
-            <FacilityTwin state={state} operational />
-            <div className="hv-plan-grid">
-              {Object.entries(evacuationPlans).map(([id, route]) => (
-                <label
-                  className={`hv-plan-card ${choice === id ? 'is-selected' : ''} ${!available[id as PlanId] ? 'is-blocked' : ''}`}
-                  key={id}
-                >
-                  <input
-                    type="radio"
-                    name="evacuation-plan"
-                    aria-label={route.name}
-                    value={id}
-                    checked={choice === id}
-                    disabled={!available[id as PlanId] || busy}
-                    onChange={() => setPlan(id as PlanId)}
-                  />
-                  <span className="hv-plan-icon">
-                    <ArrowRight size={19} />
-                  </span>
-                  <span>
-                    <b>{route.name}</b>
-                    <small>{route.description}</small>
-                    <em>
-                      {available[id as PlanId]
-                        ? 'Scenario-clear · stairs, not step-free'
-                        : 'Blocked in this simulation'}
-                    </em>
-                  </span>
-                  <span className="d2-radio-mark">{choice === id && <Check size={11} />}</span>
-                </label>
-              ))}
-            </div>
-            <RouteSummary state={state} />
-            {activeIncidents(state).length > 0 && (
-              <div className="hv-inline-alert" role="alert">
-                <Bell size={17} />
-                <span>
-                  {activeIncidents(state)
-                    .map((i) => i.name)
-                    .join(' · ')}
-                  . East route excluded; the predefined North route remains clear in this scenario.
-                </span>
-              </div>
-            )}
-            <SimulationControls state={state} act={act} busy={busy} />
-            <div className="d2-form-footer">
-              <button
-                className="d2-back"
-                onClick={() => {
-                  setDraft(state.config);
-                  setStep(0);
-                }}
-              >
-                <ArrowLeft size={15} /> Back to Select
-              </button>
-              <button
-                className="d2-button"
-                disabled={busy || !available[choice]}
-                onClick={async () => {
-                  if (await act({ action: 'place', plan: choice })) setStep(2);
-                }}
-              >
-                Review deployment
-                <ArrowRight size={16} />
-              </button>
-            </div>
-          </PrimaryCard>
-        </>
-      )}
-      {step === 2 && (
-        <PrimaryCard className="hv-deploy">
+        <PrimaryCard className="hv-deploy al-review">
           <div className="d2-card-top">
             <span className="d2-kicker">
-              <span /> A THOUGHTFUL FINAL CHECK
+              <span /> ONE LAST LOOK
             </span>
-            <span className="d2-card-index">03 — 03</span>
+            <span className="d2-card-index">02 — 02</span>
           </div>
-          <h1>Ready to{'\n'}watch over it.</h1>
-          <p className="d2-lede">
-            Review the protection plan for your facility, then open its command center.
-          </p>
-          <div className="hv-deploy-facility">
-            <span>
-              <ShieldCheck size={32} strokeWidth={1.4} />
+          <h1>Ready to watch over it.</h1>
+          <p className="d2-lede">Review everything below. Nothing goes live until you confirm.</p>
+
+          <div className="db-hero">
+            <span className="db-hero-icon">
+              <ShieldCheck size={26} strokeWidth={1.4} />
             </span>
             <div>
               <h2>{state.facility.name}</h2>
               <p>
-                {state.facility.city} · {MODEL_NAME}
+                {state.facility.type} · {state.facility.city} · {MODEL_NAME}
+              </p>
+              <p className="db-hero-best">
+                {selectedAlerts.length} {selectedAlerts.length === 1 ? 'alert' : 'alerts'} ·{' '}
+                {coverage.length} sensors on Level 4
               </p>
             </div>
-            <span className="d2-sample-tag">Sample model</span>
           </div>
-          <dl className="hv-deploy-list">
-            <div>
-              <dt>Enabled protections</dt>
-              <dd>
-                {definitions
-                  .filter((d) => state.config[d.id].enabled)
-                  .map((d) => d.name)
-                  .join(' · ')}
-              </dd>
+
+          <div className="al-section-title">
+            <h2>Alerts</h2>
+            <button className="db-link" onClick={() => setStep(0)}>
+              Edit
+            </button>
+          </div>
+          <section className="db-group" aria-label="Selected alerts">
+            {selectedAlerts.map((item) => {
+              const Icon = item.icon;
+              const sensors = monitoringPoints.filter((p) => p.protection === item.id);
+              return (
+                <div className="db-row al-row" key={item.id}>
+                  <span className="al-row-icon">
+                    <Icon size={17} strokeWidth={1.6} />
+                  </span>
+                  <div>
+                    <b>{item.name}</b>
+                    <small>{sensors.map((s) => s.label).join(' · ')} · Level 4</small>
+                  </div>
+                  <span className="al-threshold">
+                    {'unit' in item ? (
+                      <>
+                        Above <b>{draft[item.id as 'electricity' | 'waterUsage'].limit}</b>{' '}
+                        {item.unit}
+                      </>
+                    ) : (
+                      item.trigger
+                    )}
+                  </span>
+                </div>
+              );
+            })}
+            {skippedAlerts.length > 0 && (
+              <div className="db-row al-skipped">
+                <span className="al-row-icon" />
+                <div>
+                  <small>Not monitored: {skippedAlerts.map((d) => d.name).join(' · ')}</small>
+                </div>
+              </div>
+            )}
+          </section>
+
+          <div className="al-section-title">
+            <h2>Deployment</h2>
+          </div>
+          <section className="db-group" aria-label="Deployment details">
+            <div className="db-row">
+              <span>DataBot</span>
+              <div>
+                <b>{databotPlacements[placement].name}</b>
+                <small>{databotPlacements[placement].bestFor}</small>
+              </div>
+              <select
+                className="al-select-input"
+                aria-label="DataBot placement"
+                value={placement}
+                onChange={(e) => setPlacement(e.target.value as PlacementId)}
+              >
+                {placementIds.map((id) => (
+                  <option key={id} value={id}>
+                    {databotPlacements[id].name}
+                  </option>
+                ))}
+              </select>
             </div>
-            <div>
-              <dt>Usage limits</dt>
-              <dd>
-                Electricity:{' '}
-                {state.config.electricity.enabled ? `${state.config.electricity.limit} kW` : 'off'}
-                <br />
-                Water:{' '}
-                {state.config.waterUsage.enabled ? `${state.config.waterUsage.limit} L/min` : 'off'}
-              </dd>
-            </div>
-            <div>
-              <dt>Sensor coverage</dt>
-              <dd>
-                {enabled.length} configured points · Level 4 only
-                <br />
-                <small>Other levels are not instrumented in this demo.</small>
-              </dd>
-            </div>
-            <div>
-              <dt>Evacuation plan</dt>
-              <dd>
-                {evacuationPlans[state.plan].name}
+            <div className="db-row">
+              <span>Exit route</span>
+              <div>
+                <b>{evacuationPlans[choice].name}</b>
                 <small>Predefined demo route · stairs, not step-free</small>
-              </dd>
+              </div>
+              <div className="db-segment" role="radiogroup" aria-label="Exit route">
+                {(Object.keys(evacuationPlans) as PlanId[]).map((id) => (
+                  <button
+                    key={id}
+                    role="radio"
+                    aria-checked={choice === id}
+                    disabled={!available[id]}
+                    className={choice === id ? 'is-active' : ''}
+                    onClick={() => setPlan(id)}
+                  >
+                    {evacuationPlans[id].name.replace(' Exit', '')}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div>
-              <dt>Monitoring mode</dt>
-              <dd>
-                <span className="hv-mode">
-                  <Radio size={12} /> SIMULATION
-                </span>
-                <small>No real hardware or external agents connected.</small>
-              </dd>
+            <div className="db-row">
+              <span>Mode</span>
+              <div>
+                <b>Simulation</b>
+                <small>No hardware is connected yet. Readings and incidents are simulated.</small>
+              </div>
             </div>
-          </dl>
+          </section>
+
           {activeIncidents(state).length > 0 && (
             <div className="hv-inline-alert">
               <Bell size={17} />
-              The current demo incident will carry into the command center.
+              The current demo incident will carry into the Command Center.
             </div>
           )}
-          <div className="d2-form-footer">
-            <button className="d2-back" onClick={() => setStep(1)}>
-              <ArrowLeft size={15} /> Back to Place
+          <div className="d2-form-footer db-footer">
+            <button className="d2-back" onClick={() => setStep(0)}>
+              <ArrowLeft size={15} /> Back to Select
             </button>
             <button
               className="d2-button"
-              disabled={busy}
-              onClick={() => void act({ action: 'deploy' })}
+              disabled={busy || deploying || !anySelected || !limitsValid}
+              onClick={confirmDeploy}
             >
-              {busy ? 'Deploying simulation…' : 'Confirm Deploy'}
+              {deploying ? 'Deploying…' : 'Confirm Deploy'}
               <ShieldCheck size={16} />
             </button>
           </div>

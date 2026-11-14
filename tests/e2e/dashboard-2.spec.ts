@@ -41,7 +41,10 @@ test('Dashboard 2 Locate remains a standalone UI preview with no application API
   await expect(page.getByRole('status')).toContainText('Locate preview complete');
   await expect(modules.getByRole('button', { name: /Locate.*Completed/ })).toBeVisible();
   await page.reload();
-  await expect(steps.getByRole('button', { name: /Pick/ })).toBeDisabled();
+  // Progress survives a reload, still without any API request from Locate.
+  await expect(modules.getByRole('button', { name: /Locate.*Completed/ })).toBeVisible();
+  await expect(steps.getByRole('button', { name: /Completed Finalize/ })).toBeVisible();
+  await expect(page.locator('.d2-preview-site-hero')).toContainText('Eastpoint Commons');
   expect(apiRequests).toEqual([]);
 });
 

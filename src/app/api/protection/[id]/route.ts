@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { guardOrigin, HttpError, readJSON, routeError } from '@/lib/http';
 import { actionSchema } from '@/lib/haven/engine';
 import { changeProtection, loadProtection } from '@/lib/haven/store';
+import { resetWorkspace } from '@/lib/haven/deployed';
 
 export const dynamic = 'force-dynamic';
 const facilitySchema = z.object({
@@ -45,6 +46,16 @@ export async function PATCH(req: Request, ctx: Context) {
     } catch (error) {
       throw new HttpError(409, (error as Error).message);
     }
+  } catch (error) {
+    return routeError(error);
+  }
+}
+export async function DELETE(req: Request, ctx: Context) {
+  try {
+    guardOrigin(req);
+    const { id } = await ctx.params;
+    if (!/^[a-z0-9-]{1,150}$/.test(id)) throw new HttpError(400, 'Invalid facility identifier.');
+    return Response.json({ reset: await resetWorkspace(id) });
   } catch (error) {
     return routeError(error);
   }
