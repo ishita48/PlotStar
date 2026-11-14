@@ -7,6 +7,8 @@
 import { $, $$, h, fmt, chip, ICON } from "./util.js";
 import { auditable } from "./audit.js";
 import { store, on, emit, save, sqft, mva, VERDICT, STATUS, rulesHeadline } from "./store.js";
+import { flyover } from "./drone.js";
+import { switchBuilding } from "./scrolly.js";
 
 const FEMA = "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/28/query";
 const STEPS = {
@@ -38,7 +40,9 @@ export function initInspect() {
   );
   $$("#stage-tabs button").forEach((b) => b.addEventListener("click", () => showPane(b.dataset.pane)));
   $("#insp-go").addEventListener("click", () => start());
-  $("#cta-inspect").addEventListener("click", () => setTimeout(() => start(), 600));
+  $("#cta-inspect").addEventListener("click", () => setTimeout(() => start(), 1000)); // after the travel lands
+  $("#insp-prev").addEventListener("click", () => switchBuilding(-1));
+  $("#insp-next").addEventListener("click", () => switchBuilding(1));
   on((type) => {
     if (type === "select") reset();
     if (type === "agent") agentLine();
@@ -55,6 +59,7 @@ function reset() {
   findings = null;
   flood = null;
   $("#insp-kicker").textContent = `Finalist #${s.rank} of ${store.sites.summary.funnel.finalists}`;
+  $("#insp-rank").textContent = s.rank;
   $("#insp-title").textContent = s.name;
   $("#insp-sub").textContent = `${s.address} · ${s.use} · ${sqft(s.building.gross_sf || s.building_sf)}`;
   $("#insp-steps").replaceChildren(h("li", { class: "steps-empty" }, "Press ", h("strong", {}, "Run inspection"), ". Each step brings up its evidence."));
@@ -124,6 +129,10 @@ async function runRules(id) {
     if (id !== run) return;
     const li = addStep(name);
     if (STEPS[name].pane) showPane(STEPS[name].pane);
+    if (name === "look_from_above") {
+      setTimeout(() => flyover($("#pane-aerial .aerial-box")), 120);
+      await sleep(2700); // let the drone finish its circle before the next pane
+    }
     if (name === "check_flood_and_neighbors") await femaLive();
     await sleep(PACE_MS);
     if (id !== run) return;
@@ -150,7 +159,11 @@ function runAgent(id, m) {
     const ev = JSON.parse(msg.data);
     if (ev.type === "tool") {
       open.set(ev.name, addStep(ev.name, ev.title));
-      if (STEPS[ev.name]?.pane) showPane(STEPS[ev.name].pane);
+      if (STEPS[ev.name]?.pane) showPaneSoon(STEPS[ev.name].pane);
+      if (ev.name === "look_from_above") {
+        holdUntil = performance.now() + 3000; // the next pane waits for the drone
+        setTimeout(() => flyover($("#pane-aerial .aerial-box")), 120);
+      }
     } else if (ev.type === "tool_done") {
       const li = open.get(ev.name) || addStep(ev.name);
       doneStep(li, ev.summary);
@@ -257,9 +270,25 @@ async function femaLive() {
 
 /* ---------------------------------------------------------------- panes */
 
+let holdUntil = 0;
+function showPaneSoon(name) {
+  const wait = holdUntil - performance.now();
+  if (wait > 0) setTimeout(() => showPane(name), wait);
+  else showPane(name);
+}
+
 function showPane(name) {
   $$("#stage-tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.pane === name)));
-  $$(".stage .pane").forEach((p) => (p.hidden = p.dataset.pane !== name));
+  $$(".stage .pane").forEach((p) => {
+    const show = p.dataset.pane === name;
+    if (show && p.hidden) {
+      p.classList.remove("pane-in");
+      void p.offsetWidth; // restart the entrance animation
+      p.classList.add("pane-in");
+    }
+    p.hidden = !show;
+  });
+  emit("pane", name);
   if (name === "aerial") drawAerial();
   if (name === "grid") drawGridMap();
 }
@@ -342,7 +371,7 @@ function renderAerial() {
     aerial = null;
   }
   box.replaceChildren(
-    h("div", { class: "aerial-map", id: "aerial-map", "aria-label": `Aerial photo of ${s.name}` }),
+    h("div", { class: "aerial-box" }, h("div", { class: "aerial-map", id: "aerial-map", "aria-label": `Aerial photo of ${s.name}` })),
     h("div", { class: "legend" },
       h("span", { class: "item" }, h("span", { class: "sw-ring" }), "500 m from the building (homes limit)"),
       h("span", { class: "item" }, h("span", { class: "sw-dot", style: { background: "var(--homes)" } }), "Nearest mapped homes"),
@@ -485,7 +514,7 @@ function renderObservations() {
     const items = (findings?.observations || []).filter((o) => OBS_PANE[o.source] === pane);
     box.replaceChildren(...(items.length ? [
       h("p", { class: "obs-head" }, h("span", { class: "obs-who" }, "Claude saw"), chip("Estimated")),
-      h("ul", {}, items.map((o) => h("li", {}, o.text))),
+      h("ul", {}, items.map((o, i) => h("li", { style: { "--i": i } }, o.text))),
     ] : []));
   });
 }
@@ -502,7 +531,7 @@ function renderVerdict(how) {
   const bar = $("#insp-verdict");
   bar.replaceChildren(
     h("div", { class: "vb-main" },
-      h("span", { class: `verdict-badge ${v.cls}` }, v.text),
+      h("span", { class: `verdict-badge stamp ${v.cls}` }, v.text),
       h("p", { class: "vb-head" }, headline),
       h("p", { class: "vb-counts" },
         `${counts.pass || 0} pass · ${counts.work || 0} conversion work · ${counts.unknown || 0} to verify · ${counts.fail || 0} fail`,

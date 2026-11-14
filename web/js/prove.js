@@ -4,10 +4,17 @@
 import { $, h, fmt, hourShort, onResize } from "./util.js";
 import { s as svgEl, lin, niceDomain, frame, yGrid, hoverLayer, showTip, tipRows } from "./charts.js";
 import { store, on, save, load } from "./store.js";
+import { onceVisible, reduced } from "./anim.js";
+
+let replayShown = reduced;
 
 export function initProve() {
   onResize($("#replay"), drawReplay);
   drawReplay();
+  onceVisible($("#replay"), () => {
+    replayShown = true;
+    $("#replay").classList.add("play");
+  }, 0.45);
   window.addEventListener("sitestar:passport", (e) => attach(e.detail));
   on((type) => type === "select" && showAttach());
   showAttach();
@@ -32,13 +39,17 @@ function drawReplay() {
   const x = lin(0, 23, f.x0, f.x1);
   const y = lin(dom.lo, dom.hi, f.y1, f.y0);
   const step = (f.x1 - f.x0) / 23;
-  for (const hr of pauses) svgEl("rect", { x: x(hr) - step / 2, y: f.y0, width: step, height: f.y1 - f.y0, fill: "rgba(235,104,52,.28)" }, f.svg);
+  const band = svgEl("g", { class: "replay-band" }, f.svg);
+  for (const hr of pauses) svgEl("rect", { x: x(hr) - step / 2, y: f.y0, width: step, height: f.y1 - f.y0, fill: "rgba(235,104,52,.28)" }, band);
   yGrid(f.svg, f, dom.ticks, y, (v) => `${Math.round(v / 1000)} GW`);
   for (const hr of [0, 6, 12, 18, 23]) svgEl("text", { x: x(hr), y: f.height - 5, "text-anchor": hr === 0 ? "start" : hr === 23 ? "end" : "middle", text: hourShort(hr) }, f.svg);
   const d = r.ercot.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
-  svgEl("path", { d, fill: "none", stroke: "#f0efec", "stroke-width": 2, "stroke-linejoin": "round" }, f.svg);
-  svgEl("circle", { cx: x(r.peak_hour), cy: y(r.peak_mw), r: 4.5, fill: "#eb6834", stroke: "#1a1a19", "stroke-width": 2 }, f.svg);
-  svgEl("text", { class: "halo", x: x(r.peak_hour), y: y(r.peak_mw) - 10, "text-anchor": "middle", text: "Year's peak" }, f.svg);
+  const line = svgEl("path", { class: "replay-line", d, fill: "none", stroke: "#f0efec", "stroke-width": 2, "stroke-linejoin": "round", pathLength: 1000 }, f.svg);
+  const peak = svgEl("g", { class: "replay-peak" }, f.svg);
+  svgEl("circle", { cx: x(r.peak_hour), cy: y(r.peak_mw), r: 4.5, fill: "#eb6834", stroke: "#1a1a19", "stroke-width": 2 }, peak);
+  svgEl("text", { class: "halo", x: x(r.peak_hour), y: y(r.peak_mw) - 10, "text-anchor": "middle", text: "Year's peak" }, peak);
+  if (replayShown) box.classList.add("play", "instant");
+  line.style.setProperty("--len", 1000);
   hoverLayer(f, r.ercot.map((_, i) => x(i)), (i, e) => {
     showTip(tipRows(`${hourShort(i)}–${hourShort(i + 1)}`, [
       { k: "ERCOT load", v: `${fmt.int(r.ercot[i])} MW` },

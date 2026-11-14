@@ -69,6 +69,7 @@ function renderPill() {
 
 function renderOffline() {
   grid = null;
+  $("#prove")?.classList.remove("alert");
   $("#ev-state").replaceChildren("Hardware offline");
   $("#ev-btn").disabled = true;
   for (const id of ["lv-base", "lv-ss", "lv-cut"]) $(`#${id}`).textContent = "—";
@@ -104,7 +105,8 @@ function renderGrid() {
   note.hidden = !!any;
   if (!any) note.innerHTML = "Bridge connected. Waiting for the workload machines to report watts to <code>POST /api/grid/telemetry</code>.";
 
-  // emergency control
+  // emergency control (the whole section glows while a grid event runs)
+  $("#prove")?.classList.toggle("alert", !!g.emergency);
   const btn = $("#ev-btn");
   btn.disabled = false;
   btn.classList.toggle("on", g.emergency);
@@ -305,8 +307,9 @@ function renderPassport() {
     ? "Finished"
     : `Running${ev.job.progress_end != null ? `, ${Math.round(ev.job.progress_end * 100)}%` : ""}`;
   const measure = { wall: "Wall plug", chip: "Chip sensor", system: "Laptop telemetry" }[ss.measure] || "Not stated";
+  const fresh = ev.id !== lastEventId && lastEventId !== undefined;
   if (ev.id !== lastEventId) {
-    if (lastEventId !== undefined) window.dispatchEvent(new CustomEvent("sitestar:passport", { detail: ev }));
+    if (fresh) window.dispatchEvent(new CustomEvent("sitestar:passport", { detail: ev }));
     lastEventId = ev.id;
   }
 
@@ -325,6 +328,11 @@ function renderPassport() {
       h("button", { class: "btn-small", type: "button", onclick: () => download(ev) }, "Download record"),
       events.length > 1 ? h("span", { class: "fine", style: { alignSelf: "center" } }, `${events.length - 1} earlier event${events.length > 2 ? "s" : ""} on the bridge`) : null),
   );
+  if (fresh) {
+    box.classList.remove("pop");
+    void box.offsetWidth; // restart the landing animation
+    box.classList.add("pop");
+  }
 }
 
 function download(ev) {

@@ -21,6 +21,7 @@ const SOURCE_NAME = { record: "CoStar record", aerial: "Aerial photo", scan: "3D
   const s = sites.sites.find((x) => x.id === id) || sites.sites.find((x) => x.ready.stage === 3);
   const insp = load("inspection", s.id);
   const ver = load("verified", s.id);
+  const caps = load("captures", s.id) || [];
   document.title = `SiteStar passport · ${s.name}`;
 
   const b = s.building, p = s.power, sc = s.screen;
@@ -47,7 +48,7 @@ const SOURCE_NAME = { record: "CoStar record", aerial: "Aerial photo", scan: "3D
       h("div", {},
         h("h1", {}, s.name),
         h("p", { class: "pp-sub" }, `${s.address} · ${s.use} · ${sqft(b.gross_sf || s.building_sf)}${b.year_built ? ` · built ${b.year_built}` : ""}`)),
-      h("span", { class: `verdict-badge ${v.cls}` }, v.text)),
+      h("span", { class: `verdict-badge stamp ${v.cls}` }, v.text)),
     h("p", { class: "pp-headline" }, insp?.headline || rulesHeadline(s),
       h("span", { class: "fine" }, insp?.how === "agent" || insp?.how === "replay" ? `  Findings by Claude (${insp.model}); verdict by SiteStar's fixed rules.` : "  Verdict by SiteStar's fixed rules.")),
 
@@ -100,6 +101,13 @@ const SOURCE_NAME = { record: "CoStar record", aerial: "Aerial photo", scan: "3D
               h("dt", {}, "Job"), h("dd", {}, ver.job_finished ? "Finished" : "Still running at the end of the event")),
             h("p", { class: "fine" }, "The machines show how a workload responds to a grid signal; they do not prove a multi-megawatt interconnection."))
           : h("p", { class: "fine" }, "Not yet verified. Trigger a grid event in the Prove section with this building selected."))),
+
+    caps.length ? h("section", { class: "pp-caps" },
+      h("h2", {}, "On-site frames from the drone"),
+      h("div", { class: "pp-caps-grid" }, caps.slice(0, 6).map((c) => h("figure", {},
+        h("img", { src: c.url, alt: `Drone frame, ${new Date(c.time * 1000).toLocaleString("en-US")}` }),
+        h("figcaption", {}, label(c.simulated ? "Simulated" : "Measured"), " ",
+          new Date(c.time * 1000).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })))))) : null,
 
     h("footer", { class: "pp-foot" },
       h("p", {}, "Sources: CoStar Data Extract (HackPrinceton kit) · Matterport public scans · Esri World Imagery · FEMA National Flood Hazard Layer · OpenStreetMap · ERCOT Native Load 2025 · CenterPoint TCRF (as listed)."),

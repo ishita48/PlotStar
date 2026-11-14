@@ -10,6 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="motion.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M16 2l3.6 9.4L29 13l-7.2 6.4L24 29l-8-5-8 5 2.2-9.6L3 13l9.4-1.6z' fill='%23eb6834'/></svg>">
 </head>
 <body>
@@ -33,26 +34,41 @@
         <span class="pill" id="pill-hw" title="Demo hardware"><i class="dot"></i><span>Hardware</span></span>
       </div>
     </div>
+    <div class="scroll-progress" id="scroll-progress" aria-hidden="true"></div>
   </header>
 
   <main id="main">
 
     <!-- ================================================================ HERO -->
     <section class="hero" id="top">
-      <div class="wrap">
+      <div class="hero-aura" aria-hidden="true"></div>
+      <div class="wrap hero-grid">
         <div class="hero-text">
-          <p class="eyebrow">AI-ready buildings · Houston · HackPrinceton Fall 2026</p>
-          <h1>The fastest data center is already&nbsp;built.</h1>
-          <p class="lede">Texas has <span id="hero-queue">over 400&nbsp;GW</span> of data centers waiting in line for power. The fastest new AI sites are warehouses being converted. SiteStar finds which of CoStar's Houston buildings can host AI compute, inspects each one like an engineer would, and proves the grid flexibility that gets it powered.</p>
+          <p class="eyebrow hero-eyebrow">AI-ready buildings · Houston · HackPrinceton Fall 2026</p>
+          <h1 id="hero-title">The fastest data center is already <em>built.</em></h1>
+          <p class="lede hero-lede">Texas has <span id="hero-queue">over 400&nbsp;GW</span> of data centers waiting in line for power. The fastest new AI sites are warehouses being converted. SiteStar finds which of CoStar's Houston buildings can host AI compute, inspects each one like an engineer would, and proves the grid flexibility that gets it powered.</p>
+          <div class="cta hero-cta">
+            <a class="btn btn-glow" href="#inspect" id="cta-inspect">Inspect the top building <span class="arrow" aria-hidden="true">→</span></a>
+            <a class="btn btn-quiet" href="#find">See all eight on the map</a>
+          </div>
         </div>
-
-        <div class="funnel-hero reveal" id="funnel" aria-live="polite">
+        <figure class="survey" id="survey" data-phase="boot">
+          <canvas id="survey-canvas" role="img" aria-label="A drone surveys CoStar's 121 Houston buildings over the 345 kV grid; buildings that fail drop out and the 8 finalists light up"></canvas>
+          <figcaption class="survey-hud">
+            <span class="hud-tag"><i class="dot live"></i>Drone survey · Houston</span>
+            <span class="hud-status" id="survey-status">Loading…</span>
+          </figcaption>
+          <div class="survey-key" aria-hidden="true">
+            <span><i class="k-fin"></i>Finalist</span>
+            <span><i class="k-pass"></i>Passes</span>
+            <span><i class="k-fail"></i>Fails flood or homes</span>
+            <span><i class="k-line"></i>345 kV line</span>
+          </div>
+        </figure>
+      </div>
+      <div class="wrap">
+        <div class="funnel-hero" id="funnel" data-reveal aria-live="polite">
           <p class="fine">Loading CoStar's Houston buildings…</p>
-        </div>
-
-        <div class="cta">
-          <a class="btn" href="#inspect" id="cta-inspect">Inspect the top building <span class="arrow" aria-hidden="true">→</span></a>
-          <a class="btn btn-quiet" href="#find">See all eight on the map</a>
         </div>
       </div>
     </section>
@@ -60,12 +76,13 @@
     <!-- ================================================================ FIND -->
     <section class="section" id="find">
       <div class="wrap">
-        <div class="sec-head">
+        <span class="chapter-num" aria-hidden="true">01</span>
+        <div class="sec-head" data-reveal>
           <p class="eyebrow"><span>01</span>Find</p>
           <h2>Eight buildings make the cut.</h2>
           <p class="sec-lede">Every pin is a building in CoStar's Houston data. Fixed rules cut the list: outside FEMA's 100-year floodplain, at least 500&nbsp;m from homes, a shell tall enough for a data hall, and heavy electrical service already on site. Pick a finalist to inspect it.</p>
         </div>
-        <div class="find-grid">
+        <div class="find-grid" data-reveal>
           <div class="card map-card">
             <div id="find-map" class="map" aria-label="Map of CoStar's Houston industrial buildings, colored by how far each gets through the rules"></div>
             <div class="map-foot">
@@ -81,17 +98,22 @@
     <!-- ================================================================ INSPECT -->
     <section class="section" id="inspect">
       <div class="wrap">
-        <div class="sec-head">
+        <span class="chapter-num" aria-hidden="true">02</span>
+        <div class="sec-head" data-reveal>
           <p class="eyebrow"><span>02</span>Inspect</p>
           <h2>Inspect it like an engineer would.</h2>
           <p class="sec-lede">The agent reads CoStar's record, walks the 3D scan, looks at the site from above, checks the flood map and the grid, then writes a passport. Fixed rules decide pass or fail; the agent explains what it sees and flags what to verify on site.</p>
         </div>
 
-        <div class="card insp" id="insp">
+        <div class="card insp" id="insp" data-reveal>
           <header class="insp-head">
             <div class="insp-id">
-              <p class="kicker" id="insp-kicker">Building</p>
-              <h3 id="insp-title">—</h3>
+              <div class="insp-nav">
+                <button type="button" class="nav-arrow" id="insp-prev" aria-label="Previous finalist">←</button>
+                <p class="kicker" id="insp-kicker">Building</p>
+                <button type="button" class="nav-arrow" id="insp-next" aria-label="Next finalist">→</button>
+              </div>
+              <div class="insp-name"><span class="insp-rank" id="insp-rank">1</span><h3 id="insp-title">—</h3></div>
               <p class="insp-sub" id="insp-sub"></p>
             </div>
             <div class="insp-run">
@@ -114,11 +136,43 @@
                 <button role="tab" data-pane="scan" aria-selected="false">3D scan</button>
                 <button role="tab" data-pane="aerial" aria-selected="false">From above</button>
                 <button role="tab" data-pane="grid" aria-selected="false">Flood &amp; grid</button>
+                <button role="tab" data-pane="drone" aria-selected="false" data-live="off"><i class="tab-dot"></i>Drone</button>
               </div>
               <div class="pane" data-pane="record" id="pane-record"></div>
               <div class="pane" data-pane="scan" id="pane-scan" hidden></div>
               <div class="pane" data-pane="aerial" id="pane-aerial" hidden></div>
               <div class="pane" data-pane="grid" id="pane-grid" hidden></div>
+              <div class="pane" data-pane="drone" id="pane-drone" hidden>
+                <div class="dr">
+                  <div class="dr-feed" id="dr-feed">
+                    <img id="dr-img" alt="Live view from the survey drone" hidden>
+                    <div class="dr-off" id="dr-off">
+                      <div class="dr-off-art" id="dr-off-art"></div>
+                      <p class="t">Drone offline</p>
+                      <p class="fine" id="dr-msg">Looking for the drone…</p>
+                    </div>
+                    <div class="dr-hud" id="dr-hud" hidden aria-hidden="true">
+                      <span class="c tl"></span><span class="c tr"></span><span class="c bl"></span><span class="c br"></span>
+                      <span class="cross"></span>
+                      <div class="hud-top"><span class="rec"><i></i><b id="hud-mode">LIVE</b></span><span id="hud-clock">REC 00:00</span></div>
+                      <div class="hud-bot"><span>ALT <b id="hud-alt">—</b></span><span>BAT <b id="hud-bat">—</b></span><span>TEMP <b id="hud-temp">—</b></span></div>
+                    </div>
+                  </div>
+                  <div class="dr-side">
+                    <p class="kicker">On-site check</p>
+                    <p class="dr-lede">Fly the drone over the building to confirm what the inspection flagged: the roof, the yard, the neighbors. Each frame you capture lands on the passport as Measured evidence.</p>
+                    <div class="dr-ctl" id="dr-ctl">
+                      <button class="ctl ctl-strong" data-action="takeoff" disabled>Take off</button>
+                      <button class="ctl ctl-strong" data-action="land" disabled>Land</button>
+                      <button class="ctl" id="dr-snap" disabled>Capture frame</button>
+                      <button class="ctl ctl-stop" data-action="emergency" disabled>Stop motors</button>
+                    </div>
+                    <p class="cmd-msg" id="dr-cmd" role="status" aria-live="polite"></p>
+                    <p class="kicker dr-caps-head">Frames for this building</p>
+                    <div class="dr-caps" id="dr-caps"></div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -130,13 +184,14 @@
     <!-- ================================================================ POWER -->
     <section class="section" id="power">
       <div class="wrap">
-        <div class="sec-head">
+        <span class="chapter-num" aria-hidden="true">03</span>
+        <div class="sec-head" data-reveal>
           <p class="eyebrow"><span>03</span>Power</p>
           <h2>Power is the gap. Pausing closes it.</h2>
           <p class="sec-lede">The building's own service is a fraction of what AI racks draw, so it needs more from the grid. Utilities can connect load sooner when it eases off during the grid's tightest hours. Here is exactly what that would have meant in 2025, hour by hour, from ERCOT's own load data.</p>
         </div>
 
-        <div class="power-grid">
+        <div class="power-grid" data-reveal>
           <div class="card power-side">
             <div class="control">
               <div class="control-top"><label class="control-name" for="pw-mw">First phase</label><output class="control-val" id="pw-mw-out" for="pw-mw">— MW</output></div>
@@ -152,7 +207,7 @@
           </div>
 
           <div class="card power-main">
-            <div class="pb-stats" id="pb-stats"></div>
+            <div class="pb-stats" id="pb-stats" data-reveal></div>
             <figure class="fig">
               <figcaption>
                 <span class="fig-title">2025, hour by hour <span>· Texas grid load, and the hours this site pauses</span></span>
@@ -170,16 +225,18 @@
 
     <!-- ================================================================ PROVE -->
     <section class="section dark" id="prove">
+      <div class="curtain" aria-hidden="true"></div>
       <div class="wrap">
-        <div class="sec-head">
+        <span class="chapter-num" aria-hidden="true">04</span>
+        <div class="sec-head" data-reveal>
           <p class="eyebrow"><span>04</span>Prove</p>
           <h2>Then we prove the pause on real machines.</h2>
           <p class="sec-lede" id="prove-lede">Two computers run the same AI job. One runs flat, the way data centers run today. The other follows SiteStar. Replay ERCOT's 2025 peak and press the grid button: measured power falls on the SiteStar machine while the flat one keeps burning, and the job still finishes.</p>
         </div>
 
-        <div class="card replay" id="replay"></div>
+        <div class="card replay" id="replay" data-reveal></div>
 
-        <div class="ctrl">
+        <div class="ctrl" data-reveal>
           <div class="card ctrl-main">
             <div class="ctrl-stats">
               <div><p class="stat-label"><i class="key key-base"></i>Flat machine</p><p class="stat-value" id="lv-base">—</p><p class="stat-sub" id="lv-base-sub">No readings yet</p></div>
@@ -217,12 +274,13 @@
     <!-- ================================================================ EVIDENCE -->
     <section class="section" id="evidence">
       <div class="wrap">
-        <div class="sec-head">
+        <span class="chapter-num" aria-hidden="true">05</span>
+        <div class="sec-head" data-reveal>
           <p class="eyebrow"><span>05</span>Evidence</p>
           <h2>Every number shows its work.</h2>
           <p class="sec-lede">Click any underlined number to see its source, when it was retrieved and how it was calculated. Each figure carries one of five labels.</p>
         </div>
-        <div class="labels">
+        <div class="labels" data-reveal>
           <div class="label-def"><span class="chip chip-measured">Measured</span><p>Read from our own hardware: machine watts and job progress.</p></div>
           <div class="label-def"><span class="chip chip-sourced">Sourced</span><p>From a named dataset with a date: CoStar records, FEMA flood zones, ERCOT load.</p></div>
           <div class="label-def"><span class="chip chip-estimated">Estimated</span><p>Derived by a documented method: distances, service size, savings, what the agent sees in an image.</p></div>
@@ -230,7 +288,7 @@
           <div class="label-def"><span class="chip chip-utility">Utility-confirmed</span><p>From a utility interconnection study. None yet, and we say so.</p></div>
         </div>
 
-        <div class="sources">
+        <div class="sources" data-reveal>
           <h3>Data behind this page</h3>
           <table class="src-table">
             <thead><tr><th>Source</th><th>What it gives us</th><th>Status</th></tr></thead>
@@ -258,6 +316,15 @@
       </div>
     </section>
   </main>
+
+  <nav class="rail" id="rail" aria-label="Chapters">
+    <span class="rail-track" aria-hidden="true"><i class="rail-fill" id="rail-fill"></i></span>
+    <a href="#find" data-sec="find"><i class="rail-dot"></i><span class="rail-label">Find</span></a>
+    <a href="#inspect" data-sec="inspect"><i class="rail-dot"></i><span class="rail-label">Inspect</span></a>
+    <a href="#power" data-sec="power"><i class="rail-dot"></i><span class="rail-label">Power</span></a>
+    <a href="#prove" data-sec="prove"><i class="rail-dot"></i><span class="rail-label">Prove</span></a>
+    <a href="#evidence" data-sec="evidence"><i class="rail-dot"></i><span class="rail-label">Evidence</span></a>
+  </nav>
 
   <footer class="foot">
     <div class="wrap foot-in">

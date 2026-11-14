@@ -72,7 +72,8 @@ python bridge/server.py --mock-grid      # open http://localhost:8000
   - On a second laptop: `python bridge/controller.py --machine baseline --bridge http://<demo-laptop-ip>:8000`, with the bridge started using `--host 0.0.0.0`.
   - With one laptop, the flat machine stays simulated and labeled as such.
 - **ESP32 button.** `POST /api/grid/emergency` with `{"active": true, "source": "esp32"}`.
-- **No hardware at all:** `python bridge/server.py --mock`.
+- **Drone.** `python bridge/server.py --tello-ip 172.20.10.14 --mock-grid` (the drone on your hotspot; see `bridge/tello_wifi.py`). The Inspect section's Drone tab shows its live feed, and captured frames go on the building's passport.
+- **No hardware at all:** `python bridge/server.py --mock` (simulated drone and machines, labeled).
 
 Presenter keys: **1–5** jump between sections, **0** to the top. `?site=<CoStar id>` opens a finalist; `&inspect=1` starts its inspection.
 
@@ -88,7 +89,7 @@ Presenter keys: **1–5** jump between sections, **0** to the top. `?site=<CoSta
 | Grid event, Grid Passport, passport attachment | Working |
 | Real power measurement | Controller tested with a test meter; `powermetrics` needs `sudo -v` at demo time |
 | Printable passport (`passport.html`) | Working |
-| Drone | Off by default (`--drone`); not part of this demo |
+| Drone | Working: the Inspect tab's on-site check shows the live Tello feed under a HUD, with take off, land and frame capture; frames land on the passport. Start the bridge with `--drone` (or `--tello-ip`) |
 
 ## What we don't claim
 
