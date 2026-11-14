@@ -60,6 +60,14 @@ def parse_xmp(jpeg: bytes) -> dict[str, str]:
 
 
 def _parcel_point(parcel_id: str) -> tuple[float, float]:
+    if parcel_id.startswith("pt:"):  # user-chosen location: pt:<lat>,<lon>
+        try:
+            la, lo = (float(v) for v in parcel_id[3:].split(","))
+        except ValueError as e:
+            raise HTTPException(422, "bad point id") from e
+        if not (-90 <= la <= 90 and -180 <= lo <= 180):
+            raise HTTPException(422, "bad point id")
+        return la, lo
     with session() as c:
         row = c.execute("SELECT lat, lon FROM parcels WHERE parcel_id = ?", (parcel_id,)).fetchone()
     if not row or row["lat"] is None:
