@@ -9,6 +9,7 @@ import { DecisionView } from './decision-view';
 import { DesignStep, type DesignSite } from './design-step';
 import type { MapMode } from './explore-map';
 import { AssumptionsDrawer } from './drawers';
+import { AgentDrawer } from './agent-drawer';
 import type { OptimizeResult } from './optimize-types';
 import { SiteDetail } from './site-detail';
 import type { ExploreSite } from './types';
@@ -38,6 +39,7 @@ export function Flow() {
   const [advanced, setAdvanced] = useState(false);
   const [overrides, setOverrides] = useState<Record<string, number>>({});
   const [showAssump, setShowAssump] = useState(false);
+  const [showAgent, setShowAgent] = useState(false);
   // data
   const [result, setResult] = useState<SearchResult | null>(null);
   const [baseRun, setBaseRun] = useState<OptimizeResult | null>(null);
@@ -155,6 +157,7 @@ export function Flow() {
             </li>
           ))}
         </ol>
+        <button className="ws-btn primary" onClick={() => setShowAgent(true)}>Ask the agent</button>
       </header>
       {error && <div className="fl-error">{error}</div>}
 
@@ -313,6 +316,7 @@ export function Flow() {
         </main>
       )}
 
+      {showAgent && <AgentDrawer runId={run?.run_id ?? null} onClose={() => setShowAgent(false)} />}
       {showAssump && <AssumptionsDrawer overrides={overrides} onApply={(v) => (setOverrides(v), setShowAssump(false))} onClose={() => setShowAssump(false)} />}
     </div>
   );

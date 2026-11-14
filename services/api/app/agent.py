@@ -143,55 +143,219 @@ def _llm():
     return None, None
 
 
-def explain(run_id: str, question: str | None = None) -> dict[str, Any]:
+def tool_search_sites(market: str = "Houston", min_acres: float = 2, only_passing: bool = False) -> dict[str, Any]:
+    """Screened CoStar candidate properties in a market (top 15 by score), with the failing gate where there is one."""
+    from .routers.screen import Filters, SearchIn, run_search
+
+    if market not in ("Houston", "Los Angeles"):
+        return {"error": "market must be Houston or Los Angeles (the CoStar extract covers only these)"}
+    res = run_search(SearchIn(market=market, filters=Filters(min_acres=min_acres, hide_failed=only_passing), limit=150), offline=True)
+    rows = []
+    for s in res["sites"][:15]:
+        fail = next((g for g in s["screen"]["gates"] if g["status"] == "Fail"), None)
+        sub = s["screen"]["power"].get("nearest_substation") or {}
+        rows.append({"site_id": s["id"], "name": s["name"], "acres": s["lotAcres"], "acquisition_usd": s["landCost"],
+                     "acquisition_label": s["labels"]["landCost"], "screen": s["screen"]["status"],
+                     "failed_gate": fail and f"{fail['gate']}: {fail['reason']}", "substation_km": sub.get("distance_km"),
+                     "score": s["pillars"]["overall"]})
+    return {"market": market, "total": res["count"], "counts": res["counts"], "top": rows}
+
+
+def tool_site_detail(parcel_id: str) -> dict[str, Any]:
+    """Screening gates, power signals and scores for one CoStar property."""
+    from .screening import Thresholds
+    from .siting import assemble
+
+    with session() as c:
+        row = c.execute("SELECT * FROM parcels WHERE parcel_id = ?", (parcel_id,)).fetchone()
+    if not row:
+        return {"error": "unknown parcel id; ids look like costar:235279"}
+    p = dict(row)
+    s = assemble(p["market"], [p], Thresholds(), offline=True)[0]
+    return {"site_id": s["id"], "name": s["name"], "address": s["area"], "lat": s["lat"], "lon": s["lng"], "acres": s["lotAcres"],
+            "availability": s["availability"], "acquisition_usd": s["landCost"], "acquisition_basis": s["landCostBasis"],
+            "screen": s["screen"]["status"],
+            "gates": [{k: g[k] for k in ("gate", "status", "value", "limit", "label", "reason")} for g in s["screen"]["gates"]],
+            "power": {k: s["screen"]["power"].get(k) for k in ("building_service_mw", "nearest_substation", "residential_within_1mi", "requires_utility_confirmation")},
+            "provenance": s["provenance"]}
+
+
+def tool_local_conditions(lat: float, lon: float) -> dict[str, Any]:
+    """Climate (Open-Meteo), solar yield (NREL PVWatts), households nearby (US Census), retail power price (EIA)."""
+    from .routers.context import context
+
+    return context(lat, lon, "CA" if lon < -110 else "TX")
+
+
+def tool_run_optimizer(mw_it: float, flexible_share: float = 0.3, market: str = "Houston") -> dict[str, Any]:
+    """Run the joint site + cooling + schedule optimizer from scratch. Returns the new run (slim) and its run_id."""
+    from .routers.optimize import OptimizeIn, _run
+
+    try:
+        res = _run(OptimizeIn(market=market, mw_it=mw_it, flexible_share=flexible_share, carbon_price_per_t=50, offline=True))
+    except Exception as e:
+        return {"error": f"{type(e).__name__}: {str(e)[:200]}"}
+    out = tool_get_run(res["run_id"])
+    out["run_id"] = res["run_id"]
+    return out
+
+
+CHAT_SYSTEM = (
+    "You are PlotStar's research agent for data-center site selection, working for a developer's site-selection team. "
+    "You answer by calling tools; the optimizer and screening code produce every number. Rules: "
+    "(1) Use ONLY numbers returned by tools and say whether each is Sourced, Estimated or Simulated when it matters. "
+    "(2) For any what-if, call run_what_if or run_optimizer; never estimate an effect yourself. "
+    "(3) Grid capacity is never confirmed by public data: say 'requires utility confirmation'. "
+    "(4) For questions that need several steps, write a short plan with write_todos first, and delegate property "
+    "research to the site-researcher and scenario work to the scenario-analyst with the task tool. "
+    "(5) Answer in plain language, under 200 words, leading with the conclusion. If a tool lacks a number, say so."
+)
+
+
+def _text(content: Any) -> str:
+    if isinstance(content, list):
+        return " ".join(x.get("text", "") for x in content if isinstance(x, dict)).strip()
+    return str(content or "").strip()
+
+
+_SANDBOX: dict[str, Any] = {}
+
+
+def _sandbox_backend() -> Any:
+    """A LangSmith sandbox for agent-written analysis code. Off unless LANGSMITH_API_KEY and PLOTSTAR_SANDBOX=1.
+    Written against langsmith.sandbox / deepagents.backends.LangSmithSandbox; NOT yet run against a real account."""
+    if not (os.getenv("LANGSMITH_API_KEY") and os.getenv("PLOTSTAR_SANDBOX") == "1"):
+        return None
+    if "backend" not in _SANDBOX:
+        try:
+            from deepagents.backends import LangSmithSandbox
+            from langsmith.sandbox import SandboxClient
+
+            client = SandboxClient(api_key=os.getenv("LANGSMITH_API_KEY"))
+            box = client.create_sandbox(snapshot=os.getenv("PLOTSTAR_SANDBOX_SNAPSHOT") or None, name="plotstar-agent", idle_ttl_seconds=1800)
+            _SANDBOX["backend"] = LangSmithSandbox(box)
+        except Exception as e:  # never block the agent on sandbox setup
+            _SANDBOX["backend"], _SANDBOX["error"] = None, f"{type(e).__name__}: {str(e)[:160]}"
+    return _SANDBOX["backend"]
+
+
+def build_agent(llm: Any) -> Any:
+    from deepagents import create_deep_agent
+    from langchain_core.tools import tool
+
+    @tool
+    def get_run(run_id: str) -> str:
+        """An optimizer run: recommended plan, cost-first plan, without-flexibility plan, deltas, rejected sites."""
+        return json.dumps(tool_get_run(run_id))
+
+    @tool
+    def run_what_if(run_id: str, changes_json: str) -> str:
+        """Re-run the optimizer from run_id with changed inputs. changes_json is a JSON object with any of:
+        price_multiplier, carbon_price_per_t, flexible_share (0-1), mw_it, firm_capacity ({site_id: share 0-1})."""
+        try:
+            changes = json.loads(changes_json)
+        except ValueError:
+            return json.dumps({"error": "changes_json must be a JSON object"})
+        return json.dumps(tool_run_what_if(run_id, changes))
+
+    @tool
+    def run_optimizer(mw_it: float, flexible_share: float = 0.3, market: str = "Houston") -> str:
+        """Run the joint optimizer from scratch for a capacity (MW IT), flexible share (0-1) and market."""
+        return json.dumps(tool_run_optimizer(mw_it, flexible_share, market))
+
+    @tool
+    def grid_day() -> str:
+        """The cached ERCOT day: price and carbon extremes with labels."""
+        return json.dumps(tool_grid_day())
+
+    @tool
+    def search_sites(market: str = "Houston", min_acres: float = 2, only_passing: bool = False) -> str:
+        """Screened CoStar candidate properties in Houston or Los Angeles, top 15 by score."""
+        return json.dumps(tool_search_sites(market, min_acres, only_passing))
+
+    @tool
+    def site_detail(parcel_id: str) -> str:
+        """Gates, power signals, acquisition basis and provenance for one property id such as costar:235279."""
+        return json.dumps(tool_site_detail(parcel_id))
+
+    @tool
+    def local_conditions(lat: float, lon: float) -> str:
+        """Climate, solar yield, households within a mile and retail power price at a point."""
+        return json.dumps(tool_local_conditions(lat, lon))
+
+    research = [search_sites, site_detail, local_conditions]
+    scenario = [get_run, run_what_if, run_optimizer, grid_day]
+    subagents = [
+        {"name": "site-researcher", "description": "Finds and compares CoStar properties and explains why a property passes or fails screening.",
+         "system_prompt": "You research candidate properties. Use the tools; report gates with their values, limits and labels. "
+                          "Never invent a price or a capacity. Return a compact summary.", "tools": research},
+        {"name": "scenario-analyst", "description": "Runs the optimizer and what-if scenarios and compares plans against cost-first planning.",
+         "system_prompt": "You run scenarios with the real optimizer. Always call a tool for a what-if. Report the recommended "
+                          "site, 10-year cost, CO2 and whether the recommendation changed. Return a compact summary.", "tools": scenario},
+    ]
+    backend, prompt = _sandbox_backend(), CHAT_SYSTEM
+    if backend is not None:
+        prompt += (" You also have a LangSmith sandbox: for analysis the tools do not cover (ranking, statistics, custom "
+                   "comparisons across sites), save tool output with write_file and run Python with execute. Say when a "
+                   "figure came from your own sandbox calculation.")
+        return create_deep_agent(model=llm, tools=research + scenario, system_prompt=prompt, subagents=subagents, backend=backend)
+    return create_deep_agent(model=llm, tools=research + scenario, system_prompt=prompt, subagents=subagents)
+
+
+OUR_TOOLS = {"get_run", "run_what_if", "run_optimizer", "grid_day", "search_sites", "site_detail", "local_conditions", "task", "write_todos"}
+
+
+def stream_chat(messages: list[dict[str, str]], run_id: str | None):
+    """Yield events: plan, tool, result, answer, error. Falls back to the deterministic explainer without a model."""
     llm, kind = _llm()
     if llm is None:
-        return deterministic(run_id, question)
+        if run_id:
+            det = deterministic(run_id, messages[-1]["content"] if messages else None)
+            for t in det["trace"]:
+                yield {"type": "tool", "name": t["tool"], "args": t.get("args")}
+            yield {"type": "answer", "text": det["answer"], "model": "deterministic"}
+        else:
+            yield {"type": "answer", "text": "No language model is configured and there is no optimizer run to explain yet.", "model": "deterministic"}
+        return
     try:
-        from deepagents import create_deep_agent
-        from langchain_core.tools import tool
+        agent = build_agent(llm)
+        msgs = list(messages)
+        if run_id and msgs:
+            msgs[-1] = {"role": "user", "content": f"(Current optimizer run_id: {run_id}.) {msgs[-1]['content']}"}
+        final = ""
+        for update in agent.stream({"messages": msgs}, stream_mode="updates", config={"recursion_limit": 60}):
+            for _node, delta in (update or {}).items():
+                if not isinstance(delta, dict):
+                    continue
+                if delta.get("todos"):
+                    yield {"type": "plan", "todos": [{"content": t.get("content"), "status": t.get("status")} for t in delta["todos"]]}
+                for m in delta.get("messages") or []:
+                    kind_m = m.__class__.__name__
+                    if kind_m == "AIMessage":
+                        for tc in getattr(m, "tool_calls", None) or []:
+                            if tc.get("name") in OUR_TOOLS and tc.get("name") != "write_todos":
+                                yield {"type": "tool", "name": tc["name"], "args": tc.get("args")}
+                        if _text(m.content) and not getattr(m, "tool_calls", None):
+                            final = _text(m.content)
+                    elif kind_m == "ToolMessage" and getattr(m, "name", "") in OUR_TOOLS - {"write_todos"}:
+                        yield {"type": "result", "name": m.name, "chars": len(_text(m.content))}
+        yield {"type": "answer", "text": final or "The agent finished without an answer.", "model": kind}
+    except Exception as e:
+        yield {"type": "error", "text": f"{type(e).__name__}: {str(e)[:200]}"}
 
-        @tool
-        def get_run(rid: str) -> str:
-            """Optimizer run by run_id: PlotStar pick vs cost-first pick, deltas, rejected sites, labels."""
-            return json.dumps(tool_get_run(rid))
 
-        @tool
-        def site_checks(parcel_id: str) -> str:
-            """CoStar record for a parcel id such as costar:12345."""
-            return json.dumps(tool_site_checks(parcel_id))
-
-        @tool
-        def grid_day() -> str:
-            """The cached ERCOT day: price and carbon extremes with their labels."""
-            return json.dumps(tool_grid_day())
-
-        @tool
-        def run_what_if(rid: str, changes_json: str) -> str:
-            """Re-run the optimizer from run rid with changed inputs. changes_json is a JSON object with any of:
-            price_multiplier, carbon_price_per_t, flexible_share (0-1), mw_it, firm_capacity ({site_id: share})."""
-            try:
-                changes = json.loads(changes_json)
-            except ValueError:
-                return json.dumps({"error": "changes_json must be a JSON object"})
-            return json.dumps(tool_run_what_if(rid, changes))
-
-        agent = create_deep_agent(tools=[get_run, site_checks, grid_day, run_what_if], system_prompt=SYSTEM, model=llm)
-        q = question or "Explain this decision to a non-expert."
-        out = agent.invoke({"messages": [{"role": "user", "content": f"run_id={run_id}. {q}"}]})
-        msgs = out.get("messages", [])
-        trace = []
-        for m in msgs:
-            for tc in (getattr(m, "tool_calls", None) or []):
-                if tc.get("name") in ("get_run", "site_checks", "grid_day", "run_what_if"):
-                    trace.append({"tool": tc.get("name"), "args": tc.get("args"), "ok": True})
-        answer = next((m.content for m in reversed(msgs) if m.__class__.__name__ == "AIMessage" and m.content), "")
-        if isinstance(answer, list):
-            answer = " ".join(x.get("text", "") for x in answer if isinstance(x, dict))
-        if not answer:
-            raise RuntimeError("empty answer")
-        return {"answer": answer, "trace": trace, "model": kind}
-    except Exception as e:  # any model/tooling failure -> honest fallback, never a blank
+def explain(run_id: str, question: str | None = None) -> dict[str, Any]:
+    """One-shot explanation of a run (used by the recommendation screen, read-aloud and the evaluation harness)."""
+    trace, answer, model, err = [], "", "deterministic", None
+    for ev in stream_chat([{"role": "user", "content": question or "Explain this decision to a non-expert in under 180 words."}], run_id):
+        if ev["type"] == "tool":
+            trace.append({"tool": ev["name"], "args": ev.get("args"), "ok": True})
+        elif ev["type"] == "answer":
+            answer, model = ev["text"], ev["model"]
+        elif ev["type"] == "error":
+            err = ev["text"]
+    if err or not answer:
         det = deterministic(run_id, question)
-        det["model_error"] = f"{type(e).__name__}: {str(e)[:160]}"
+        det["model_error"] = err or "empty answer"
         return det
+    return {"answer": answer, "trace": trace, "model": model}
