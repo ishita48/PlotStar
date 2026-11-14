@@ -1,15 +1,17 @@
 """SiteStar live bridge.
 
-Serves the website plus two live feeds:
+Serves the website plus its live feeds:
 
-* Drone: connects to a Tello EDU, decodes its H.264 camera stream and serves
-  it as MJPEG, along with telemetry and flight commands.
-* Live Grid: workload machines push measured watts here, and anything (the
-  website, the ESP32 button) can raise a grid emergency that machines poll for.
+* Drone: Tello EDU / Talent camera (MJPEG), telemetry, flight commands and
+  evidence snapshots.
+* Live Grid: workload machines push measured watts; the website or the ESP32
+  button raises a grid emergency; every event becomes a Grid Passport record.
+* ERCOT: real Texas grid data (fuel mix, demand, Houston prices), refreshed
+  every 5 minutes from ercot.com.
 
-    python bridge/server.py                      # drone on its own TELLO-XXXXXX Wi-Fi
-    python bridge/server.py --tello-ip 10.0.0.42 # drone joined a router (see tello_wifi.py)
-    python bridge/server.py --mock               # simulated drone and grid, no hardware
+    python bridge/server.py --tello-ip 172.20.10.14   # drone on your hotspot (tello_wifi.py)
+    python bridge/server.py                           # drone on its own TELLO-XXXXXX Wi-Fi
+    python bridge/server.py --mock                    # simulated drone and machines
 
 Then open http://localhost:8000
 """
@@ -17,6 +19,7 @@ Then open http://localhost:8000
 import argparse
 import atexit
 import math
+import re
 import threading
 import time
 from collections import deque
@@ -26,15 +29,23 @@ import cv2
 import numpy as np
 from flask import Flask, Response, jsonify, request, send_from_directory
 
-WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+import ercot
+
+ROOT = Path(__file__).resolve().parent.parent
+WEB_DIR = ROOT / "web"
+CAPTURE_DIR = ROOT / "captures"
 MOVE_CM = 30
 TURN_DEG = 45
 FPS = 30
 RECONNECT_SECONDS = 5
+STATE_TIMEOUT_S = 4          # no state packets for this long = drone gone
 TELLO_DEFAULT_IP = "192.168.10.1"
 GRID_MACHINES = ("baseline", "optimized")
-GRID_HISTORY = 120   # samples kept per machine for the sparkline
-GRID_STALE_S = 5     # a machine with no update for this long shows as stale
+GRID_HISTORY = 480           # samples kept per machine (4 min at 2 Hz)
+GRID_STALE_S = 5
+PRE_EVENT_S = 10             # window before an emergency used as the "before" level
+RESPONSE_DROP = 0.10         # a 10% drop from the before level counts as responding
+ERCOT_REFRESH_S = 300
 
 ACTIONS = {
     "takeoff": lambda t: t.takeoff(),
@@ -50,6 +61,8 @@ ACTIONS = {
 }
 
 
+# ---------------------------------------------------------------- drone
+
 class Drone:
     """Wraps the Tello connection (or a simulated one in mock mode)."""
 
@@ -61,6 +74,8 @@ class Drone:
         self.error = None
         self.command_lock = threading.Lock()
         self.mock_flying = False
+        self._last_state = None
+        self._last_state_at = 0.0
 
         if not mock:
             from djitellopy import Tello  # imported lazily so --mock works without it
@@ -74,6 +89,7 @@ class Drone:
                     self.tello.connect()
                     self.tello.streamon()
                     self.frame_read = self.tello.get_frame_read()
+                    self._last_state, self._last_state_at = None, time.time()
                     self.connected = True
                     self.error = None
                     print(f"Connected to Tello. Battery {self.tello.get_battery()}%")
@@ -83,11 +99,18 @@ class Drone:
                           f"retrying in {RECONNECT_SECONDS}s")
             time.sleep(RECONNECT_SECONDS)
 
-    # Video
+    def _alive(self) -> bool:
+        """The Tello sends ~10 state packets a second; each one is a new dict."""
+        state = self.tello.get_current_state()
+        now = time.time()
+        if state is not self._last_state:
+            self._last_state, self._last_state_at = state, now
+        return now - self._last_state_at < STATE_TIMEOUT_S
+
     def jpeg(self):
         if self.mock:
             frame = mock_frame(self.mock_flying)
-        elif self.frame_read is not None and self.frame_read.frame is not None:
+        elif self.connected and self.frame_read is not None and self.frame_read.frame is not None:
             # djitellopy >= 2.5 returns RGB; OpenCV encodes BGR
             frame = cv2.cvtColor(self.frame_read.frame, cv2.COLOR_RGB2BGR)
         else:
@@ -95,19 +118,22 @@ class Drone:
         ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
         return buf.tobytes() if ok else None
 
-    # Telemetry
     def status(self):
         base = {"connected": self.connected, "mock": self.mock, "error": self.error}
         if self.mock:
             return {**base, "battery": 87, "height": 120 if self.mock_flying else 0,
                     "temp": 41, "flying": self.mock_flying}
+        if self.connected and not self._alive():
+            self.connected = False
+            self.error = "drone stopped sending telemetry"
+            print("Tello went quiet; reconnecting")
         if not self.connected:
-            return {**base, "battery": None, "height": None, "temp": None, "flying": False}
+            return {**base, "connected": False, "battery": None, "height": None,
+                    "temp": None, "flying": False}
         t = self.tello
         return {**base, "battery": t.get_battery(), "height": t.get_height(),
                 "temp": t.get_temperature(), "flying": t.is_flying}
 
-    # Commands
     def command(self, action):
         if action == "emergency":
             # Never blocked by a running command: motors stop immediately.
@@ -144,8 +170,32 @@ class Drone:
             pass
 
 
+def mock_frame(flying: bool, w=960, h=720):
+    """Synthetic 'aerial survey' frame for testing without a drone."""
+    t = time.time()
+    frame = np.zeros((h, w, 3), np.uint8)
+    frame[:] = (24, 22, 20)
+    step = 60
+    ox, oy = int(t * 40) % step, int(t * 25) % step
+    for x in range(-step, w + step, step):
+        cv2.line(frame, (x + ox, 0), (x + ox, h), (60, 58, 54), 1)
+    for y in range(-step, h + step, step):
+        cv2.line(frame, (0, y + oy), (w, y + oy), (60, 58, 54), 1)
+    cx = int(w / 2 + math.sin(t / 3) * 120)
+    cy = int(h / 2 + math.cos(t / 4) * 80)
+    cv2.rectangle(frame, (cx - 160, cy - 110), (cx + 160, cy + 110), (52, 104, 235), 2)
+    cv2.putText(frame, "PARCEL A", (cx - 150, cy - 120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (52, 104, 235), 2)
+    cv2.drawMarker(frame, (w // 2, h // 2), (236, 239, 240), cv2.MARKER_CROSS, 28, 1)
+    label = "SIMULATED FEED  |  " + ("AIRBORNE" if flying else "LANDED")
+    cv2.putText(frame, label, (24, h - 28), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (236, 239, 240), 2)
+    cv2.putText(frame, time.strftime("%H:%M:%S"), (w - 140, h - 28), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (236, 239, 240), 1)
+    return frame
+
+
+# ---------------------------------------------------------------- live grid
+
 class Grid:
-    """Latest Live Grid state: per-machine watts and the grid-emergency flag.
+    """Per-machine watts, the grid-emergency flag and the Grid Passport log.
 
     Workload controllers POST readings; the site and controllers GET the state.
     """
@@ -157,9 +207,12 @@ class Grid:
         self.emergency_since = None
         self.machines = {m: None for m in GRID_MACHINES}
         self.history = {m: deque(maxlen=GRID_HISTORY) for m in GRID_MACHINES}
+        self.events = []      # finished Grid Passport records, oldest first
+        self.active = None    # the event in progress
         if mock:
             threading.Thread(target=self._mock_loop, daemon=True).start()
 
+    # readings
     def record(self, machine, watts, progress=None, done=None, measure=None):
         if machine not in GRID_MACHINES:
             raise ValueError(f"machine must be one of {', '.join(GRID_MACHINES)}")
@@ -177,14 +230,65 @@ class Grid:
                 "measure": measure, "updated": now,
             }
             self.history[machine].append((round(now, 2), round(watts, 2)))
+            if machine == "optimized" and done:
+                # Close out the job record of any event that ended before the job finished.
+                for ev in self.events[-5:]:
+                    if ev["job"]["finished_at"] is None:
+                        ev["job"]["finished_at"] = round(now, 2)
 
-    def set_emergency(self, active: bool):
+    def _avg(self, machine, t0, t1):
+        vals = [w for t, w in self.history[machine] if t0 <= t <= t1]
+        return round(sum(vals) / len(vals), 2) if vals else None
+
+    # emergency + passport
+    def set_emergency(self, active: bool, source: str = "web"):
         with self.lock:
+            now = time.time()
             if active and not self.emergency:
-                self.emergency_since = time.time()
-            elif not active:
+                opt = self.machines["optimized"] or {}
+                self.active = {
+                    "id": len(self.events) + 1, "started": round(now, 2), "source": source,
+                    "before": {m: self._avg(m, now - PRE_EVENT_S, now) for m in GRID_MACHINES},
+                    "progress_start": opt.get("progress"),
+                }
+                self.emergency_since = now
+            elif not active and self.emergency and self.active:
+                self.events.append(self._close_event(now))
+                self.events = self.events[-50:]
+                self.active = None
                 self.emergency_since = None
             self.emergency = active
+
+    def _close_event(self, now):
+        ev = self.active
+        start = ev["started"]
+        machines = {}
+        for m in GRID_MACHINES:
+            before = ev["before"][m]
+            during = self._avg(m, start, now)
+            cur = self.machines[m] or {}
+            machines[m] = {
+                "before_w": before, "during_w": during,
+                "change_pct": round((during - before) / before * 100, 1) if before and during is not None else None,
+                "measure": cur.get("measure"),
+                "samples": sum(1 for t, _ in self.history[m] if start <= t <= now),
+            }
+        response_s = None
+        before = ev["before"]["optimized"]
+        if before:
+            for t, w in self.history["optimized"]:
+                if t >= start and w <= before * (1 - RESPONSE_DROP):
+                    response_s = round(t - start, 2)
+                    break
+        opt = self.machines["optimized"] or {}
+        return {
+            "id": ev["id"], "started": start, "ended": round(now, 2),
+            "duration_s": round(now - start, 1), "source": ev["source"], "mock": self.mock,
+            "machines": machines, "response_s": response_s,
+            "response_rule": f"first reading {int(RESPONSE_DROP * 100)}% below the {PRE_EVENT_S}-second pre-event average",
+            "job": {"progress_start": ev["progress_start"], "progress_end": opt.get("progress"),
+                    "finished_at": round(now, 2) if opt.get("done") else None},
+        }
 
     def state(self):
         now = time.time()
@@ -197,7 +301,8 @@ class Grid:
                     "history": list(self.history[m]),
                 }
             return {"mock": self.mock, "emergency": self.emergency,
-                    "emergency_since": self.emergency_since, "machines": machines, "now": now}
+                    "emergency_since": self.emergency_since, "active": self.active,
+                    "events": self.events[-10:][::-1], "machines": machines, "now": now}
 
     def _mock_loop(self):
         """Simulated readings so the page can be tested without workload machines."""
@@ -211,31 +316,37 @@ class Grid:
             time.sleep(0.5)
 
 
-def mock_frame(flying: bool, w=960, h=720):
-    """Synthetic 'aerial survey' frame for testing without a drone."""
-    t = time.time()
-    frame = np.zeros((h, w, 3), np.uint8)
-    frame[:] = (28, 22, 14)  # dark navy (BGR)
-    step = 60
-    ox, oy = int(t * 40) % step, int(t * 25) % step
-    for x in range(-step, w + step, step):
-        cv2.line(frame, (x + ox, 0), (x + ox, h), (70, 55, 40), 1)
-    for y in range(-step, h + step, step):
-        cv2.line(frame, (0, y + oy), (w, y + oy), (70, 55, 40), 1)
-    # A candidate parcel drifting under the camera
-    cx = int(w / 2 + math.sin(t / 3) * 120)
-    cy = int(h / 2 + math.cos(t / 4) * 80)
-    cv2.rectangle(frame, (cx - 160, cy - 110), (cx + 160, cy + 110), (66, 185, 245), 2)
-    cv2.putText(frame, "PARCEL A", (cx - 150, cy - 120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (66, 185, 245), 2)
-    # Crosshair
-    cv2.drawMarker(frame, (w // 2, h // 2), (232, 236, 245), cv2.MARKER_CROSS, 28, 1)
-    label = "SIMULATED FEED  |  " + ("AIRBORNE" if flying else "LANDED")
-    cv2.putText(frame, label, (24, h - 28), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (240, 201, 76), 2)
-    cv2.putText(frame, time.strftime("%H:%M:%S"), (w - 140, h - 28), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (232, 236, 245), 1)
-    return frame
+# ---------------------------------------------------------------- ERCOT
+
+class ErcotFeed:
+    """Keeps a fresh copy of the real ERCOT data (see ercot.py)."""
+
+    def __init__(self, enabled: bool = True):
+        self.data, self.error, self.fetched = None, None, None
+        self.lock = threading.Lock()
+        if enabled:
+            threading.Thread(target=self._loop, daemon=True).start()
+
+    def _loop(self):
+        while True:
+            try:
+                data = ercot.build()
+                with self.lock:
+                    self.data, self.error, self.fetched = data, None, time.time()
+            except Exception as exc:  # offline, ERCOT down, format change
+                with self.lock:
+                    self.error = str(exc)
+                print(f"ERCOT refresh failed: {exc}")
+            time.sleep(ERCOT_REFRESH_S if self.error is None else 60)
+
+    def get(self):
+        with self.lock:
+            return self.data, self.error
 
 
-def create_app(drone: Drone, grid: Grid) -> Flask:
+# ---------------------------------------------------------------- app
+
+def create_app(drone: Drone, grid: Grid, feed: ErcotFeed) -> Flask:
     app = Flask(__name__, static_folder=None)
 
     @app.after_request
@@ -245,6 +356,9 @@ def create_app(drone: Drone, grid: Grid) -> Flask:
         resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
         return resp
 
+    def body():
+        return request.get_json(silent=True) or {}
+
     @app.get("/")
     def index():
         return send_from_directory(WEB_DIR, "index.html")
@@ -253,6 +367,7 @@ def create_app(drone: Drone, grid: Grid) -> Flask:
     def static_files(path):
         return send_from_directory(WEB_DIR, path)
 
+    # drone
     @app.get("/api/status")
     def status():
         return jsonify(drone.status())
@@ -261,7 +376,7 @@ def create_app(drone: Drone, grid: Grid) -> Flask:
     def command():
         if request.method == "OPTIONS":
             return "", 204
-        action = (request.get_json(silent=True) or {}).get("action", "")
+        action = body().get("action", "")
         if not drone.connected:
             return jsonify(error="drone not connected"), 503
         try:
@@ -274,35 +389,6 @@ def create_app(drone: Drone, grid: Grid) -> Flask:
             return jsonify(error=str(exc)), 502
         return jsonify(ok=True, action=action)
 
-    @app.get("/api/grid")
-    def grid_state():
-        return jsonify(grid.state())
-
-    @app.route("/api/grid/telemetry", methods=["POST", "OPTIONS"])
-    def grid_telemetry():
-        """Body: {"machine": "baseline"|"optimized", "watts": 38.2,
-        "progress": 0.0-1.0, "done": false, "measure": "chip"|"wall"}"""
-        if request.method == "OPTIONS":
-            return "", 204
-        body = request.get_json(silent=True) or {}
-        try:
-            grid.record(body.get("machine"), body.get("watts"), body.get("progress"),
-                        body.get("done"), body.get("measure"))
-        except (TypeError, ValueError) as exc:
-            return jsonify(error=str(exc)), 400
-        return jsonify(ok=True, emergency=grid.emergency)
-
-    @app.route("/api/grid/emergency", methods=["POST", "OPTIONS"])
-    def grid_emergency():
-        """Body: {"active": true|false}. Used by the website and the ESP32 button."""
-        if request.method == "OPTIONS":
-            return "", 204
-        active = (request.get_json(silent=True) or {}).get("active")
-        if not isinstance(active, bool):
-            return jsonify(error="'active' must be true or false"), 400
-        grid.set_emergency(active)
-        return jsonify(ok=True, emergency=grid.emergency)
-
     @app.get("/video")
     def video():
         def stream():
@@ -314,26 +400,99 @@ def create_app(drone: Drone, grid: Grid) -> Flask:
 
         return Response(stream(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
+    @app.route("/api/drone/snapshot", methods=["POST", "OPTIONS"])
+    def snapshot():
+        if request.method == "OPTIONS":
+            return "", 204
+        jpg = drone.jpeg()
+        if not jpg:
+            return jsonify(error="no camera frame available"), 503
+        CAPTURE_DIR.mkdir(exist_ok=True)
+        name = time.strftime("%Y%m%d-%H%M%S") + ("-sim" if drone.mock else "") + ".jpg"
+        (CAPTURE_DIR / name).write_bytes(jpg)
+        return jsonify(snapshot_info(name))
+
+    @app.get("/api/drone/snapshots")
+    def snapshots():
+        if not CAPTURE_DIR.exists():
+            return jsonify([])
+        files = sorted(CAPTURE_DIR.glob("*.jpg"), key=lambda p: p.stat().st_mtime, reverse=True)
+        return jsonify([snapshot_info(p.name) for p in files[:12]])
+
+    @app.get("/captures/<path:name>")
+    def capture_file(name):
+        return send_from_directory(CAPTURE_DIR, name)
+
+    # live grid
+    @app.get("/api/grid")
+    def grid_state():
+        return jsonify(grid.state())
+
+    @app.route("/api/grid/telemetry", methods=["POST", "OPTIONS"])
+    def grid_telemetry():
+        """Body: {"machine": "baseline"|"optimized", "watts": 38.2,
+        "progress": 0.0-1.0, "done": false, "measure": "chip"|"wall"}"""
+        if request.method == "OPTIONS":
+            return "", 204
+        b = body()
+        try:
+            grid.record(b.get("machine"), b.get("watts"), b.get("progress"), b.get("done"), b.get("measure"))
+        except (TypeError, ValueError) as exc:
+            return jsonify(error=str(exc)), 400
+        return jsonify(ok=True, emergency=grid.emergency)
+
+    @app.route("/api/grid/emergency", methods=["POST", "OPTIONS"])
+    def grid_emergency():
+        """Body: {"active": true|false, "source": "web"|"esp32"|...}"""
+        if request.method == "OPTIONS":
+            return "", 204
+        b = body()
+        active = b.get("active")
+        if not isinstance(active, bool):
+            return jsonify(error="'active' must be true or false"), 400
+        source = str(b.get("source") or "api")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,24}", source):
+            return jsonify(error="'source' must be a short name like 'web' or 'esp32'"), 400
+        grid.set_emergency(active, source)
+        return jsonify(ok=True, emergency=grid.emergency)
+
+    # ERCOT
+    @app.get("/api/ercot")
+    def ercot_data():
+        data, error = feed.get()
+        if data is None:
+            return jsonify(error=error or "ERCOT data not loaded yet"), 503
+        return jsonify({**data, "live": True, "refresh_error": error})
+
     return app
 
 
+def snapshot_info(name: str) -> dict:
+    p = CAPTURE_DIR / name
+    return {"url": f"/captures/{name}", "time": round(p.stat().st_mtime, 2), "simulated": "-sim" in name}
+
+
 def main():
-    parser = argparse.ArgumentParser(description="SiteStar live bridge (drone + Live Grid)")
+    parser = argparse.ArgumentParser(description="SiteStar live bridge (drone, Live Grid, ERCOT)")
     parser.add_argument("--mock", action="store_true",
-                        help="simulated drone and grid feeds, no hardware needed")
+                        help="simulated drone and workload machines, no hardware needed")
+    parser.add_argument("--mock-grid", action="store_true",
+                        help="simulate only the two workload machines (real drone, fake watts)")
     parser.add_argument("--tello-ip", default=TELLO_DEFAULT_IP,
                         help="drone IP when it has joined a router via tello_wifi.py")
+    parser.add_argument("--no-ercot", action="store_true", help="don't fetch live ERCOT data")
     parser.add_argument("--host", default="127.0.0.1",
-                        help="use 0.0.0.0 to let other devices on the network view the feed")
+                        help="use 0.0.0.0 to let other devices on the network view the site")
     parser.add_argument("--port", type=int, default=8000)  # 5000 clashes with macOS AirPlay
     args = parser.parse_args()
 
     drone = Drone(mock=args.mock, tello_ip=args.tello_ip)
-    grid = Grid(mock=args.mock)
+    grid = Grid(mock=args.mock or args.mock_grid)
+    feed = ErcotFeed(enabled=not args.no_ercot)
     atexit.register(drone.shutdown)
-    mode = "mock" if args.mock else f"Tello at {args.tello_ip}"
+    mode = "mock" if args.mock else f"Tello at {args.tello_ip}" + (", simulated machines" if args.mock_grid else "")
     print(f"SiteStar bridge on http://{args.host}:{args.port}  ({mode})")
-    create_app(drone, grid).run(host=args.host, port=args.port, threaded=True)
+    create_app(drone, grid, feed).run(host=args.host, port=args.port, threaded=True)
 
 
 if __name__ == "__main__":
