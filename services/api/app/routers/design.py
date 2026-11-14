@@ -170,8 +170,11 @@ def _claude(q: GenerateIn, site_w: float, site_d: float) -> Layout:
                  f"\nRevise it to satisfy this request, keeping everything else where it is: {q.instruction}")
     elif q.instruction:
         user += f"\nExtra request: {q.instruction}"
-    client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
-    msg = client.messages.create(model=os.getenv("ANTHROPIC_DESIGN_MODEL", os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5-5")),
+    if config.ANTHROPIC_API_KEY:
+        client, model = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY), os.getenv("ANTHROPIC_DESIGN_MODEL", os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5-5"))
+    else:  # Amazon Bedrock (uses the AWS credential chain)
+        client, model = anthropic.AnthropicBedrock(aws_region=config.AWS_REGION), config.BEDROCK_MODEL_ID
+    msg = client.messages.create(model=model,
                                  max_tokens=6000, system=SYSTEM, messages=[{"role": "user", "content": user}])
     text = "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
     m = re.search(r"\{.*\}", text, flags=re.S)
@@ -204,10 +207,10 @@ def generate(q: GenerateIn) -> dict[str, Any]:
     site_d = q.current.site_d if q.current else side
     source, error = "rule-based", None
     layout = None
-    if config.ANTHROPIC_API_KEY:
+    if config.ANTHROPIC_API_KEY or config.BEDROCK_MODEL_ID:
         try:
             layout = _claude(q, site_w, site_d)
-            source = "Claude (Anthropic API)"
+            source = "Claude (Anthropic API)" if config.ANTHROPIC_API_KEY else "Claude (Amazon Bedrock)"
         except Exception as e:  # fall back, and say so
             error = f"{type(e).__name__}: {str(e)[:160]}"
     if layout is None:

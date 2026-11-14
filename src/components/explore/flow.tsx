@@ -123,7 +123,7 @@ export function Flow() {
   function accept(s: ExploreSite | null) {
     const pick = s ?? sites.find((x) => x.id === baseRun?.optimized?.site_id) ?? null;
     if (!pick) return;
-    setAccepted({ id: pick.id, name: pick.name, lat: pick.lat, lng: pick.lng, acres: pick.lotAcres ?? 10, aerialId: pick.parcelId ?? `pt:${pick.lat.toFixed(6)},${pick.lng.toFixed(6)}` });
+    setAccepted({ id: pick.id, name: pick.name, lat: pick.lat, lng: pick.lng, acres: pick.lotAcres ?? 10, aerialId: pick.parcelId ?? `pt:${pick.lat.toFixed(6)},${pick.lng.toFixed(6)}`, screen: pick.screen });
     setStep(3);
   }
   const planFor = (id: string | undefined) => {
@@ -135,8 +135,9 @@ export function Flow() {
     if (!run) return;
     setAsking(true); setAnswer(null);
     try {
-      const r = await post<{ answer: string }>('/agent/explain', { run_id: run.run_id, question: question || null });
-      setAnswer(r.answer);
+      const r = await post<{ answer: string; model: string; trace: { tool: string; args?: unknown }[] }>('/agent/explain', { run_id: run.run_id, question: question || null });
+      const used = r.trace.map((t) => (t.tool === 'run_what_if' ? `re-ran the optimizer (${JSON.stringify((t.args as { changes_json?: string })?.changes_json ?? t.args)})` : t.tool)).join(' → ');
+      setAnswer(`${r.answer}\n\n— ${r.model === 'deterministic' ? 'Built from the optimizer outputs (no model).' : `LangChain agent (${r.model}).`} Tools used: ${used || 'none'}`);
     } catch { setAnswer('The explainer is not reachable.'); } finally { setAsking(false); }
   }
 

@@ -20,7 +20,10 @@ SYSTEM = (
     "You are PlotStar's explainer for data-center siting. The optimizer has already decided; your job is to explain "
     "the decision in plain language for a non-expert in under 180 words. Use ONLY numbers returned by your tools, "
     "quote them with their labels (Sourced / Estimated / Simulated), and say what is a scenario assumption. "
-    "Never invent prices, capacities or savings. If a question needs a number you do not have, say so."
+    "Never invent prices, capacities or savings. If a question needs a number you do not have, say so. "
+    "For any what-if question (prices, carbon price, flexible share, MW, utility firm capacity at a site), call "
+    "run_what_if so the real optimizer recalculates; never estimate the effect yourself. firm_capacity is a map of "
+    "site_id to the share of requested power the utility can supply, e.g. {\"costar:123\": 0.7}."
 )
 
 
@@ -61,7 +64,24 @@ def tool_grid_day() -> dict[str, Any]:
             "carbon_min": min(cb), "carbon_max": max(cb)}
 
 
-TOOLS = {"get_run": tool_get_run, "site_checks": tool_site_checks, "grid_day": tool_grid_day}
+def tool_run_what_if(run_id: str, changes: dict[str, Any]) -> dict[str, Any]:
+    """Re-run the real optimizer from an existing run with changed inputs. Returns the new run (slim)."""
+    from .routers.optimize import ScenarioIn, scenario
+
+    allowed = {"price_multiplier", "carbon_price_per_t", "flexible_share", "mw_it", "delay_months", "firm_capacity"}
+    clean = {k: v for k, v in (changes or {}).items() if k in allowed}
+    if not clean:
+        return {"error": f"no valid change; allowed keys: {sorted(allowed)}"}
+    try:
+        res = scenario(ScenarioIn(run_id=run_id, changes=clean))
+    except Exception as e:  # validation or unknown run
+        return {"error": f"{type(e).__name__}: {str(e)[:200]}"}
+    out = tool_get_run(res["run_id"])
+    out["new_run_id"], out["changes_applied"] = res["run_id"], clean
+    return out
+
+
+TOOLS = {"get_run": tool_get_run, "site_checks": tool_site_checks, "grid_day": tool_grid_day, "run_what_if": tool_run_what_if}
 
 
 # ----------------------------------------------------------------------------- deterministic explainer
@@ -146,11 +166,25 @@ def explain(run_id: str, question: str | None = None) -> dict[str, Any]:
             """The cached ERCOT day: price and carbon extremes with their labels."""
             return json.dumps(tool_grid_day())
 
-        agent = create_deep_agent(tools=[get_run, site_checks, grid_day], system_prompt=SYSTEM, model=llm)
+        @tool
+        def run_what_if(rid: str, changes_json: str) -> str:
+            """Re-run the optimizer from run rid with changed inputs. changes_json is a JSON object with any of:
+            price_multiplier, carbon_price_per_t, flexible_share (0-1), mw_it, firm_capacity ({site_id: share})."""
+            try:
+                changes = json.loads(changes_json)
+            except ValueError:
+                return json.dumps({"error": "changes_json must be a JSON object"})
+            return json.dumps(tool_run_what_if(rid, changes))
+
+        agent = create_deep_agent(tools=[get_run, site_checks, grid_day, run_what_if], system_prompt=SYSTEM, model=llm)
         q = question or "Explain this decision to a non-expert."
         out = agent.invoke({"messages": [{"role": "user", "content": f"run_id={run_id}. {q}"}]})
         msgs = out.get("messages", [])
-        trace = [{"tool": getattr(m, "name", None), "ok": True} for m in msgs if m.__class__.__name__ == "ToolMessage"]
+        trace = []
+        for m in msgs:
+            for tc in (getattr(m, "tool_calls", None) or []):
+                if tc.get("name") in ("get_run", "site_checks", "grid_day", "run_what_if"):
+                    trace.append({"tool": tc.get("name"), "args": tc.get("args"), "ok": True})
         answer = next((m.content for m in reversed(msgs) if m.__class__.__name__ == "AIMessage" and m.content), "")
         if isinstance(answer, list):
             answer = " ".join(x.get("text", "") for x in answer if isinstance(x, dict))

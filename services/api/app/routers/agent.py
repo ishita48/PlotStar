@@ -21,6 +21,14 @@ def explain(q: ExplainIn) -> dict[str, Any]:
     return agent.explain(q.run_id, q.question)
 
 
+@router.get("/eval/run")
+def eval_run(agent_samples: int = 0) -> dict[str, Any]:
+    """Optimizer-vs-baseline checks over a scenario grid; optional explanation groundedness (calls the explainer)."""
+    from .. import evals
+
+    return evals.run(max(0, min(agent_samples, 5)))
+
+
 @router.get("/agent/status")
 def status() -> dict[str, Any]:
     llm, kind = agent._llm()

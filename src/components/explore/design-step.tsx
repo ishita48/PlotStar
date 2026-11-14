@@ -7,6 +7,8 @@ import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { RotateCw, Sparkles, Trash2 } from 'lucide-react';
 import { PUBLIC_DATA_API, vexcelOrthoUrl } from '@/lib/plotstar-api';
+import type { SiteScreen } from '@/lib/types';
+import { CommunitySheet } from './community-sheet';
 
 export type CType = 'data_hall' | 'cooling' | 'generator_yard' | 'substation' | 'battery' | 'water_tank' | 'solar' | 'office' | 'parking';
 export interface Comp { id: string; type: CType; label: string; x: number; z: number; w: number; d: number; h: number; rot: 0 | 90 }
@@ -15,7 +17,7 @@ interface Analysis {
   metrics: { it_mw_supported: number; facility_mw: number; gensets: number; backup_mw: number; battery_mwh: number; battery_minutes_at_full_load: number; solar_mwp: number; water_storage_kgal: number; site_coverage: number; hall_gfa_m2: number };
   checks: { check: string; ok: boolean; detail: string }[];
 }
-export interface DesignSite { id: string; name: string; lat: number; lng: number; acres: number; aerialId: string }
+export interface DesignSite { id: string; name: string; lat: number; lng: number; acres: number; aerialId: string; screen?: SiteScreen }
 type Mode = 'normal' | 'event' | 'outage';
 
 const TYPES: Record<CType, { name: string; color: string; w: number; d: number; h: number }> = {
@@ -139,6 +141,7 @@ export function DesignStep({ site, mw, cooling, depth, onNext }: { site: DesignS
   const [mode, setMode] = useState<Mode>('normal');
   const [ask, setAsk] = useState('');
   const [addType, setAddType] = useState<CType>('solar');
+  const [sheet, setSheet] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const generate = useCallback(async (instruction?: string, current?: Layout | null) => {
@@ -180,7 +183,10 @@ export function DesignStep({ site, mw, cooling, depth, onNext }: { site: DesignS
           <h1>Design: {site.name}</h1>
           <p className="fl-lede">{busy ? 'Claude is laying out the facility…' : `${mw} MW, ${cooling} cooled, on ${site.acres.toFixed(1)} acres. Laid out by ${source || '…'}; every number below is calculated from the model. Click a part to edit it.`}</p>
         </div>
-        <button className="fl-next" onClick={onNext}>Test what could change <span>→</span></button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="ws-btn" style={{ height: 46 }} onClick={() => setSheet(true)}>Community sheet</button>
+          <button className="fl-next" onClick={onNext}>Test what could change <span>→</span></button>
+        </div>
       </div>
       {note && <div className="fl-error" style={{ borderRadius: 6 }}>{note}</div>}
       <div className="ds-body">
@@ -275,6 +281,7 @@ export function DesignStep({ site, mw, cooling, depth, onNext }: { site: DesignS
           <p className="ws-note">A concept layout for planning, not an engineering design. The parcel is drawn as a square of the recorded acreage on the real Vexcel aerial. Sizing rules are team assumptions.</p>
         </aside>
       </div>
+      {sheet && m && <CommunitySheet site={site} mw={mw} cooling={cooling} depth={depth} gensets={m.gensets} batteryMin={m.battery_minutes_at_full_load} solarMwp={m.solar_mwp} onClose={() => setSheet(false)} />}
     </main>
   );
 }
