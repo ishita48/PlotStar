@@ -87,3 +87,5 @@
 .dt-notes li { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; font-size: 12px; padding: 6px 8px; border: 1px solid var(--st-line-2); border-radius: 7px; }
 .dt-notes small { color: var(--st-muted); font-family: var(--st-mono); font-size: 10.5px; }
 @media (max-width: 980px) { .dt-charts { grid-template-columns: 1fr; } }
+.dt-inline { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--st-ink-2); }
+.dt-num { width: 64px !important; min-width: 0 !important; flex: none !important; height: 34px !important; text-align: right; }

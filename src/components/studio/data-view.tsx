@@ -22,13 +22,15 @@ const COOL: Record<string, string> = { liquid: SLOT[0], air: SLOT[1], hybrid: SL
 
 interface CollInfo { documents: number; indexes: string[]; validator: boolean; timeseries: Record<string, unknown> | null; search_indexes: { name: string; type: string; status: string; queryable: boolean }[] }
 interface Status { available: boolean; reason?: string; database?: string; collections?: Record<string, CollInfo>; embeddings?: { model: string; dims: number; enabled: boolean } }
-interface Hit { parcel_id: string; name: string; address?: string; market: string; lot_acres?: number; land_cost?: number; screen_status: string; property_type?: string; score: number; loc?: { coordinates: [number, number] }; distance_m?: number }
+// Atlas returns ids + public-source facts only; CoStar names/addresses are hydrated from the LOCAL kit by id.
+interface Hit { parcel_id: string; market: string; screen_status: string; home_distance_m?: number | null; substation_km?: number | null; score: number; loc?: { coordinates: [number, number] }; distance_m?: number }
+type Names = Record<string, { name: string; address: string }>;
 interface SearchOut { hits: Hit[]; facets: Record<string, { _id: string; count: number }[]>; total: number }
 interface SimilarOut { hits: Hit[]; model: string | null; note?: string | null }
 interface Analytics {
-  sites: { by_market: { _id: string; sites: number; acres: number; passing: number }[]; by_status: { _id: string; n: number }[];
-    lot_buckets: { _id: number | string; n: number }[]; land_per_acre: { _id: string; usd_per_acre: number; priced: number }[];
-    gate_fails: { _id: string; fails: number }[]; largest: { name: string; address?: string; lot_acres: number; market: string }[] };
+  sites: { by_market: { _id: string; sites: number; passing: number; avg_substation_km: number | null }[]; by_status: { _id: string; n: number }[];
+    substation_buckets: { _id: number | string; n: number }[]; home_buckets: { _id: number | string; n: number }[];
+    gate_fails: { _id: string; fails: number }[] };
   projects: { by_cooling: { _id: string; n: number; mw: number }[]; totals: { projects: number; mw: number; capex: number; decided: number }[]; deciders: { _id: string; n: number }[] };
   grid_days: { _id: string; days: number; avg_price: number; max_peak: number; first: string; last: string }[];
   telemetry_24h: { _id: string; points: number; avg_watts: number | null; max_watts: number | null }[];
@@ -58,17 +60,37 @@ export function DataView() {
   const [trig, setTrig] = useState<TrigStatus | null>(null);
   const [notes, setNotes] = useState<Note[]>([]);
   const [alerts, setAlerts] = useState<Note[]>([]);
+  const [names, setNames] = useState<Names>({});
+  const [maxKm, setMaxKm] = useState('5');
+  const [minHome, setMinHome] = useState('300');
+  // hydrate CoStar names/addresses from the local data service (they are deliberately not stored in Atlas)
+  const hydrate = useCallback((hits: Hit[]) => {
+    hits.filter((h) => !names[h.parcel_id]).forEach((h) => {
+      api(`/sites/${encodeURIComponent(h.parcel_id)}`).then((d) => {
+        const p = d?.parcel ?? {};
+        setNames((n) => ({ ...n, [h.parcel_id]: { name: p.name || p.address || h.parcel_id, address: [p.address, p.city].filter(Boolean).join(', ') } }));
+      }).catch(() => setNames((n) => ({ ...n, [h.parcel_id]: { name: h.parcel_id, address: '' } })));
+    });
+  }, [names]);
+  const nm = (h: Hit) => names[h.parcel_id]?.name ?? h.parcel_id;
+  const addr = (h: Hit) => names[h.parcel_id]?.address ?? '';
+  const facts = (h: Hit) => `${h.home_distance_m != null ? `${num(h.home_distance_m)} m to homes` : 'homes: unknown'} · ${h.substation_km != null ? `${h.substation_km} km to power` : 'power: unknown'}`;
   const es = useRef<EventSource | null>(null);
 
   const fail = (k: string) => (e: Error) => setErr((x) => ({ ...x, [k]: e.message }));
-  const doSearch = useCallback((text: string) => { api(`/atlas/search?q=${encodeURIComponent(text)}&limit=6`).then(setSearch).catch(fail('search')); }, []);
+  const doSearch = useCallback((km: string, home: string) => {
+    const qs = new URLSearchParams({ limit: '6' });
+    if (km) qs.set('max_substation_km', km);
+    if (home) qs.set('min_home_m', home);
+    api(`/atlas/search?${qs}`).then((d) => { setSearch(d); hydrate(d.hits); }).catch(fail('search'));
+  }, [hydrate]);
   // passing_only: show sites a developer could actually use, not just the closest wording
-  const doSim = useCallback((text: string) => { setSim(null); api(`/atlas/similar?q=${encodeURIComponent(text)}&limit=5&passing_only=true`).then(setSim).catch(fail('similar')); }, []);
+  const doSim = useCallback((text: string) => { setSim(null); api(`/atlas/similar?q=${encodeURIComponent(text)}&limit=5&passing_only=true`).then((d) => { setSim(d); hydrate(d.hits); }).catch(fail('similar')); }, [hydrate]);
   const doNear = useCallback((h: Hit) => {
     if (!h.loc) return;
     const [lon, lat] = h.loc.coordinates;
-    api(`/atlas/near?lat=${lat}&lon=${lon}&km=5&limit=6`).then((d) => setNear({ around: h, sites: d.sites.filter((s: Hit) => s.parcel_id !== h.parcel_id) })).catch(fail('near'));
-  }, []);
+    api(`/atlas/near?lat=${lat}&lon=${lon}&km=5&limit=6`).then((d) => { const s = d.sites.filter((x: Hit) => x.parcel_id !== h.parcel_id); setNear({ around: h, sites: s }); hydrate(s); }).catch(fail('near'));
+  }, [hydrate]);
 
   useEffect(() => {
     api('/atlas/status').then(setStatus).catch(() => setStatus({ available: false, reason: 'data service unreachable' }));
@@ -80,7 +102,7 @@ export function DataView() {
     const tmr = setInterval(pollTrig, 8000);
     const stopTimer = () => clearInterval(tmr);
     window.addEventListener('beforeunload', stopTimer);
-    doSearch('greens'); doSim(SAMPLE_SIM[0]);
+    doSearch('5', '300'); doSim(SAMPLE_SIM[0]);
     const s = new EventSource(`${PUBLIC_DATA_API}/atlas/stream`);
     es.current = s;
     const on = (e: MessageEvent) => { try { const ev = JSON.parse(e.data) as Ev; if (ev.type !== 'heartbeat') setFeed((f) => [ev, ...f].slice(0, 12)); } catch { /* ignore */ } };
@@ -162,23 +184,24 @@ export function DataView() {
 
         {/* Atlas Search */}
         <section className="st-card dt-search">
-          <h3><Search size={15} /> Atlas Search <span className="dt-muted">fuzzy text over name and address, with facets</span></h3>
-          <form onSubmit={(e) => { e.preventDefault(); doSearch(q); }}>
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search parcels…" />
+          <h3><Search size={15} /> Atlas Search <span className="dt-muted">range filters + facets over public-source facts; CoStar names hydrate locally by id</span></h3>
+          <form onSubmit={(e) => { e.preventDefault(); doSearch(maxKm, minHome); }}>
+            <label className="dt-inline">within <input className="dt-num" inputMode="decimal" value={maxKm} onChange={(e) => setMaxKm(e.target.value)} /> km of a ≥138 kV substation</label>
+            <label className="dt-inline">and at least <input className="dt-num" inputMode="numeric" value={minHome} onChange={(e) => setMinHome(e.target.value)} /> m from homes</label>
             <button className="st-btn primary" type="submit">Search</button>
-            {SAMPLE_Q.map((s) => <button key={s} type="button" className="dt-chip" onClick={() => { setQ(s); doSearch(s); }}>{s}</button>)}
+            {[['2', '500'], ['5', '300'], ['10', '0']].map(([k, h]) => <button key={k + h} type="button" className="dt-chip" onClick={() => { setMaxKm(k); setMinHome(h); doSearch(k, h); }}>≤{k} km · ≥{h} m</button>)}
           </form>
           {err.search && <p className="dt-err">{err.search}</p>}
           {search && (
             <div className="dt-two">
               <ul className="dt-hits">{search.hits.map((h) => (
                 <li key={h.parcel_id} onClick={() => doNear(h)} title="Click: what else is near this parcel">
-                  <b>{h.name}</b><span>{h.address}</span>
-                  <small>{h.property_type} · {num(h.lot_acres, 1)} ac · {h.land_cost ? money(h.land_cost) : 'no price'} · <em className={`dt-st dt-st-${h.screen_status.replace(/\s/g, '')}`}>{h.screen_status}</em> · score {h.score.toFixed(2)}</small>
+                  <b>{nm(h)}</b><span>{addr(h) || <code>{h.parcel_id}</code>}</span>
+                  <small>{facts(h)} · <em className={`dt-st dt-st-${h.screen_status.replace(/\s/g, '')}`}>{h.screen_status}</em> · score {h.score.toFixed(2)}</small>
                 </li>))}</ul>
               <div className="dt-facets">{Object.entries(search.facets).map(([k, v]) => (
                 <div key={k}><small>{k.replace('_', ' ')}</small>{v.map((b) => <span key={b._id} className="dt-chip static">{b._id} <b>{b.count}</b></span>)}</div>))}
-                <p className="dt-muted">{search.total} matching parcels · index <code>sites_search</code></p></div>
+                <p className="dt-muted">{search.total} matching parcels · index <code>sites_search</code> · Atlas stores ids, locations and FEMA/WRI/OSM facts; the CoStar record stays on this machine</p></div>
             </div>
           )}
         </section>
@@ -196,8 +219,8 @@ export function DataView() {
             {sim && (
               <>
                 <ul className="dt-hits">{sim.hits.map((h) => (
-                  <li key={h.parcel_id} onClick={() => doNear(h)}><b>{h.name}</b><span>{h.address}</span>
-                    <small>{num(h.lot_acres, 1)} ac · <em className={`dt-st dt-st-${h.screen_status.replace(/\s/g, '')}`}>{h.screen_status}</em> · similarity {h.score.toFixed(3)}</small></li>))}</ul>
+                  <li key={h.parcel_id} onClick={() => doNear(h)}><b>{nm(h)}</b><span>{addr(h) || <code>{h.parcel_id}</code>}</span>
+                    <small>{facts(h)} · <em className={`dt-st dt-st-${h.screen_status.replace(/\s/g, '')}`}>{h.screen_status}</em> · similarity {h.score.toFixed(3)}</small></li>))}</ul>
                 <p className="dt-muted">$vectorSearch on <code>sites_vec</code> · embeddings: <code>{sim.model ?? 'none'}</code>{sim.note ? ` · ${sim.note}` : ''}</p>
               </>
             )}
@@ -206,9 +229,9 @@ export function DataView() {
             <h3><MapPin size={15} /> Nearby <span className="dt-muted">$geoNear on the 2dsphere index</span></h3>
             {!near ? <p className="dt-muted">Click any parcel on this page to list what is within 5 km of it, with real distances.</p> : (
               <>
-                <p className="dt-around">Around <b>{near.around.name}</b>{near.around.address ? `, ${near.around.address}` : ''}</p>
+                <p className="dt-around">Around <b>{nm(near.around)}</b>{addr(near.around) ? `, ${addr(near.around)}` : ''}</p>
                 <ul className="dt-hits">{near.sites.map((h) => (
-                  <li key={h.parcel_id}><b>{h.name}</b><span>{h.address}</span><small>{num(h.distance_m)} m · {num(h.lot_acres, 1)} ac · <em className={`dt-st dt-st-${h.screen_status.replace(/\s/g, '')}`}>{h.screen_status}</em></small></li>))}</ul>
+                  <li key={h.parcel_id}><b>{nm(h)}</b><span>{addr(h) || <code>{h.parcel_id}</code>}</span><small>{num(h.distance_m)} m away · {facts(h)} · <em className={`dt-st dt-st-${h.screen_status.replace(/\s/g, '')}`}>{h.screen_status}</em></small></li>))}</ul>
               </>
             )}
           </div>
@@ -219,10 +242,10 @@ export function DataView() {
           <section className="st-card">
             <h3><Boxes size={15} /> Analytics <span className="dt-muted">computed by Atlas $facet, $bucket, $group pipelines, not in the browser</span></h3>
             <div className="dt-an">
-              <div><small>Sites by market</small>{an.sites.by_market.map((m) => <p key={m._id}><b>{m._id}</b> {m.sites} parcels · {num(m.acres)} acres · <span className="dt-ok">{m.passing} pass</span></p>)}</div>
+              <div><small>Sites by market</small>{an.sites.by_market.map((m) => <p key={m._id}><b>{m._id}</b> {m.sites} parcels · <span className="dt-ok">{m.passing} pass</span> · avg {m.avg_substation_km != null ? `${m.avg_substation_km.toFixed(1)} km` : '—'} to power</p>)}</div>
               <div><small>Why sites fail</small>{an.sites.gate_fails.map((g) => <Bar key={g._id} label={g._id} value={g.fails} max={Math.max(...an.sites.gate_fails.map((x) => x.fails))} />)}</div>
-              <div><small>Lot size (acres)</small>{an.sites.lot_buckets.map((b) => <Bar key={String(b._id)} label={b._id === 'unknown' ? 'unknown' : `${b._id}+`} value={b.n} max={Math.max(...an.sites.lot_buckets.map((x) => x.n))} />)}</div>
-              <div><small>Land, $ per acre (priced parcels)</small>{an.sites.land_per_acre.map((m) => <p key={m._id}><b>{m._id}</b> {money(m.usd_per_acre)} · {m.priced} priced</p>)}</div>
+              <div><small>Distance to ≥138 kV power (km)</small>{an.sites.substation_buckets.map((b) => <Bar key={String(b._id)} label={b._id === 'unknown' ? 'unknown' : `${b._id}+`} value={b.n} max={Math.max(...an.sites.substation_buckets.map((x) => x.n))} />)}</div>
+              <div><small>Distance to nearest home (m)</small>{an.sites.home_buckets.map((b) => <Bar key={String(b._id)} label={b._id === 'unknown' ? 'unknown' : `${b._id}+`} value={b.n} max={Math.max(...an.sites.home_buckets.map((x) => x.n))} />)}</div>
               <div><small>Projects</small>{tot && <p><b>{tot.projects}</b> projects · {num(tot.mw)} MW · {money(tot.capex)} capex · {tot.decided} decided</p>}{an.projects.by_cooling.map((c) => <Bar key={c._id} label={`${c._id} · ${num(c.mw)} MW`} value={c.n} max={Math.max(...an.projects.by_cooling.map((x) => x.n))} />)}</div>
               <div><small>ERCOT day-ahead (grid_days)</small>{an.grid_days.map((g) => <p key={g._id}><b>{g._id}</b> {g.days} days {g.first}–{g.last} · avg ${g.avg_price.toFixed(1)}/MWh · peak ${g.max_peak.toFixed(0)}</p>)}</div>
               <div><small>Hardware telemetry, last 24 h (time-series)</small>{an.telemetry_24h.length === 0 ? <p className="dt-muted">no points yet</p> : an.telemetry_24h.map((t) => <p key={t._id}><b>{t._id}</b> {t.points} points · avg {num(t.avg_watts)} W · max {num(t.max_watts)} W</p>)}</div>

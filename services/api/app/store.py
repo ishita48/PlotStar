@@ -74,9 +74,12 @@ def save(project_id: str, doc: dict[str, Any]) -> dict[str, Any] | None:
     if col is None:
         return None
     now = _now()
-    site = doc.get("site") or {}
+    site = dict(doc.get("site") or {})
     if site.get("lat") is not None and site.get("lon") is not None:
         site["loc"] = {"type": "Point", "coordinates": [site["lon"], site["lat"]]}
+    if str(site.get("id", "")).startswith("costar:"):  # data governance: CoStar descriptive fields stay in the local kit
+        for k in ("name", "address", "custom"):
+            site.pop(k, None)
     event = {"at": now, "status": doc.get("status"), "preferred": doc.get("preferred")}
     col.update_one({"_id": project_id},
                    {"$set": {**doc, "site": site, "updated_at": now}, "$setOnInsert": {"created_at": now},
@@ -105,7 +108,7 @@ def listing(limit: int = 30) -> list[dict[str, Any]] | None:
     col = _collection()
     if col is None:
         return None
-    keep = {"name": 1, "market": 1, "mw_it": 1, "status": 1, "preferred": 1, "site.name": 1, "site.address": 1,
+    keep = {"name": 1, "market": 1, "mw_it": 1, "status": 1, "preferred": 1, "site.id": 1, "site.name": 1, "site.address": 1,
             "decided_by": 1, "updated_at": 1, "summary": 1}
     out = []
     for d in col.find({}, keep).sort("updated_at", -1).limit(limit):

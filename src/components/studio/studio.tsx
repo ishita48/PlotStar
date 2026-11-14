@@ -52,7 +52,7 @@ const ADD: Record<AddedType, { prefix: string; w: number; d: number; label: stri
   yard_wall: { prefix: 'WALL', w: 1, d: 40, label: 'Noise wall' }, yard_trees: { prefix: 'TREES', w: 48, d: 12, label: 'Tree buffer' },
   yard_guard: { prefix: 'GATE', w: 6, d: 5, label: 'Gatehouse' },
 };
-interface SavedProject { id: string; name: string; mw_it: number; status: string; decided_by?: string; updated_at?: string; site?: { name?: string; address?: string } }
+interface SavedProject { id: string; name: string; mw_it: number; status: string; decided_by?: string; updated_at?: string; site?: { id?: string; name?: string; address?: string } }
 type SiteExtra = { landCost?: number; landCostBasis?: string; labels?: { landCost?: string } };
 // copilot patches use the engine's field names; map them back to Brief
 const API_TO_BRIEF = { rack_kw: 'rackKw', mw_it: 'mw', cooling: 'cooling', redundancy: 'redundancy', halls: 'halls', storeys: 'storeys', expansion_pct: 'expansion', setback_m: 'setback', rent_kw_month: 'rent' } as const;
@@ -276,8 +276,19 @@ export function Studio() {
   }, [aerialId, siteLat, siteLng]);
 
   // MongoDB Atlas: saved projects. When it is not reachable the app keeps working and nothing is saved remotely.
+  // Atlas stores the CoStar site id only; its name/address are hydrated from the local kit for display
+  const [siteNames, setSiteNames] = useState<Record<string, string>>({});
   const refreshSaved = useCallback(() => {
-    api<{ projects: SavedProject[] }>('/studio/projects').then((d) => setSaved(d.projects)).catch(() => setSaved([]));
+    api<{ projects: SavedProject[] }>('/studio/projects').then((d) => {
+      setSaved(d.projects);
+      d.projects.forEach((p) => {
+        const id = p.site?.id;
+        if (id && id.startsWith('costar:')) fetch(siteDetailUrl(id)).then((r) => (r.ok ? r.json() : null)).then((x) => {
+          const pr = x?.parcel ?? {};
+          if (pr.name || pr.address) setSiteNames((n) => ({ ...n, [id]: [pr.address || pr.name, pr.city].filter(Boolean).join(', ') }));
+        }).catch(() => {});
+      });
+    }).catch(() => setSaved([]));
   }, []);
   useEffect(() => {
     api<{ available: boolean; reason: string | null }>('/studio/store').then((s) => { setStore(s); if (s.available) refreshSaved(); }).catch(() => setStore(null));
@@ -434,7 +445,7 @@ export function Studio() {
                     <div className="st-saved">
                       <h4>Saved projects · MongoDB Atlas</h4>
                       <ul>{saved.map((p) => (
-                        <li key={p.id}><div><b>{p.name}</b><span>{p.mw_it} MW · {p.site?.address ?? p.site?.name ?? 'no site'} · {p.status}{p.decided_by ? ` by ${p.decided_by}` : ''}</span></div>
+                        <li key={p.id}><div><b>{p.name}</b><span>{p.mw_it} MW · {(p.site?.id && siteNames[p.site.id]) ?? p.site?.address ?? p.site?.name ?? (p.site?.id ? 'CoStar site' : 'no site')} · {p.status}{p.decided_by ? ` by ${p.decided_by}` : ''}</span></div>
                           <button className="st-btn" onClick={() => void openProject(p.id)}>Open</button></li>
                       ))}</ul>
                     </div>

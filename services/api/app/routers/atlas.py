@@ -43,11 +43,18 @@ def seed(sites: bool = True, grid: bool = True, evidence: bool = True, projects:
     return out
 
 
+@router.post("/scrub")
+def scrub() -> dict[str, Any]:
+    """Data-governance migration: strip CoStar descriptive fields from Atlas and re-embed from public facts."""
+    return _need(atlas.scrub_costar())
+
+
 @router.get("/search")
 def search(q: str = Query("", max_length=200), market: str | None = None, status_: str | None = Query(None, alias="status"),
-           limit: int = Query(10, ge=1, le=50)) -> dict[str, Any]:
+           limit: int = Query(10, ge=1, le=50), max_substation_km: float | None = Query(None, gt=0, le=500),
+           min_home_m: float | None = Query(None, ge=0, le=100000)) -> dict[str, Any]:
     try:
-        return _need(atlas.search_sites(q, market, status_, limit))
+        return _need(atlas.search_sites(q, market, status_, limit, max_substation_km, min_home_m))
     except Exception as e:  # the search index may still be building
         raise HTTPException(503, f"Atlas Search not ready: {type(e).__name__}: {str(e)[:160]}") from e
 

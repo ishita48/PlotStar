@@ -47,13 +47,15 @@ SCHEMAS: dict[str, dict[str, Any]] = {
                        "brief": {"bsonType": "object"}, "priorities": {"bsonType": "object"}, "edits": {"bsonType": "object"},
                        "history": {"bsonType": "array"}, "embedding": {"bsonType": "array"},
                        "updated_at": {"bsonType": "string"}, "created_at": {"bsonType": "string"}}},
-    "sites": {"bsonType": "object", "required": ["parcel_id", "name", "market", "loc", "screen_status", "gates", "provenance"],
-        "properties": {"parcel_id": {"bsonType": "string"}, "name": {"bsonType": "string"}, "market": {"bsonType": "string"},
-                       "loc": POINT, "lot_acres": {"bsonType": ["double", "int", "null"]},
-                       "land_cost": {"bsonType": ["double", "int", "long", "null"]},
-                       "land_label": {"enum": ["Sourced", "Estimated", "Unknown", None]},
+    # Data governance: `sites` holds the CoStar parcel id, its location, and facts derived from PUBLIC sources
+    # (FEMA, WRI Aqueduct, OpenStreetMap) plus an embedding of those facts. CoStar's descriptive fields (name,
+    # address, price, size, type) stay in the local kit and are hydrated by id in the UI; they are never stored here.
+    "sites": {"bsonType": "object", "required": ["parcel_id", "market", "loc", "screen_status", "gates", "provenance"],
+        "properties": {"parcel_id": {"bsonType": "string"}, "market": {"bsonType": "string"}, "loc": POINT,
                        "screen_status": {"enum": ["Pass", "Fail", "Needs review"]},
                        "gates": {"bsonType": "array", "items": GATE}, "provenance": {"bsonType": "string"},
+                       "home_distance_m": {"bsonType": ["double", "int", "null"]},
+                       "substation_km": {"bsonType": ["double", "int", "null"]},
                        "embedding": {"bsonType": "array"}}},
     "decisions": {"bsonType": "object", "required": ["project_id", "event", "at"],
         "properties": {"project_id": {"bsonType": "string"}, "event": {"bsonType": "string"}, "at": {"bsonType": "date"},
@@ -66,10 +68,11 @@ SCHEMAS: dict[str, dict[str, Any]] = {
                        "retrieved_at": {"bsonType": "string"}, "payload_bytes": {"bsonType": ["int", "long"]}}},
 }
 SEARCH_INDEXES = [  # Atlas Search / Vector Search definitions (the free tier allows three)
+    # a field needs type "string" to be matched by text/equals filters and "stringFacet" to be counted as a facet
     ("sites", "sites_search", "search", {"mappings": {"dynamic": False, "fields": {
-        "name": {"type": "string"}, "address": {"type": "string"}, "property_type": {"type": "stringFacet"},
-        "market": {"type": "stringFacet"}, "screen_status": {"type": "stringFacet"},
-        "lot_acres": {"type": "number"}, "land_cost": {"type": "number"}}}}),
+        "market": [{"type": "string"}, {"type": "stringFacet"}], "screen_status": [{"type": "string"}, {"type": "stringFacet"}],
+        "gates": {"type": "document", "fields": {"gate": {"type": "string"}, "status": [{"type": "string"}, {"type": "stringFacet"}]}},
+        "home_distance_m": {"type": "number"}, "substation_km": {"type": "number"}}}}),
     ("sites", "sites_vec", "vectorSearch", {"fields": [
         {"type": "vector", "path": "embedding", "numDimensions": EMBED_DIMS, "similarity": "cosine"},
         {"type": "filter", "path": "market"}, {"type": "filter", "path": "screen_status"}]}),
@@ -174,10 +177,11 @@ def embed_docs(texts: list[str]) -> tuple[list[list[float]] | None, str | None]:
 
 
 def site_text(s: dict[str, Any]) -> str:
-    g = "; ".join(f"{x['gate']} {x['status']}" for x in s.get("gates", []))
-    return (f"{s['name']}, {s.get('address') or ''}, {s['market']}. {s.get('property_type') or ''} "
-            f"{s.get('property_subtype') or ''}. {s.get('lot_acres') or '?'} acres, {s.get('building_sf') or 0} sq ft building, "
-            f"land {s.get('land_cost') or 'unknown'} USD. Screening {s['screen_status']}: {g}.")
+    """Embedding text from public-source facts only (no CoStar descriptive fields)."""
+    g = "; ".join(f"{x['gate']} {x['status']}" + (f" ({x['value']})" if x.get("value") not in (None, "") else "") for x in s.get("gates", []))
+    return (f"Parcel in {s['market']}. Screening {s['screen_status']}: {g}. "
+            f"Nearest home {s.get('home_distance_m') if s.get('home_distance_m') is not None else 'unknown'} m; "
+            f"nearest high-voltage substation {s.get('substation_km') if s.get('substation_km') is not None else 'unknown'} km.")
 
 
 def project_text(p: dict[str, Any]) -> str:
@@ -233,8 +237,18 @@ def setup() -> dict[str, Any] | None:
 
 
 # --------------------------------------------------------------------------------------------------- seeding
+COSTAR_FIELDS = ("name", "address", "lot_acres", "land_cost", "land_label", "land_basis", "property_type", "property_subtype",
+                 "building_sf", "availability", "costar_property_id", "matterport_count", "supportable_mw", "power")
+
+
+def _gate_value(sc: dict[str, Any], gate: str) -> float | None:
+    g = next((x for x in sc.get("gates", []) if x.get("gate") == gate), None)
+    return float(g["value"]) if g and isinstance(g.get("value"), (int, float)) else None
+
+
 def seed_sites() -> dict[str, Any] | None:
-    """Every screened CoStar parcel in both markets -> `sites`, with embeddings. Upserts, so it is safe to re-run."""
+    """Every screened CoStar parcel in both markets -> `sites`: id, location, public-source gates and an embedding of
+    those facts. No CoStar descriptive fields are written (data governance: the kit stays local). Upserts; safe to re-run."""
     db = _db()
     if db is None:
         return None
@@ -245,25 +259,47 @@ def seed_sites() -> dict[str, Any] | None:
         for s in res["sites"]:
             sc = s.get("screen") or {}
             docs.append(dict(
-                parcel_id=s["id"], name=s["name"], address=s.get("area"), market=market,
+                parcel_id=s["id"], market=market,
                 loc={"type": "Point", "coordinates": [float(s["lng"]), float(s["lat"])]},
-                lot_acres=float(s["lotAcres"]) if s.get("lotAcres") else None,
-                land_cost=float(s["landCost"]) if s.get("landCost") else None,
-                land_label=(s.get("labels") or {}).get("landCost") or "Unknown", land_basis=s.get("landCostBasis"),
-                property_type=s.get("propertyType"), property_subtype=s.get("propertySubtype"),
-                building_sf=s.get("buildingSf"), availability=s.get("availability"),
-                costar_property_id=s.get("costarPropertyId"), matterport_count=s.get("matterportCount", 0),
-                supportable_mw=s.get("supportableMw"), screen_status=sc.get("status", "Needs review"),
+                screen_status=sc.get("status", "Needs review"),
                 gates=[{k: g.get(k) for k in ("gate", "status", "value", "label", "source", "retrieved_at")} for g in sc.get("gates", [])],
-                power=sc.get("power") or {}, evidence_gaps=sc.get("evidence_gaps") or [],
-                provenance=s.get("provenance") or "CoStar Data Extract", updated_at=_now()))
+                home_distance_m=_gate_value(sc, "Residential proximity"), substation_km=_gate_value(sc, "Grid proximity"),
+                evidence_gaps=sc.get("evidence_gaps") or [],
+                provenance="CoStar Data Extract parcel (id only); gates from FEMA NFHL, WRI Aqueduct and OpenStreetMap",
+                updated_at=_now()))
     vecs, model = embed_docs([site_text(d) for d in docs])
     for i, d in enumerate(docs):
         if vecs:
             d["embedding"], d["embedding_model"] = vecs[i], model
-        db.sites.update_one({"parcel_id": d["parcel_id"]}, {"$set": d}, upsert=True)
+        db.sites.update_one({"parcel_id": d["parcel_id"]}, {"$set": d, "$unset": {k: "" for k in COSTAR_FIELDS}}, upsert=True)
     return {"sites": len(docs), "embedded": bool(vecs), "embedding_model": model,
             "by_market": {m: sum(1 for d in docs if d["market"] == m) for m in ("Houston", "Los Angeles")}}
+
+
+def scrub_costar() -> dict[str, Any] | None:
+    """Data-governance migration: remove CoStar descriptive fields from Atlas, re-embed from public facts, and point the
+    Atlas Search index at the slim fields. Idempotent."""
+    db = _db()
+    if db is None:
+        return None
+    out: dict[str, Any] = {}
+    setup()  # apply the slim $jsonSchema first, or the unset would fail validation on the old required `name`
+    out["sites_unset"] = db.sites.update_many({}, {"$unset": {k: "" for k in COSTAR_FIELDS}}).modified_count
+    out["projects_unset"] = db.studio_projects.update_many(
+        {"site.id": {"$regex": "^costar:"}}, {"$unset": {"site.name": "", "site.address": "", "site.custom": ""}}).modified_count
+    out["seed"] = seed_sites()
+    out["projects_embedded"] = embed_projects()
+    from pymongo.operations import SearchIndexModel  # noqa: F401  (import check)
+    coll, name, _typ, definition = next(x for x in SEARCH_INDEXES if x[1] == "sites_search")
+    try:
+        db[coll].update_search_index(name, definition)
+        out["search_index"] = "updated"
+    except Exception as e:
+        out["search_index"] = f"FAILED {type(e).__name__}: {str(e)[:120]}"
+    leak = db.sites.count_documents({"$or": [{k: {"$exists": True}} for k in COSTAR_FIELDS]})
+    leak += db.studio_projects.count_documents({"site.id": {"$regex": "^costar:"}, "$or": [{"site.name": {"$exists": True}}, {"site.address": {"$exists": True}}]})
+    out["remaining_costar_fields"] = leak
+    return out
 
 
 def embed_projects() -> int | None:
@@ -403,30 +439,38 @@ def status() -> dict[str, Any]:
     return out
 
 
-def search_sites(q: str, market: str | None = None, status_: str | None = None, limit: int = 10) -> dict[str, Any] | None:
-    """Atlas Search: fuzzy full-text over name/address with facets on market, property type and screening status."""
+SITE_FIELDS = {"_id": 0, "parcel_id": 1, "market": 1, "screen_status": 1, "loc": 1, "home_distance_m": 1, "substation_km": 1}
+
+
+def search_sites(q: str, market: str | None = None, status_: str | None = None, limit: int = 10,
+                 max_substation_km: float | None = None, min_home_m: float | None = None) -> dict[str, Any] | None:
+    """Atlas Search over the public facts: `range` filters on distance to power and to homes, a fuzzy text match on
+    gate names, and facets on market, screening status and gate outcomes. (CoStar descriptive fields are not indexed.)"""
     db = _db()
     if db is None:
         return None
-    must = [{"text": {"query": q, "path": ["name", "address"], "fuzzy": {"maxEdits": 1}}}] if q.strip() else [{"exists": {"path": "name"}}]
-    flt = []
+    must: list[dict[str, Any]] = [{"text": {"query": q, "path": "gates.gate", "fuzzy": {"maxEdits": 1}}}] if q.strip() else []
+    flt: list[dict[str, Any]] = []
     if market:
         flt.append({"text": {"query": market, "path": "market"}})
     if status_:
         flt.append({"text": {"query": status_, "path": "screen_status"}})
-    op = {"compound": {"must": must, **({"filter": flt} if flt else {})}}
-    hits = list(db.sites.aggregate([
-        {"$search": {"index": "sites_search", **op, "highlight": {"path": ["name", "address"]}}},
-        {"$limit": limit},
-        {"$project": {"_id": 0, "parcel_id": 1, "name": 1, "address": 1, "market": 1, "lot_acres": 1, "land_cost": 1,
-                      "screen_status": 1, "property_type": 1, "loc": 1, "score": {"$meta": "searchScore"},
-                      "highlights": {"$meta": "searchHighlights"}}}]))
+    if max_substation_km is not None:
+        flt.append({"range": {"path": "substation_km", "lte": max_substation_km}})
+    if min_home_m is not None:
+        flt.append({"range": {"path": "home_distance_m", "gte": min_home_m}})
+    if not must and not flt:
+        must = [{"exists": {"path": "market"}}]  # an indexed field, so "no filters" still matches every parcel
+    op = {"compound": {**({"must": must} if must else {}), **({"filter": flt} if flt else {})}}
+    hits = list(db.sites.aggregate([{"$search": {"index": "sites_search", **op}}, {"$limit": limit},
+                                    {"$project": {**SITE_FIELDS, "score": {"$meta": "searchScore"}}}]))
     meta = list(db.sites.aggregate([{"$searchMeta": {"index": "sites_search", "facet": {"operator": op, "facets": {
-        "market": {"type": "string", "path": "market"}, "property_type": {"type": "string", "path": "property_type"},
-        "screen_status": {"type": "string", "path": "screen_status"}}}}}]))
+        "market": {"type": "string", "path": "market"}, "screen_status": {"type": "string", "path": "screen_status"},
+        "gate_status": {"type": "string", "path": "gates.status"}}}}}]))
     facets = (meta[0].get("facet") if meta else {}) or {}
     return {"query": q, "hits": hits, "facets": {k: v.get("buckets", []) for k, v in facets.items()},
-            "total": (meta[0].get("count", {}).get("lowerBound") if meta else len(hits)), "index": "sites_search"}
+            "total": (meta[0].get("count", {}).get("lowerBound") if meta else len(hits)), "index": "sites_search",
+            "filters": {"market": market, "status": status_, "max_substation_km": max_substation_km, "min_home_m": min_home_m}}
 
 
 def similar_sites(q: str, market: str | None = None, limit: int = 5, passing_only: bool = False) -> dict[str, Any] | None:
@@ -446,8 +490,7 @@ def similar_sites(q: str, market: str | None = None, limit: int = 5, passing_onl
     if flt:
         stage["filter"] = flt
     hits = list(db.sites.aggregate([{"$vectorSearch": stage},
-        {"$project": {"_id": 0, "parcel_id": 1, "name": 1, "address": 1, "market": 1, "lot_acres": 1, "land_cost": 1,
-                      "screen_status": 1, "property_type": 1, "loc": 1, "score": {"$meta": "vectorSearchScore"}}}]))
+        {"$project": {**SITE_FIELDS, "score": {"$meta": "vectorSearchScore"}}}]))
     return {"query": q, "hits": hits, "index": "sites_vec", "model": embedding_model(),
             "note": None if embedding_model() == EMBED_MODEL else "Lexical fallback embedding (Gemini quota exhausted); matches wording, not meaning."}
 
@@ -476,8 +519,7 @@ def near_sites(lat: float, lon: float, km: float = 10, limit: int = 10, status_:
     if status_:
         stage["query"] = {"screen_status": status_}
     return list(db.sites.aggregate([{"$geoNear": stage}, {"$limit": limit},
-        {"$project": {"_id": 0, "parcel_id": 1, "name": 1, "address": 1, "lot_acres": 1, "screen_status": 1, "land_cost": 1,
-                      "distance_m": {"$round": ["$distance_m", 0]}, "loc": 1}}]))
+        {"$project": {**SITE_FIELDS, "distance_m": {"$round": ["$distance_m", 0]}}}]))
 
 
 def analytics() -> dict[str, Any] | None:
@@ -486,18 +528,16 @@ def analytics() -> dict[str, Any] | None:
     if db is None:
         return None
     sites = list(db.sites.aggregate([{"$facet": {
-        "by_market": [{"$group": {"_id": "$market", "sites": {"$sum": 1}, "acres": {"$sum": {"$ifNull": ["$lot_acres", 0]}},
-                                  "passing": {"$sum": {"$cond": [{"$eq": ["$screen_status", "Pass"]}, 1, 0]}}}}, {"$sort": {"_id": 1}}],
+        "by_market": [{"$group": {"_id": "$market", "sites": {"$sum": 1},
+                                  "passing": {"$sum": {"$cond": [{"$eq": ["$screen_status", "Pass"]}, 1, 0]}},
+                                  "avg_substation_km": {"$avg": "$substation_km"}}}, {"$sort": {"_id": 1}}],
         "by_status": [{"$group": {"_id": "$screen_status", "n": {"$sum": 1}}}, {"$sort": {"n": -1}}],
-        "lot_buckets": [{"$bucket": {"groupBy": {"$ifNull": ["$lot_acres", -1]}, "boundaries": [0, 5, 10, 20, 50, 100, 10000],
-                                     "default": "unknown", "output": {"n": {"$sum": 1}}}}],
-        "land_per_acre": [{"$match": {"land_cost": {"$gt": 0}, "lot_acres": {"$gt": 0}}},
-                          {"$group": {"_id": "$market", "usd_per_acre": {"$avg": {"$divide": ["$land_cost", "$lot_acres"]}},
-                                      "priced": {"$sum": 1}}}, {"$sort": {"_id": 1}}],
+        "substation_buckets": [{"$bucket": {"groupBy": {"$ifNull": ["$substation_km", -1]}, "boundaries": [0, 1, 2, 5, 10, 1000],
+                                            "default": "unknown", "output": {"n": {"$sum": 1}}}}],
+        "home_buckets": [{"$bucket": {"groupBy": {"$ifNull": ["$home_distance_m", -1]}, "boundaries": [0, 300, 500, 1000, 2000, 100000],
+                                      "default": "unknown", "output": {"n": {"$sum": 1}}}}],
         "gate_fails": [{"$unwind": "$gates"}, {"$match": {"gates.status": "Fail"}},
                        {"$group": {"_id": "$gates.gate", "fails": {"$sum": 1}}}, {"$sort": {"fails": -1}}],
-        "largest": [{"$match": {"lot_acres": {"$ne": None}}}, {"$sort": {"lot_acres": -1}}, {"$limit": 5},
-                    {"$project": {"_id": 0, "name": 1, "address": 1, "lot_acres": 1, "market": 1, "screen_status": 1}}],
     }}]))[0]
     projects = list(db.studio_projects.aggregate([{"$facet": {
         "by_cooling": [{"$group": {"_id": "$brief.cooling", "n": {"$sum": 1}, "mw": {"$sum": "$mw_it"}}}, {"$sort": {"mw": -1}}],

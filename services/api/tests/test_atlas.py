@@ -21,11 +21,18 @@ def test_search_index_dimensions_match_the_embedder():
     assert sum(1 for *_, t, _ in atlas.SEARCH_INDEXES if t == "vectorSearch") == 2  # free tier allows three in total
 
 
-def test_site_and_project_text_carry_the_facts_a_vector_should_encode():
+def test_site_text_uses_public_facts_only():
+    """Data governance: the embedding text (and so the vector in Atlas) must never carry CoStar descriptive fields."""
     s = atlas.site_text(dict(name="World Houston 46", address="5142 Greens Rd", market="Houston", property_type="Industrial",
-                             property_subtype="Warehouse", lot_acres=26.6, building_sf=120000, land_cost=8.7e6,
-                             screen_status="Pass", gates=[{"gate": "Flood exposure", "status": "Pass"}]))
-    assert "World Houston 46" in s and "26.6 acres" in s and "Flood exposure Pass" in s
+                             lot_acres=26.6, land_cost=8.7e6, screen_status="Pass", home_distance_m=626, substation_km=2.33,
+                             gates=[{"gate": "Flood exposure", "status": "Pass", "value": "X"}]))
+    assert "Houston" in s and "Flood exposure Pass (X)" in s and "626 m" in s and "2.33 km" in s
+    for leak in ("World Houston", "Greens Rd", "26.6", "Industrial", "8.7"):
+        assert leak not in s
+    assert not set(atlas.COSTAR_FIELDS) & set(atlas.SCHEMAS["sites"]["properties"])
+
+
+def test_project_text_carries_the_facts_a_vector_should_encode():
     p = atlas.project_text(dict(name="Houston 20 MW", mw_it=20, market="Houston", status="decided",
                                 brief={"cooling": "liquid", "redundancy": "N+1", "storeys": 2},
                                 summary={"concept": "Shared service bands", "capex": 2.4e8, "npv": -1.4e8}, site={"name": "Site"}))

@@ -4,6 +4,15 @@ PlotStar uses Atlas (cluster `PlotStar`, database `plotstar`) as its data platfo
 built and verified from code in `services/api/app/atlas.py` and `store.py`; the last section lists the
 console-only Atlas features and exactly how to turn them on.
 
+## Data governance: the CoStar kit stays local
+
+Atlas holds **app state and derived facts keyed by CoStar ids**, never CoStar's descriptive payloads. Concretely:
+`sites` stores `parcel_id`, the location, the screening gates (FEMA NFHL, WRI Aqueduct, OpenStreetMap — public
+sources), distance-to-homes and distance-to-power, and an embedding of those facts; project documents store the
+site's id and coordinates only (`store.save` strips `name`/`address` for `costar:` ids). The UI hydrates names and
+addresses by id from the local data service (`GET /sites/{id}`), which reads the kit on this machine.
+`POST /atlas/scrub` applies this retroactively and reports any remaining CoStar fields (expected: 0).
+
 ## Collections and schema
 
 | Collection | What | Schema | Indexes |
