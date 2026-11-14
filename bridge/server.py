@@ -18,6 +18,7 @@ Then open http://localhost:8000
 
 import argparse
 import atexit
+import json
 import math
 import re
 import threading
@@ -27,7 +28,9 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from flask import Flask, Response, jsonify, request, send_from_directory
+from flask import Flask, Response, jsonify, request, send_from_directory, stream_with_context
+
+import agent
 
 import ercot
 
@@ -66,18 +69,19 @@ ACTIONS = {
 class Drone:
     """Wraps the Tello connection (or a simulated one in mock mode)."""
 
-    def __init__(self, mock: bool, tello_ip: str = TELLO_DEFAULT_IP):
+    def __init__(self, mock: bool, tello_ip: str = TELLO_DEFAULT_IP, enabled: bool = True):
         self.mock = mock
+        self.disabled = not enabled and not mock
         self.tello = None
         self.frame_read = None
         self.connected = mock
-        self.error = None
+        self.error = "drone disabled (start the bridge with --drone)" if self.disabled else None
         self.command_lock = threading.Lock()
         self.mock_flying = False
         self._last_state = None
         self._last_state_at = 0.0
 
-        if not mock:
+        if not mock and not self.disabled:
             from djitellopy import Tello  # imported lazily so --mock works without it
             self.tello = Tello(host=tello_ip)
             threading.Thread(target=self._connect_loop, daemon=True).start()
@@ -120,6 +124,8 @@ class Drone:
 
     def status(self):
         base = {"connected": self.connected, "mock": self.mock, "error": self.error}
+        if self.disabled:
+            return {**base, "disabled": True, "battery": None, "height": None, "temp": None, "flying": False}
         if self.mock:
             return {**base, "battery": 87, "height": 120 if self.mock_flying else 0,
                     "temp": 41, "flying": self.mock_flying}
@@ -209,11 +215,12 @@ class Grid:
         self.history = {m: deque(maxlen=GRID_HISTORY) for m in GRID_MACHINES}
         self.events = []      # finished Grid Passport records, oldest first
         self.active = None    # the event in progress
+        self.real_seen = {}   # machine -> time of its last real reading
         if mock:
             threading.Thread(target=self._mock_loop, daemon=True).start()
 
     # readings
-    def record(self, machine, watts, progress=None, done=None, measure=None):
+    def record(self, machine, watts, progress=None, done=None, measure=None, real=True):
         if machine not in GRID_MACHINES:
             raise ValueError(f"machine must be one of {', '.join(GRID_MACHINES)}")
         watts = float(watts)
@@ -221,13 +228,15 @@ class Grid:
             raise ValueError("watts must be a non-negative number")
         if progress is not None:
             progress = min(max(float(progress), 0.0), 1.0)
-        if measure not in (None, "chip", "wall"):
-            raise ValueError("measure must be 'chip' or 'wall'")
+        if measure not in (None, "chip", "wall", "system"):
+            raise ValueError("measure must be 'chip', 'wall' or 'system'")
         now = time.time()
         with self.lock:
+            if real:
+                self.real_seen[machine] = now
             self.machines[machine] = {
                 "watts": round(watts, 2), "progress": progress, "done": bool(done),
-                "measure": measure, "updated": now,
+                "measure": measure, "updated": now, "simulated": not real,
             }
             self.history[machine].append((round(now, 2), round(watts, 2)))
             if machine == "optimized" and done:
@@ -270,7 +279,7 @@ class Grid:
             machines[m] = {
                 "before_w": before, "during_w": during,
                 "change_pct": round((during - before) / before * 100, 1) if before and during is not None else None,
-                "measure": cur.get("measure"),
+                "measure": cur.get("measure"), "simulated": bool(cur.get("simulated")),
                 "samples": sum(1 for t, _ in self.history[m] if start <= t <= now),
             }
         response_s = None
@@ -283,7 +292,7 @@ class Grid:
         opt = self.machines["optimized"] or {}
         return {
             "id": ev["id"], "started": start, "ended": round(now, 2),
-            "duration_s": round(now - start, 1), "source": ev["source"], "mock": self.mock,
+            "duration_s": round(now - start, 1), "source": ev["source"], "mock": bool(opt.get("simulated", self.mock)),
             "machines": machines, "response_s": response_s,
             "response_rule": f"first reading {int(RESPONSE_DROP * 100)}% below the {PRE_EVENT_S}-second pre-event average",
             "job": {"progress_start": ev["progress_start"], "progress_end": opt.get("progress"),
@@ -300,7 +309,9 @@ class Grid:
                     **cur, "stale": now - cur["updated"] > GRID_STALE_S,
                     "history": list(self.history[m]),
                 }
-            return {"mock": self.mock, "emergency": self.emergency,
+            live = [c for c in self.machines.values() if c and now - c["updated"] <= GRID_STALE_S]
+            simulated = bool(live) and all(c.get("simulated") for c in live)
+            return {"mock": simulated, "mock_mode": self.mock, "emergency": self.emergency,
                     "emergency_since": self.emergency_since, "active": self.active,
                     "events": self.events[-10:][::-1], "machines": machines, "now": now}
 
@@ -309,10 +320,12 @@ class Grid:
         progress = {m: 0.0 for m in GRID_MACHINES}
         while True:
             for m in GRID_MACHINES:
+                if time.time() - self.real_seen.get(m, 0) < 5:
+                    continue  # a real machine is reporting: don't overwrite it
                 deferring = m == "optimized" and self.emergency
                 watts = (12 if deferring else 38) + math.sin(time.time() * 1.7 + len(m)) * 1.5
                 progress[m] = 0.0 if progress[m] >= 1 else progress[m] + (0.0 if deferring else 0.004)
-                self.record(m, watts, progress=progress[m], done=progress[m] >= 1, measure="chip")
+                self.record(m, watts, progress=progress[m], done=progress[m] >= 1, measure="chip", real=False)
             time.sleep(0.5)
 
 
@@ -431,7 +444,7 @@ def create_app(drone: Drone, grid: Grid, feed: ErcotFeed) -> Flask:
     @app.route("/api/grid/telemetry", methods=["POST", "OPTIONS"])
     def grid_telemetry():
         """Body: {"machine": "baseline"|"optimized", "watts": 38.2,
-        "progress": 0.0-1.0, "done": false, "measure": "chip"|"wall"}"""
+        "progress": 0.0-1.0, "done": false, "measure": "chip"|"wall"|"system"}"""
         if request.method == "OPTIONS":
             return "", 204
         b = body()
@@ -464,6 +477,30 @@ def create_app(drone: Drone, grid: Grid, feed: ErcotFeed) -> Flask:
             return jsonify(error=error or "ERCOT data not loaded yet"), 503
         return jsonify({**data, "live": True, "refresh_error": error})
 
+    # inspection agent (Claude). Streams Server-Sent Events; ?mode=replay plays the last saved run.
+    @app.get("/api/agent/status")
+    def agent_status():
+        return jsonify(agent.status())
+
+    @app.get("/api/agent/inspect/<int:site_id>")
+    def agent_inspect(site_id):
+        mode = request.args.get("mode", "live")
+        try:
+            pod = float(request.args["pod"]) if request.args.get("pod") else None
+            flex = float(request.args.get("flex", 0.5))
+        except ValueError:
+            return jsonify(error="pod and flex must be numbers"), 400
+        if mode == "live" and not agent.status()["available"]:
+            return jsonify(error=agent.status()["reason"]), 503
+
+        def stream():
+            events = agent.replay(site_id) if mode == "replay" else agent.inspect(site_id, pod, flex)
+            for ev in events:
+                yield f"data: {json.dumps(ev)}\n\n"
+
+        return Response(stream_with_context(stream()), mimetype="text/event-stream",
+                        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
     return app
 
 
@@ -478,19 +515,25 @@ def main():
                         help="simulated drone and workload machines, no hardware needed")
     parser.add_argument("--mock-grid", action="store_true",
                         help="simulate only the two workload machines (real drone, fake watts)")
-    parser.add_argument("--tello-ip", default=TELLO_DEFAULT_IP,
-                        help="drone IP when it has joined a router via tello_wifi.py")
+    parser.add_argument("--drone", action="store_true", help="connect to the Tello drone (off by default)")
+    parser.add_argument("--tello-ip", default=None,
+                        help="drone IP when it has joined a router via tello_wifi.py (implies --drone)")
     parser.add_argument("--no-ercot", action="store_true", help="don't fetch live ERCOT data")
     parser.add_argument("--host", default="127.0.0.1",
                         help="use 0.0.0.0 to let other devices on the network view the site")
     parser.add_argument("--port", type=int, default=8000)  # 5000 clashes with macOS AirPlay
     args = parser.parse_args()
 
-    drone = Drone(mock=args.mock, tello_ip=args.tello_ip)
+    agent.load_env_file()
+    use_drone = args.drone or args.tello_ip is not None
+    drone = Drone(mock=args.mock, tello_ip=args.tello_ip or TELLO_DEFAULT_IP, enabled=use_drone)
     grid = Grid(mock=args.mock or args.mock_grid)
     feed = ErcotFeed(enabled=not args.no_ercot)
     atexit.register(drone.shutdown)
-    mode = "mock" if args.mock else f"Tello at {args.tello_ip}" + (", simulated machines" if args.mock_grid else "")
+    mode = "mock" if args.mock else (f"Tello at {args.tello_ip or TELLO_DEFAULT_IP}" if use_drone else "no drone") + (
+        ", simulated machines" if args.mock_grid else "")
+    a = agent.status()
+    mode += f"; inspection agent {'on (' + a['model'] + ')' if a['available'] else 'off: ' + a['reason']}"
     print(f"SiteStar bridge on http://{args.host}:{args.port}  ({mode})")
     create_app(drone, grid, feed).run(host=args.host, port=args.port, threaded=True)
 

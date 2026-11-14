@@ -1,177 +1,113 @@
 # SiteStar
 
-SiteStar tells a data center developer **which parcel to build on, whether the grid can power it, and how to run it**, as one decision instead of three separate studies. It screens real sites against hard limits, plans power and operations with an optimizer, and proves the operating plan on real hardware. Every number shows where it came from.
+SiteStar finds the existing Houston buildings that can become AI data centers soonest. It inspects each one across CoStar's records, 3D scans and aerial photos, and proves on real hardware the grid flexibility that gets it powered.
 
 Built at HackPrinceton Fall 2026.
 
-## The problem
+## Why
 
-- Developers buy land before they know when the grid can power it. A site that waits years for a connection leaves capital idle.
-- Floodplains, nearby homes and water limits often come up after money is committed.
-- Land, power and operations are studied by different teams with different assumptions, so the trade-offs between them get missed.
+- **Power is the bottleneck.** ERCOT is tracking more than 438 GW of large-load requests, nearly 89% of them data centers ([ERCOT, June 2026](https://www.ercot.com/files/docs/2026/06/18/ERCOT-Trending-Topic-New-Batch-Connection-Process-for-Large-Electricity-Users.pdf)). New campuses wait years.
+- **The fastest AI sites are conversions.** Prologis turned a warehouse into a 32 MW data center with Skybox; Lambda is converting a Kansas City building into a 24 MW AI factory.
+- **Picking the building takes a site visit today.** It needs the records, the inside, the outside and the power picture together.
 
-## Who it's for
+## What it does
 
-Site-acquisition teams at data center developers, and the investors who underwrite them. First use case: **a developer needs 100 MW near Houston**, starting from CoStar's Houston industrial sites.
+1. **Find.** Fixed rules cut CoStar's 121 Houston industrial, flex and land buildings to **8 finalists**:
+   - 121 → **38** outside FEMA's 100-year floodplain and at least 500 m from homes
+   - → **14** with a clear height of 24 ft or more
+   - → **8** that also have heavy electrical service on site
+2. **Inspect.** An agent (Claude) works through each building with tools:
+   - CoStar's record
+   - the public Matterport 3D scan (it reads the images)
+   - an aerial photo (it reads this image too)
+   - the flood map and the high-voltage grid
+   - the power gap and the pause budget
 
-## Input and output
+   It writes a passport. The rules decide pass or fail; the agent explains what it sees and flags what to verify on site.
+3. **Power.** The building's own service is a fraction of what AI racks draw, so it needs grid power, and utilities can connect load sooner when it pauses during the tightest hours. From ERCOT's 2025 hourly load:
+   - **110 pause hours a year (1.3%) on 37 days**, catching all four summer peaks that set Texas transmission charges (June 19, July 30, August 18 and September 4, 4–6 PM).
+   - **About $64 per kW-year** in transmission charges avoided (estimated).
+4. **Prove.** Two machines run the same job. On a grid event (website or ESP32 button), the SiteStar machine pauses its flexible work, its measured power falls, and the job still finishes. The Grid Passport record attaches to the building's passport.
 
-**In:** capacity (MW), region, land budget, target online date, and the share of computing that can pause (training runs, batch jobs).
-
-**Out:**
-- A shortlist of real sites from CoStar's data, each marked pass, fail or needs review, with the reason, the measured value and the limit.
-- Grid access for each site: distance to 138 kV and 345 kV substations and lines, and what still needs a utility study.
-- The recommended plan: site, cooling, how much flexibility, and an hourly operating schedule.
-- Its cost next to the cost-first pick: the cheapest parcel that passes the same limits, run without flexibility.
-- The source, timestamp and formula behind every number.
+The top finalist is a 1.23M sq ft warehouse built in 2022: 40 ft clear height, 3,000 A service, 470 m from a 345 kV line, listed for lease. Its gap is about 2.5 MVA of service today against a 30 MW first phase.
 
 ## How it decides
 
-1. **Hard gates (Site Intelligence).** A parcel is out if it's in FEMA's 100-year floodplain, within the homes buffer (default 500 m), in a high water-stress basin, or zoned against it. A low price can't buy back a failed gate.
-2. **Power (PowerReady).** Distance to high-voltage infrastructure, plus a firm-capacity scenario: how many MW the utility can guarantee at peak. Real capacity and connection dates need a utility study, so they stay labeled as scenarios.
-3. **Optimizer (Flex-to-Connect).** Chooses site × cooling (air, water, hybrid) × flexibility × hourly schedule to minimize lifecycle cost, and shows the result next to the cost-first pick. It's linear programming, not an LLM guess.
-4. **AI agent.** Claude on Amazon Bedrock, through LangChain, answers what-if questions by calling the optimizer and explains the result. It never produces numbers itself.
+| Check | Rule | Data | Label |
+|---|---|---|---|
+| Flood | Fail in FEMA zones A or V | FEMA National Flood Hazard Layer (point query) | Sourced |
+| Homes | Fail within 500 m of a mapped residential area | OpenStreetMap residential outlines (~110 m cells) | Estimated |
+| Shell | Clear height of at least 24 ft | CoStar | Sourced |
+| Power | Heavy electrical service (800 A or more) | CoStar | Sourced |
+| Also shown | Slab, column spacing, sprinklers, docks, service size, 345 kV and substation distance, listing, 3D scan | CoStar, OpenStreetMap | Sourced or Estimated |
 
-## What CoStar's data gives us
+**Agent.** Claude Opus 5.5 (`claude-opus-5-5`, effort medium) runs a tool-use loop over SiteStar's own data (`bridge/agent.py`):
+- Tool results carry the aerial photo and the scan snapshots as images.
+- Numbers must come from tools.
+- The final `submit_passport` call has a strict schema.
+- Server-side refusal fallback is on (`fallbacks: "default"`).
+- Each run is saved to `bridge/.cache/agent/` and can be replayed if the network fails.
+- Without credentials, the page runs the same inspection with rules only and says so.
 
-The CoStar kit covers the 3,339 properties on CoStar's Matterport 3D-scan list in Houston and Los Angeles. In Houston that's 1,758 properties, mostly apartments. **121 are industrial, flex or land, and those are our candidates.**
+**Every number is labeled** Measured, Sourced, Estimated, Simulated or Utility-confirmed (none yet). Click any underlined number for its source and formula.
 
-- **Per site:** location and parcel number, lot size, building size, electric service (amps, volts, heavy power), zoning, year built, active listings, and Matterport 3D scans (113 of the 121 have one).
-- **What's there:** median lot 2.6 acres, largest 50 acres. 28 sites have heavy power (800 A or more). 2 are land, and none is a data center today. 61 are listed for lease or sale right now.
-- **Screened:** 12 are in FEMA's 100-year floodplain and 78 are within 500 m of homes. **38 pass, and 13 of those already have heavy power.** The top one is a 50-acre warehouse built in 2022 with 3,000 A service, listed for lease, outside the floodplain and 470 m from a 345 kV line.
-- **Gaps:** most sites are listed for lease without a public rate, so price is rarely known. The kit's sale comps give past sale prices, each with a confidence status.
-- CoStar's data stays on the demo laptop. Neither the kit nor the screened sites are in this repo.
-
-## The key idea
-
-Data centers can be flexible, but that's normally decided after the site is bought. SiteStar uses flexibility to choose the site.
-
-If the grid can guarantee only 70 of 100 MW at peak, a normal data center waits for grid upgrades. If 30% of its computing can pause during the few tightest hours, it can connect now, and running that work in cheaper hours lowers the power bill.
-
-Example on real data: Houston, Nov 13, 2026, ERCOT real-time prices, a facility averaging 80 MW, capped at 70 MW in the day's 3 most expensive hours. SiteStar's schedule stays under the cap and costs **$45,558** for the day vs **$48,008** running flat (**−5.1%**).
-
-## Proof on hardware (Live Digital Twin)
-
-- Two computers run the same job. One runs flat; the other follows SiteStar's schedule.
-- A grid-emergency signal (the website button or the ESP32 button) makes the SiteStar machine pause flexible work while critical work keeps running.
-- We record the measured drop in watts, how fast it happened, and whether the job still finished. Each event becomes a downloadable Grid Passport record.
-- An ESP32 miniature grid replays a real ERCOT day.
-
-## Every number is labeled
-
-**Measured** (our hardware) · **Sourced** (named dataset with a timestamp) · **Estimated** (documented method) · **Simulated** (scenario) · **Utility-confirmed** (none yet). On the site, click any number to see its source and formula.
-
-## What we don't claim
-
-- A nearby substation is not available capacity. Connection dates need a utility study.
-- Wholesale prices are not a contracted rate.
-- Moving work in time changes cost, carbon and peak, not total energy.
-- The hardware shows how a workload responds. It doesn't prove a 100 MW interconnection or lower household bills.
-
-## Status
-
-| Part | Status |
-|---|---|
-| Live ERCOT data: fuel mix, demand, Houston prices | Working |
-| Site screening: FEMA flood zone (live), homes nearby and grid access (OpenStreetMap) | Working |
-| Hourly schedule optimizer on real ERCOT prices | Working |
-| Emergency button, Grid Passport, drone feed | Working; machine watts are simulated until the controllers report |
-| ESP32 grid and button | Bridge endpoint ready; firmware not in the repo yet |
-| CoStar's Houston sites: screened and ranked on the map | Working, on the demo laptop only (CoStar data isn't in the repo) |
-| Matterport 3D tours | Model IDs linked for 113 sites; the viewer needs CoStar's separate Matterport kit |
-| Vexcel imagery | Not in the repo yet |
-| Full optimizer (site × cooling × flexibility) and financials (cost, NPV, payback) | Not in the repo yet |
-| AI agent | Not in the repo yet |
-| Water stress and zoning gates | Not in the repo yet |
-
-**Done when:**
-1. At least 3 real CoStar sites are screened, each with its source and the reason for any rejection. **Done: all 121.**
-2. The optimizer finds a plan that beats the cost-first pick under the same limits.
-3. On the hardware, measured power drops after the emergency signal and the job still finishes.
-
-## Demo (3 minutes)
-
-1. Open on the live Texas grid.
-2. Show CoStar's 121 Houston sites narrowing to the 13 that pass with heavy power, then open the top one.
-3. Screen "By a 345 kV substation, NW": close to the grid with no neighbors, but it fails on FEMA flood zone AE.
-4. Set the grid limit to 70 MW: the flat plan can't connect; SiteStar's can, and it costs less.
-5. Press the emergency button: measured watts fall, the job finishes, and a Grid Passport is recorded.
-6. Click any number to show where it came from.
-
-## Business
-
-Customers: data center developers, infrastructure investors, industrial land brokers. Revenue: a fee per project analysis, plus a subscription for screening many sites. Pricing isn't validated yet.
-
-## Website
-
-`web/` is the SiteStar site. It reads like the demo script, and every interactive part runs on real data:
-
-| Section | What a judge can do | Data |
-|---|---|---|
-| Hero | See the Texas grid right now, with a run / ease-off signal for flexible compute | ERCOT fuel mix, demand and Houston prices (live via the bridge, else `web/data/ercot.json`) |
-| 01 Where | Click anywhere in Houston to screen a site against hard gates | FEMA flood zones (live per click), OpenStreetMap substations, 138/345 kV lines and residential areas |
-| 02 How | Move sliders and watch the optimizer re-plan a real ERCOT day | ERCOT hourly prices and fuel mix; the hourly-schedule LP is solved exactly in the browser |
-| 03 Live | Trigger a grid emergency and watch measured watts fall; each event becomes a Grid Passport record | Workload machines and ESP32 via the bridge; Tello camera |
-| 04 Evidence | Click any underlined number to see its source, timestamp, formula and label | — |
-
-Presenter tips: keys **1–4** jump between sections, **0** goes back to the top. Links like `?site=zenith`, `?site=channelview`, `?site=brays` or `?site=downtown` open with that example already screened.
-
-CoStar sites: unzip the CoStar kit into `Data/costar-kit/` and run `python bridge/costar_sites.py`. It screens every Houston industrial, flex and land property and writes `web/data/costar-sites.json`, which the map shows as pins plus a ranked shortlist. Both the kit and that file are gitignored: CoStar's data stays on the demo laptop.
-
-### Run it
+## Run it
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r bridge/requirements.txt
 
-python bridge/server.py --mock                          # no hardware: simulated drone and machines
-python bridge/server.py --tello-ip 172.20.10.14         # drone on your hotspot (see below)
-python bridge/server.py --tello-ip <ip> --mock-grid     # real drone, simulated machines
+# data (once): CoStar kit unzipped into Data/costar-kit
+python bridge/costar_sites.py --media    # screen 121 buildings; cache scans and aerials for the finalists (~1 min)
+python bridge/pause_budget.py            # ERCOT 2025 hourly load -> web/data/pause-budget.json (committed)
+
+python bridge/server.py --mock-grid      # open http://localhost:8000
 ```
 
-Open **http://localhost:8000**. Anything simulated is labeled "Simulated" on the page.
+- **Claude agent.** Put `ANTHROPIC_API_KEY=...` in `bridge/.env` (gitignored) and restart the bridge.
+  - Before a demo, warm the replay cache with `python bridge/agent.py --all`.
+  - Another model: `SITESTAR_MODEL=...`.
+- **Real machine.** Run `sudo -v`, then `python bridge/controller.py --machine optimized`.
+  - It runs a numpy job on every core and reports chip power from `powermetrics` once a second.
+  - On a second laptop: `python bridge/controller.py --machine baseline --bridge http://<demo-laptop-ip>:8000`, with the bridge started using `--host 0.0.0.0`.
+  - With one laptop, the flat machine stays simulated and labeled as such.
+- **ESP32 button.** `POST /api/grid/emergency` with `{"active": true, "source": "esp32"}`.
+- **No hardware at all:** `python bridge/server.py --mock`.
 
-### Refresh the saved data (before the demo)
+Presenter keys: **1–5** jump between sections, **0** to the top. `?site=<CoStar id>` opens a finalist; `&inspect=1` starts its inspection.
 
-```bash
-python bridge/ercot.py       # web/data/ercot.json: fallback when the bridge or internet is down
-python bridge/osm_grid.py    # web/data/houston-grid.json: substations, lines, residential areas (2-4 min)
-python bridge/costar_sites.py  # web/data/costar-sites.json: CoStar sites screened (needs Data/costar-kit, ~1 min)
-```
+## Status
 
-### Bridge
+| Part | Status |
+|---|---|
+| Funnel, map, finalists, readiness checklist | Working, on CoStar's data (local only) |
+| Inspection, rules-only | Working; includes a live FEMA check |
+| Inspection, Claude agent | Built and tested with a scripted client; **not yet run against the live API** (no key on the build laptop) |
+| 3D scans and aerial photos | Working: public Matterport snapshots and Esri World Imagery, cached for the 8 finalists; Vexcel and the Matterport SDK need their keys |
+| Pause budget (ERCOT 2025) | Working |
+| Grid event, Grid Passport, passport attachment | Working |
+| Real power measurement | Controller tested with a test meter; `powermetrics` needs `sudo -v` at demo time |
+| Printable passport (`passport.html`) | Working |
+| Drone | Off by default (`--drone`); not part of this demo |
 
-```
-Tello EDU ──UDP──┐
-workload PCs ────┤
-ESP32 button ────┼──> bridge/server.py (demo laptop) ──HTTP──> website
-ercot.com ───────┘
-```
+## What we don't claim
 
-| Endpoint | Body | Who calls it |
-|---|---|---|
-| `POST /api/grid/telemetry` | `{"machine": "baseline"\|"optimized", "watts": 38.2, "progress": 0.4, "done": false, "measure": "chip"\|"wall"}` | Workload controllers, about once a second |
-| `POST /api/grid/emergency` | `{"active": true, "source": "esp32"}` | Website button, ESP32 |
-| `GET /api/grid` | | Website; controllers poll it to learn about a grid event. Includes the Grid Passport `events` |
-| `GET /api/ercot` | | Website (live ERCOT data, refreshed every 5 minutes) |
-| `POST /api/drone/snapshot` | | Website "Capture" button; saves a frame to `captures/` |
+- Distance to a substation is not capacity. Only CenterPoint's study says what it can deliver, and when.
+- Slab thickness is recorded for 9 of 121 buildings, and service size for 24. Both need a site visit.
+- Pause hours are picked after the fact from 2025 data. Operators act on day-ahead peak alerts.
+- The transmission rate is CenterPoint's listed Primary-service TCRF; the listing shows no date, so check the current tariff.
+- Laptop watts show how a workload responds to a grid signal. They don't prove a multi-megawatt interconnection.
 
-### Drone and internet at the same time (station mode)
+## Data handling
 
-On its own hotspot the drone takes over the laptop's Wi-Fi. A Tello EDU or Talent can join a 2.4 GHz WPA2-Personal network instead (a phone hotspot or travel router; not eduroam or a captive portal):
+CoStar's data stays on the demo laptop. The kit (`/Data/`), the screened buildings (`web/data/costar-sites.json`) and the cached scans and aerials (`web/data/media/`) are gitignored. So are API keys (`bridge/.env`) and agent runs (`bridge/.cache/`).
 
-```bash
-python bridge/tello_wifi.py MyHotspot     # while on TELLO-XXXXXX; prompts for the password
-# laptop back on MyHotspot, then:
-python bridge/tello_wifi.py --find        # prints the drone's new IP
-python bridge/server.py --tello-ip <ip>
-```
+## Bridge endpoints
 
-- iPhone hotspots: turn on **Maximize Compatibility** (2.4 GHz) and use a name without spaces.
-- Power-cycle the drone if anything other than the bridge has sent it commands; it locks onto the first sender.
-- Hold the drone's power button ~5 s to reset it to hotspot mode.
-
-### Viewing from other devices
-
-- Same network: `python bridge/server.py --host 0.0.0.0` (anyone on that network can then use the controls).
-- If the site is hosted elsewhere, it looks for the bridge at `http://localhost:8000`. Override with `?bridge=http://<ip>:8000`.
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/agent/status` | Is the Claude agent available, which runs are saved |
+| `GET /api/agent/inspect/<id>?mode=live\|replay&pod=&flex=` | The inspection as Server-Sent Events |
+| `GET /api/grid` | Machines, grid event, Grid Passport records |
+| `POST /api/grid/telemetry` | `{"machine": "baseline"\|"optimized", "watts": 31.2, "progress": 0.4, "done": false, "measure": "chip"\|"wall"\|"system"}` |
+| `POST /api/grid/emergency` | `{"active": true, "source": "web"\|"esp32"}` |

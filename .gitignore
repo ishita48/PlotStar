@@ -7,3 +7,6 @@ __pycache__/
 captures/
 /Data/
 web/data/costar-sites.json
+web/data/media/
+bridge/.cache/
+bridge/.env

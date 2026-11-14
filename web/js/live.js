@@ -1,7 +1,7 @@
-// Control room: measured watts from the two workload machines, the grid
-// emergency switch, Grid Passport records, and the drone's aerial view.
+// Control room: measured watts from the two workload machines, the grid emergency
+// switch, and Grid Passport records of each pause.
 
-import { $, $$, h, fmt, localTime, localDate, duration, ICON, chip, onResize } from "./util.js";
+import { $, h, fmt, localTime, localDate, duration, chip, onResize } from "./util.js";
 import { s, lin, niceDomain, frame, yGrid, hoverLayer, showTip, tipRows } from "./charts.js";
 import { auditable } from "./audit.js";
 import { findBridge, getJSON } from "./data.js";
@@ -11,23 +11,14 @@ const COLORS = { flat: "#898781", ss: "#f0efec" };
 
 let base = null; // bridge URL ("" = same origin) or null
 let grid = null; // last /api/grid
-let drone = null; // last /api/status
-let streaming = false;
-let captures = [];
+let lastEventId; // undefined until the first grid state arrives
 
 export function initLive(initialBase) {
   base = initialBase;
   $("#ev-btn").addEventListener("click", toggleEmergency);
-  $$("#controls .ctl[data-action]").forEach((b) => b.addEventListener("click", () => command(b.dataset.action, b)));
-  $("#snap-btn").addEventListener("click", snapshot);
-  $("#feed-img").addEventListener("error", () => {
-    streaming = false;
-  });
   onResize($("#lv-chart"), drawChart);
   renderOffline();
-  statusLoop();
-  gridLoop();
-  if (base !== null) loadCaptures();
+  loop();
 }
 
 const api = (path) => getJSON(`${base}${path}`, 4000);
@@ -38,17 +29,14 @@ async function post(path, body) {
   return data;
 }
 
-/* ---------------------------------------------------------------- loops */
+/* ---------------------------------------------------------------- loop */
 
-async function statusLoop() {
+async function loop() {
   try {
-    if (base === null) {
-      base = await findBridge();
-      if (base !== null) loadCaptures();
-    }
+    if (base === null) base = await findBridge();
     if (base !== null) {
-      drone = await api("/api/status");
-      renderDrone();
+      grid = await api("/api/grid");
+      renderGrid();
     } else {
       renderOffline();
     }
@@ -56,20 +44,8 @@ async function statusLoop() {
     base = null;
     renderOffline();
   } finally {
-    setTimeout(statusLoop, base === null ? 4000 : 2000);
+    setTimeout(loop, base === null ? 4000 : 1000);
   }
-}
-
-async function gridLoop() {
-  if (base !== null) {
-    try {
-      grid = await api("/api/grid");
-      renderGrid();
-    } catch {
-      /* statusLoop handles a lost bridge */
-    }
-  }
-  setTimeout(gridLoop, 1000);
 }
 
 /* ---------------------------------------------------------------- status pill */
@@ -77,12 +53,11 @@ async function gridLoop() {
 function renderPill() {
   const machines = grid ? Object.values(grid.machines).filter(Boolean) : [];
   let cls = "", text = "Hardware offline", src = "Offline: start the bridge on the demo laptop";
-  if (base !== null) {
-    const sim = drone?.mock || grid?.mock;
-    const live = (drone?.connected && !drone.mock) || (machines.length && !grid.mock);
-    if (sim) [cls, text, src] = ["sim", "Hardware simulated", "Bridge running in test mode (simulated)"];
-    else if (live) [cls, text, src] = ["on", "Hardware live", `Live: ${[drone?.connected && "drone", machines.length && `${machines.length} machine${machines.length > 1 ? "s" : ""}`].filter(Boolean).join(", ")}`];
-    else [cls, text, src] = ["", "Bridge up", "Bridge running; no drone or machines reporting"];
+  if (base !== null && grid) {
+    const real = machines.filter((x) => !x.simulated && !x.stale).length;
+    if (real) [cls, text, src] = ["on", "Hardware live", `Live: ${real} real machine${real > 1 ? "s" : ""} reporting${machines.length > real ? ", the other simulated" : ""}`];
+    else if (grid.mock) [cls, text, src] = ["sim", "Hardware simulated", "Bridge running with simulated machines"];
+    else [cls, text, src] = ["", "Bridge up", "Bridge running; no machines reporting yet"];
   }
   const pill = $("#pill-hw");
   pill.querySelector(".dot").className = `dot ${cls}`;
@@ -94,8 +69,6 @@ function renderPill() {
 
 function renderOffline() {
   grid = null;
-  drone = null;
-  stopStream("Start the bridge on the demo laptop to see the drone.");
   $("#ev-state").replaceChildren("Hardware offline");
   $("#ev-btn").disabled = true;
   for (const id of ["lv-base", "lv-ss", "lv-cut"]) $(`#${id}`).textContent = "—";
@@ -122,7 +95,10 @@ function renderGrid() {
   const g = grid;
   const m = g.machines;
   const any = m.baseline || m.optimized;
-  setLabel(g.mock ? "Simulated" : any ? "Measured" : "Waiting", g.mock ? "chip-simulated" : any ? "chip-measured" : "");
+  const sims = [m.baseline, m.optimized].filter(Boolean).map((x) => !!x.simulated);
+  const mixed = sims.includes(true) && sims.includes(false);
+  setLabel(mixed ? "SiteStar measured · flat simulated" : g.mock ? "Simulated" : any ? "Measured" : "Waiting",
+    mixed ? "chip-measured" : g.mock ? "chip-simulated" : any ? "chip-measured" : "");
 
   const note = $("#lv-offline");
   note.hidden = !!any;
@@ -163,10 +139,13 @@ function machineStat(id, mm, name) {
   auditable(el, () => ({
     title: `${name}: power draw`,
     value: `${fmt.watts(mm.watts)} W`,
-    label: grid.mock ? "Simulated" : "Measured",
-    source: grid.mock ? "Bridge test mode (no hardware)" : `Workload controller on the ${name.toLowerCase()}`,
+    label: mm.simulated ? "Simulated" : "Measured",
+    source: mm.simulated ? "Bridge test mode (no hardware)" : `Workload controller on the ${name.toLowerCase()} (bridge/controller.py)`,
     retrieved: `${localTime(mm.updated)} (pushed to the bridge)`,
-    formula: mm.measure === "wall" ? "Wall-plug power meter reading." : mm.measure === "chip" ? "The machine's own power sensor (chip level)." : "Reported watts; measurement point not stated.",
+    formula: mm.measure === "wall" ? "Wall-plug power meter reading."
+      : mm.measure === "chip" ? "The machine's own power sensor (chip level)."
+      : mm.measure === "system" ? "The laptop's own power telemetry: whole-system load reported by macOS (AppleSmartBattery → SystemLoad), averaged over each second."
+      : "Reported watts; measurement point not stated.",
     note: mm.measure === "chip" ? "Chip-level readings can leave out part of the wall-plug draw." : undefined,
   }));
 }
@@ -307,6 +286,7 @@ function renderPassport() {
   const box = $("#passport");
   const events = grid.events || [];
   const ev = events[0];
+  if (lastEventId === undefined) lastEventId = ev ? ev.id : null; // records from before this page loaded
   const head = [h("p", { class: "kicker" }, "Grid Passport")];
   if (!ev) {
     box.replaceChildren(...head, h("h3", {}, "Verified curtailment record"),
@@ -324,7 +304,11 @@ function renderPassport() {
   const job = ev.job.finished_at
     ? "Finished"
     : `Running${ev.job.progress_end != null ? `, ${Math.round(ev.job.progress_end * 100)}%` : ""}`;
-  const measure = { wall: "Wall plug", chip: "Chip sensor" }[ss.measure] || "Not stated";
+  const measure = { wall: "Wall plug", chip: "Chip sensor", system: "Laptop telemetry" }[ss.measure] || "Not stated";
+  if (ev.id !== lastEventId) {
+    if (lastEventId !== undefined) window.dispatchEvent(new CustomEvent("sitestar:passport", { detail: ev }));
+    lastEventId = ev.id;
+  }
 
   box.replaceChildren(
     ...head,
@@ -361,97 +345,4 @@ function download(ev) {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-/* ---------------------------------------------------------------- drone */
-
-function stopStream(msg) {
-  const img = $("#feed-img");
-  if (streaming) {
-    img.removeAttribute("src"); // closes the MJPEG connection
-    streaming = false;
-  }
-  img.hidden = true;
-  $("#feed-off").hidden = false;
-  $("#feed-msg").textContent = msg;
-  $("#feed-dot").className = "dot";
-  $("#feed-state").textContent = "Offline";
-  for (const id of ["t-battery", "t-height", "t-temp", "t-flight"]) $(`#${id}`).textContent = "—";
-  $$("#controls .ctl").forEach((b) => (b.disabled = true));
-}
-
-function renderDrone() {
-  const d = drone;
-  renderPill();
-  if (!d.connected) {
-    stopStream(d.error ? "The drone isn't answering. Check it's on and on the same Wi-Fi as this laptop." : "Connecting to the drone…");
-    return;
-  }
-  const img = $("#feed-img");
-  if (!streaming) {
-    img.src = `${base}/video?t=${Date.now()}`;
-    streaming = true;
-  }
-  img.hidden = false;
-  $("#feed-off").hidden = true;
-  $("#feed-dot").className = `dot ${d.mock ? "sim" : "live"}`;
-  $("#feed-state").textContent = d.mock ? "Simulated" : "Live";
-  $("#t-battery").textContent = d.battery != null ? `${d.battery}%` : "—";
-  $("#t-height").textContent = d.height != null ? `${d.height} cm` : "—";
-  $("#t-temp").textContent = d.temp != null ? `${d.temp} °C` : "—";
-  $("#t-flight").textContent = d.flying ? "Airborne" : "Landed";
-  $$("#controls .ctl").forEach((b) => (b.disabled = false));
-}
-
-async function command(action, button) {
-  if (base === null) return;
-  button.disabled = true;
-  msg(`Sending “${action}”…`);
-  try {
-    await post("/api/command", { action });
-    msg(`✓ ${action}`);
-  } catch (err) {
-    msg(`✗ ${action}: ${err.message}`, true);
-  } finally {
-    button.disabled = false;
-  }
-}
-
-function msg(text, isError = false) {
-  const el = $("#cmd-msg");
-  el.textContent = text;
-  el.classList.toggle("err", isError);
-}
-
-async function snapshot() {
-  const btn = $("#snap-btn");
-  btn.disabled = true;
-  try {
-    captures.unshift(await post("/api/drone/snapshot", {}));
-    renderCaptures();
-    msg("✓ Frame saved as site evidence");
-  } catch (err) {
-    msg(`✗ capture: ${err.message}`, true);
-  } finally {
-    btn.disabled = false;
-  }
-}
-
-async function loadCaptures() {
-  try {
-    captures = await api("/api/drone/snapshots");
-    renderCaptures();
-  } catch {
-    /* optional */
-  }
-}
-
-function renderCaptures() {
-  if (!captures.length) return;
-  $("#captures").replaceChildren(
-    ...captures.slice(0, 8).map((c) =>
-      h("a", { href: `${base}${c.url}`, target: "_blank", rel: "noopener", title: `${c.simulated ? "Simulated" : "Measured"} · ${localDate(c.time)} ${localTime(c.time)}` },
-        h("img", { src: `${base}${c.url}`, alt: `Aerial capture at ${localTime(c.time)}`, loading: "lazy" }),
-        h("span", {}, new Date(c.time * 1000).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })))),
-  );
 }
