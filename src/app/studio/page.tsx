@@ -3,6 +3,7 @@ import { Studio } from '@/components/studio/studio';
 import '../explore/explore.css';
 import '../explore/workspace.css';
 import './studio.css';
+import './studio-polish.css';
 
 export const metadata: Metadata = {
   title: 'Studio · PlotStar',
