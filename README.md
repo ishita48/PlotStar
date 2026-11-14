@@ -83,7 +83,7 @@ Presenter keys: **1–5** jump between sections, **0** to the top. `?site=<CoSta
 | Funnel, map, finalists, readiness checklist | Working, on CoStar's data (local only) |
 | Inspection, rules-only | Working; includes a live FEMA check |
 | Inspection, Claude agent | Built and tested with a scripted client; **not yet run against the live API** (no key on the build laptop) |
-| 3D scans and aerial photos | Working: public Matterport snapshots and Esri World Imagery, cached for the 8 finalists; Vexcel and the Matterport SDK need their keys |
+| 3D scans and aerial photos | Working: Esri World Imagery for all 8 finalists, public Matterport snapshots for the 7 that have a scan; Vexcel and the Matterport SDK need their keys |
 | Pause budget (ERCOT 2025) | Working |
 | Grid event, Grid Passport, passport attachment | Working |
 | Real power measurement | Controller tested with a test meter; `powermetrics` needs `sudo -v` at demo time |
