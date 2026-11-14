@@ -28,6 +28,13 @@ final class AppModel {
   private(set) var droneLink: Connection?
 
   enum Tab: Hashable { case sites, drone }
+  enum DroneMode: String, CaseIterable {
+    case fly = "Fly"
+    case scan = "LiDAR scan"
+  }
+  var droneMode: DroneMode = .fly
+  /// A saved scan to open in 3D (from a `plotstar://scan/<id>` link).
+  var pendingScan: String?
   /// What a pairing code connects: `data` (sites and incidents), `drone`, or `both`.
   enum Role: String { case data, drone, both }
   /// A section to scroll to when a deep link opens a facility (plan, incidents, floor, team…).
@@ -140,8 +147,8 @@ final class AppModel {
     return parts.url
   }
 
-  /// `plotstar://connect?url=…&token=…&role=…` (the gateway's QR code), `plotstar://drone` and
-  /// `plotstar://facility/<id>?section=…`.
+  /// `plotstar://connect?url=…&token=…&role=…` (the gateway's QR code), `plotstar://drone[/scan]`,
+  /// `plotstar://scan/<id>` and `plotstar://facility/<id>?section=…`.
   func handle(_ url: URL) {
     guard url.scheme == "plotstar" else { return }
     let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
@@ -153,7 +160,14 @@ final class AppModel {
         Task { await connect(address: address, token: token, role: role) }
       }
     case "drone":
-      if connection != nil { tab = .drone }
+      guard connection != nil else { return }
+      tab = .drone
+      if url.pathComponents.dropFirst().first == "scan" { droneMode = .scan }
+    case "scan":
+      guard connection != nil, let id = url.pathComponents.dropFirst().first else { return }
+      tab = .drone
+      droneMode = .scan
+      pendingScan = id
     case "facility":
       guard connection != nil, let id = url.pathComponents.dropFirst().first else { return }
       pendingSection = value("section")

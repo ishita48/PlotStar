@@ -2,24 +2,20 @@ import SwiftUI
 
 /// The Drone tab: fly the Tello through the laptop's bridge, or scan a room with the iPhone's LiDAR.
 struct DroneView: View {
-  @State private var mode: Mode = .fly
+  @Environment(AppModel.self) private var app
   @State private var showConnections = false
 
-  enum Mode: String, CaseIterable {
-    case fly = "Fly"
-    case scan = "LiDAR scan"
-  }
-
   var body: some View {
+    @Bindable var app = app
     NavigationStack {
       VStack(spacing: 0) {
-        Picker("Mode", selection: $mode) {
-          ForEach(Mode.allCases, id: \.self) { Text($0.rawValue) }
+        Picker("Mode", selection: $app.droneMode) {
+          ForEach(AppModel.DroneMode.allCases, id: \.self) { Text($0.rawValue) }
         }
         .pickerStyle(.segmented)
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        switch mode {
+        switch app.droneMode {
         case .fly: FlyView()
         case .scan: LiDARScanView()
         }
@@ -67,6 +63,11 @@ struct FlyView: View {
         }
         controls
         if !captures.isEmpty { capturesStrip }
+        if status?.expansion == true {
+          Text("With the expansion kit, forward moves stop 50 cm short of anything the distance sensor sees (it only looks ahead), and the drone's display shows people nearby what it's doing: a 3-2-1 countdown before take-off, arrows while moving, a red X when it stops.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
         Text("Each tap moves the drone 30 cm or turns it 45°. The bridge keeps a hovering Tello from landing on its own; it does not land if the phone disconnects.")
           .font(.caption)
           .foregroundStyle(.secondary)
@@ -114,6 +115,21 @@ struct FlyView: View {
           metric("thermometer.medium", status.temp.map { "\(Int($0))°C" } ?? "–", "Temp")
           metric(flying ? "airplane" : "airplane.arrival", flying ? "Flying" : "Landed", "State")
         }
+        if status.expansion == true {
+          HStack(spacing: 8) {
+            metric(
+              "sensor.fill", status.aheadCM.map { String(format: "%.1f m", $0 / 100) } ?? "Clear",
+              "Ahead (ToF)", warn: status.blockedAhead)
+            VStack(spacing: 4) {
+              DotMatrix(pattern: status.display)
+                .frame(width: 44, height: 44)
+              Text("Drone display").font(.caption2).foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+          }
+        }
       } else {
         Text(detail).font(.subheadline).foregroundStyle(.secondary)
       }
@@ -139,10 +155,11 @@ struct FlyView: View {
     return (status.error.map { "\($0). " } ?? "") + "Turn the Tello on. In station mode it joins your hotspot and the bridge connects on its own."
   }
 
-  private func metric(_ symbol: String, _ value: String, _ label: String) -> some View {
+  private func metric(_ symbol: String, _ value: String, _ label: String, warn: Bool = false) -> some View {
     VStack(spacing: 4) {
-      Image(systemName: symbol).font(.subheadline).foregroundStyle(.secondary)
+      Image(systemName: symbol).font(.subheadline).foregroundStyle(warn ? Tone.danger.color : .secondary)
       Text(value).font(.subheadline.weight(.semibold)).monospacedDigit()
+        .foregroundStyle(warn ? Tone.danger.color : .primary)
       Text(label).font(.caption2).foregroundStyle(.secondary)
     }
     .frame(maxWidth: .infinity)
@@ -212,7 +229,7 @@ struct FlyView: View {
           }
         }
         pad("Move") {
-          padButton(.forward, "arrow.up", "Forward")
+          padButton(.forward, "arrow.up", "Forward", blocked: status?.blockedAhead == true)
           HStack(spacing: 8) {
             padButton(.left, "arrow.left", "Left")
             padButton(.back, "arrow.down", "Back")
@@ -261,18 +278,22 @@ struct FlyView: View {
     .background(Color(white: 0.11), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
   }
 
-  private func padButton(_ action: DroneAction, _ symbol: String, _ label: String) -> some View {
+  private func padButton(_ action: DroneAction, _ symbol: String, _ label: String, blocked: Bool = false) -> some View {
     Button { send(action) } label: {
       Group {
-        if busy == action { ProgressView() } else { Image(systemName: symbol).font(.title3.weight(.semibold)) }
+        if busy == action {
+          ProgressView()
+        } else {
+          Image(systemName: blocked ? "hand.raised.fill" : symbol).font(.title3.weight(.semibold))
+        }
       }
       .frame(width: 46, height: 46)
-      .background(Color.white.opacity(0.08), in: Circle())
+      .background(blocked ? Tone.danger.deep : Color.white.opacity(0.08), in: Circle())
     }
     .buttonStyle(.plain)
-    .disabled(!ready || !flying || busy != nil)
+    .disabled(!ready || !flying || busy != nil || blocked)
     .opacity(ready && flying ? 1 : 0.35)
-    .accessibilityLabel(label)
+    .accessibilityLabel(blocked ? "\(label), blocked: something is close ahead" : label)
   }
 
   // MARK: captures
@@ -368,5 +389,29 @@ struct AuthImage: View {
     .task(id: request.url) {
       if let (data, _) = try? await URLSession.shared.data(for: request) { image = UIImage(data: data) }
     }
+  }
+}
+
+/// A copy of the drone's 8x8 dot-matrix display.
+struct DotMatrix: View {
+  let pattern: String?
+
+  var body: some View {
+    Canvas { ctx, size in
+      let cell = min(size.width, size.height) / 8
+      let chars = Array(pattern ?? "")
+      for i in 0..<64 {
+        let rect = CGRect(x: CGFloat(i % 8) * cell, y: CGFloat(i / 8) * cell, width: cell, height: cell).insetBy(dx: cell * 0.12, dy: cell * 0.12)
+        let color: Color =
+          switch i < chars.count ? chars[i] : "0" {
+          case "r": Tone.danger.color
+          case "b": Color(red: 0.35, green: 0.6, blue: 1)
+          case "p": Color(red: 0.75, green: 0.4, blue: 1)
+          default: .white.opacity(0.08)
+          }
+        ctx.fill(Path(ellipseIn: rect), with: .color(color))
+      }
+    }
+    .accessibilityLabel(pattern == nil ? "Drone display blank" : "Drone display")
   }
 }

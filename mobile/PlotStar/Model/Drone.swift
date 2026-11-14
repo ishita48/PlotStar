@@ -13,8 +13,22 @@ struct DroneStatus: Decodable {
   let temp: Double?
   let flying: Bool?
   let video: Bool?
+  /// The RoboMaster TT kit (dot matrix + forward ToF sensor) answered.
+  let expansion: Bool?
+  /// Distance to whatever is ahead, from the ToF sensor; nil when nothing is in range.
+  let aheadCM: Double?
+  /// The 64 characters on the 8x8 display: r red, b blue, p purple, 0 off. Nil when blank.
+  let display: String?
 
   var ready: Bool { bridge && connected == true }
+
+  /// The bridge refuses forward moves that would end within 50 cm of something (bridge/server.py).
+  var blockedAhead: Bool { expansion == true && (aheadCM ?? .infinity) - 30 < 50 }
+
+  private enum CodingKeys: String, CodingKey {
+    case bridge, connected, mock, error, battery, height, temp, flying, video, expansion, display
+    case aheadCM = "ahead_cm"
+  }
 }
 
 /// A frame saved by the bridge (`POST /api/mobile/drone/snapshot`, `GET …/snapshots`).

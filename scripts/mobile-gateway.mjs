@@ -34,7 +34,7 @@ const PORT = Number(process.env.MOBILE_PORT || 3100);
 const HOST = process.env.MOBILE_HOST || '0.0.0.0';
 const NEXT = new URL(process.env.NEXT_URL || 'http://127.0.0.1:3000');
 const ALLOWED =
-  /^\/api\/mobile\/(facilities(\/[a-z0-9-]{1,150})?|drone\/(status|video|snapshots|command|snapshot|captures\/[0-9]{8}-[0-9]{6}(-[0-9]{3})?(-sim)?\.jpg))$/;
+  /^\/api\/mobile\/(probe|facilities(\/[a-z0-9-]{1,150})?|drone\/(status|video|snapshots|command|snapshot|captures\/[0-9]{8}-[0-9]{6}(-[0-9]{3})?(-sim)?\.jpg))$/;
 const PEERS = (process.env.MOBILE_ALLOW || '127.0.0.1,::1,172.20.10.')
   .split(',')
   .map((s) => s.trim())

@@ -14,7 +14,17 @@ A native SwiftUI app with two tabs.
 
 **Drone:**
 - **Fly:** live video from the Tello, battery, height and temperature. Take off and land, move in 30 cm steps, turn 45°, capture frames, and an emergency motor cut you press and hold.
-- **LiDAR scan:** scans a room with the iPhone's own LiDAR (Apple RoomPlan) into a 3D model. It measures ceiling (clear) height, floor area, walls, doors and windows. View it in 3D or AirDrop the model. The Tello has a camera, not LiDAR; scanning uses a Pro iPhone.
+- **RoboMaster TT expansion kit (optional):** with the dot matrix and distance-sensing module attached, the bridge finds it on connect.
+  - Forward moves stop 50 cm short of anything the forward distance sensor sees. The app shows the distance ahead.
+  - The 8×8 display shows people near the drone what it's doing: a 3-2-1 countdown before take-off, arrows while moving (sideways arrows as seen from in front), a red X when it stops, and a flash on capture. The app shows a live copy.
+  - Without the kit, everything works as before.
+- **LiDAR scan:** scans a room with the iPhone's own LiDAR (Apple RoomPlan) into a 3D model. It measures ceiling (clear) height, floor area, walls, doors and windows. The Tello has a camera, not LiDAR; scanning uses a Pro iPhone.
+- **Wi-Fi survey (during a LiDAR scan):**
+  - Every 1.5 s the phone times a tiny request and a 256 KB download to the PlotStar server, over Wi-Fi only.
+  - It places each reading where the phone is in the room, and buzzes with "Wi-Fi dead spot here" as you walk.
+  - The 3D viewer shows the room with each reading as a marker and a coverage disc on the floor, with rings on dead spots. You can orbit it and AirDrop the model.
+  - The thresholds: dead means nothing got through, or under 1 Mbps or over 500 ms; weak means under 8 Mbps or over 150 ms.
+  - The phone must be on the building's Wi-Fi, not your hotspot, and able to reach the server: the deployed website, or the laptop on that Wi-Fi with `MOBILE_ALLOW` set to it.
 
 Setup (models, protections, placement, deploy) stays in Dashboard 2 on the laptop. HAVEN data is simulation mode, labeled as such.
 
@@ -97,4 +107,6 @@ Sites and incidents then come from the website. A website can't reach a drone, s
 - HAVEN data is simulation only: no sensors, alarms, doors or emergency services are connected, and the routes are demo routes on a representative model.
 - The bridge keeps a hovering Tello from auto-landing and does not land it if the phone disconnects. Land before closing the app.
 - RoomPlan is built for rooms up to about 9 m (30 ft) across. Its measurements are estimates.
-- LiDAR scanning hasn't been run on a device by us yet: RoomPlan can't run in the simulator.
+- LiDAR scanning and the Wi-Fi survey haven't been run on a device yet: RoomPlan can't run in the simulator. The 3D viewer was checked with a synthetic scan.
+- iOS doesn't let apps read Wi-Fi signal strength, so the survey measures response time and speed instead. The map is for placing wireless sensors (like HAVEN's DataBot), the drone link and staff areas. Data halls run on wired fiber, so it doesn't rate a spot for servers.
+- The expansion kit's distance sensor only looks forward and has a short range. Sideways, up and back moves aren't guarded. The kit code is tested against the simulated drone only.
