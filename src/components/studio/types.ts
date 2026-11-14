@@ -3,12 +3,12 @@ import type { GateResult } from '@/lib/types';
 
 export type RoomType =
   | 'data_hall' | 'electrical' | 'battery' | 'mechanical' | 'corridor' | 'support' | 'network' | 'loading' | 'reserve'
-  | 'yard_sub' | 'yard_gen' | 'yard_cool' | 'yard_water';
+  | 'yard_sub' | 'yard_gen' | 'yard_cool' | 'yard_water' | 'yard_bess' | 'yard_solar';
 
 export interface RackRow { x: number; y: number; w: number; d: number; n: number; cap: number }
 export interface Room {
   code: string; name: string; type: RoomType; x: number; y: number; w: number; d: number; h?: number;
-  area_m2?: number; need_m2?: number; hall?: number; racks?: number; positions?: number; mw?: number; rows?: RackRow[];
+  area_m2?: number; need_m2?: number; added?: boolean; hall?: number; racks?: number; positions?: number; mw?: number; rows?: RackRow[];
 }
 export interface Check { name: string; ok: boolean; detail: string }
 export type Factor = 'money' | 'people' | 'planet' | 'resources';
@@ -28,15 +28,15 @@ export interface Concept {
     generators: number;
   };
   money: {
-    capex: number; shell: number; equipment: number; distribution: number; interconnect: number; energy_per_year: number;
+    capex: number; shell: number; equipment: number; distribution: number; interconnect: number; added: number; energy_per_year: number;
     energy_per_year_flat: number; opex_per_year: number; water_per_year: number; ten_year: number;
   };
   people: { noise_at_boundary_dba: number; noise_at_home_dba: number | null; generator_to_boundary_m: number; home_distance_m: number | null };
   planet: {
-    co2_t_per_year: number; co2_t_per_year_flat: number; embodied_t: number; roof_solar_kwp: number; roof_solar_mwh: number;
+    co2_t_per_year: number; co2_t_per_year_flat: number; embodied_t: number; roof_solar_kwp: number; canopy_solar_kwp: number; roof_solar_mwh: number;
     roof_solar_share: number; solar_avoided_t: number;
   };
-  resources: { water_m3_per_year: number; energy_mwh_per_year: number; facility_mw: number; open_land_share: number; spare_positions: number };
+  resources: { water_m3_per_year: number; energy_mwh_per_year: number; facility_mw: number; open_land_share: number; spare_positions: number; bess_mwh: number; bess_minutes: number };
 }
 
 export interface StudioResult {
@@ -54,6 +54,15 @@ export interface StudioResult {
   assumptions: { key: string; value: number; unit: string; basis: string; label: string; verify: boolean }[];
   note: string;
 }
+
+export type AddedType = 'yard_bess' | 'yard_solar' | 'yard_water';
+/** The user's changes to one concept. Sent with every request so the engine re-measures the edited layout. */
+export interface ConceptEdit {
+  building: { dx: number; dy: number };
+  yard: Record<string, { x: number; y: number }>;
+  added: { code: string; type: AddedType; x: number; y: number; w: number; d: number }[];
+}
+export type Edits = Record<string, ConceptEdit>;
 
 export interface Brief {
   name: string; market: 'Houston' | 'Los Angeles'; mw: number; rackKw: number; redundancy: 'N' | 'N+1' | '2N';
@@ -79,6 +88,8 @@ export const TYPE_STYLE: Record<RoomType, { fill: string; stroke: string; label:
   yard_gen: { fill: '#f3e6c4', stroke: '#a8731c', label: 'Generators' },
   yard_cool: { fill: '#d5e6ef', stroke: '#3d7391', label: 'Heat rejection' },
   yard_water: { fill: '#c3deec', stroke: '#2f6f93', label: 'Water storage' },
+  yard_bess: { fill: '#e3ece2', stroke: '#3b8f5e', label: 'Battery storage' },
+  yard_solar: { fill: '#cfd9e8', stroke: '#1f3a5f', label: 'Solar canopy' },
 };
 
 export const ROUTE_COLOR = { power: '#c26a12', cooling: '#2f7fb0', data: '#7a5fc0' } as const;
@@ -97,6 +108,8 @@ export const WHY: Record<RoomType, string> = {
   yard_gen: 'One standby generator per 2.5 MW of facility load, plus spares for the chosen redundancy.',
   yard_cool: 'Outdoor heat rejection sized per MW of IT load.',
   yard_water: 'Stored water for evaporative or hybrid cooling.',
+  yard_bess: 'Battery storage you added. Its energy is estimated from its footprint and it adds to the build cost.',
+  yard_solar: 'A solar canopy you added. Its output is estimated from its area and it adds to the build cost.',
 };
 
 export const money = (n: number) =>

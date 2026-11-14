@@ -92,3 +92,38 @@ def test_noise_follows_distance():
     unknown = L.generate(brief(), {"gates": []}, GRID, {})
     assert unknown["concepts"][0]["people"]["noise_at_home_dba"] is None
     assert math.isfinite(unknown["concepts"][0]["people"]["noise_at_boundary_dba"])
+
+
+def edited(edits):
+    return L.generate(brief(), SITE, GRID, {}, None, edits)["concepts"][0]
+
+
+def test_user_edits_are_measured_and_checked_like_generated_geometry():
+    base = run()["concepts"][0]
+    gen = next(y for y in base["yard"] if y["type"] == "yard_gen")
+    # generators pushed to the site edge: louder at the boundary, and outside the setback
+    moved = edited({"long-halls": {"yard": {"GEN": {"x": 320 - gen["w"] - 1, "y": gen["y"]}}}})
+    assert moved["people"]["noise_at_boundary_dba"] > base["people"]["noise_at_boundary_dba"]
+    assert not next(k for k in moved["checks"] if k["name"] == "Inside the setback")["ok"]
+    assert not moved["feasible"]
+    # building dragged onto the outdoor plant
+    clash = edited({"long-halls": {"building": {"dx": 60, "dy": 0}}})
+    assert not next(k for k in clash["checks"] if k["name"] == "Nothing overlaps")["ok"]
+    assert clash["building"]["x"] == pytest.approx(base["building"]["x"] + 60, abs=0.01)
+    assert clash["rooms"][0]["x"] == pytest.approx(base["rooms"][0]["x"] + 60, abs=0.01)
+    # edits to one concept leave the others alone
+    other = L.generate(brief(), SITE, GRID, {}, None, {"long-halls": {"building": {"dx": 60}}})["concepts"][1]
+    assert other["building"] == run()["concepts"][1]["building"]
+
+
+def test_added_battery_and_solar_change_cost_and_capacity():
+    base = run()["concepts"][0]
+    add = edited({"long-halls": {"added": [
+        {"code": "BESS-1", "type": "yard_bess", "x": 12, "y": 12, "w": 20, "d": 10},
+        {"code": "PV-1", "type": "yard_solar", "x": 12, "y": 30, "w": 30, "d": 20}]}})
+    assert add["resources"]["bess_mwh"] == pytest.approx(20.0)
+    assert add["planet"]["canopy_solar_kwp"] == 108 and add["planet"]["roof_solar_kwp"] == base["planet"]["roof_solar_kwp"] + 108
+    assert add["money"]["added"] == 20 * 350_000 + 108 * 1400
+    assert add["money"]["capex"] == pytest.approx(base["money"]["capex"] + add["money"]["added"], abs=3)
+    assert {"BESS-1", "PV-1"} <= {y["code"] for y in add["yard"]}
+    assert all(k["ok"] for k in add["checks"][:5])

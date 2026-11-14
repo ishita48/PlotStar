@@ -6,16 +6,17 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import {
   ArrowLeft, ArrowRight, Box as BoxIcon, Check, CircleAlert, CircleCheck, Coins, Columns2, Download, Droplets, Leaf, Lock,
-  MapPin, Sparkles, Square, Star, Users,
+  BatteryCharging, MapPin, Move, RotateCcw, Sparkles, Square, Star, Sun, Trash2, Users,
 } from 'lucide-react';
 import { Brand } from '../brand';
-import { PUBLIC_DATA_API } from '@/lib/plotstar-api';
+import { matterportEmbedUrl, PUBLIC_DATA_API, siteDetailUrl } from '@/lib/plotstar-api';
 import type { GateResult } from '@/lib/types';
 import type { ExploreSite } from '../explore/types';
 import { verdict } from '../explore/types';
 import type { MapMode } from '../explore/explore-map';
 import { Plan2D, type Layers } from './plan2d';
-import type { Brief, Concept, Factor, Room, StudioResult } from './types';
+import type { MoveEdit, ViewPreset } from './model3d';
+import type { AddedType, Brief, Concept, ConceptEdit, Edits, Factor, Room, StudioResult } from './types';
 import { COOLING_LABEL, ROUTE_COLOR, TYPE_STYLE, WHY, download, money, num, pct, toDxf } from './types';
 
 const ExploreMap = dynamic(() => import('../explore/explore-map'), { ssr: false, loading: () => <div className="st-loading">Loading map…</div> });
@@ -37,6 +38,8 @@ const GATE_FACTOR: Record<string, Factor> = {
 };
 const DEFAULT: Brief = { name: 'Houston 20 MW', market: 'Houston', mw: 20, rackKw: 20, redundancy: 'N+1', cooling: 'liquid', halls: null, siteW: 320, siteD: 240, setback: 8, expansion: 10, flex: 30 };
 const SAVE_KEY = 'plotstar-studio-v1';
+const NO_EDIT: ConceptEdit = { building: { dx: 0, dy: 0 }, yard: {}, added: [] };
+const ADD: Record<AddedType, { prefix: string; w: number; d: number }> = { yard_bess: { prefix: 'BESS', w: 26, d: 12 }, yard_solar: { prefix: 'PV', w: 36, d: 24 }, yard_water: { prefix: 'TANK', w: 14, d: 14 } };
 /** CoStar building names are often generic ("Bldg 2", "G"), so lead with the street address. */
 const siteLabel = (s: ExploreSite) => (s.area && (s.source as string | undefined) !== 'user' ? s.area : s.name);
 const isUser = (s: ExploreSite) => (s.source as string | undefined) === 'user';
@@ -73,8 +76,12 @@ export function Studio() {
   const [base, setBase] = useState<StudioResult | null>(null);
   const [activeId, setActiveId] = useState<string>('');
   const [view, setView] = useState<'2d' | '3d' | 'split'>('split');
-  const [layers, setLayers] = useState<Layers>({ racks: true, labels: true, power: false, cooling: false, data: false, yard: true, site: false });
+  const [layers, setLayers] = useState<Layers>({ racks: true, labels: true, power: false, cooling: false, data: false, yard: true, site: false, tags: true, aerial: true, roof: 0 });
   const [sel, setSel] = useState<string | null>(null);
+  const [edits, setEdits] = useState<Edits>({});
+  const [editMode, setEditMode] = useState(false);
+  const [cam, setCam] = useState<ViewPreset>({ preset: 'iso', n: 0 });
+  const [tours, setTours] = useState<string[]>([]);
   const [preferred, setPreferred] = useState<string | null>(null);
   const [reasons, setReasons] = useState('');
   const [decidedAt, setDecidedAt] = useState<string | null>(null);
@@ -98,6 +105,16 @@ export function Studio() {
     return () => { alive = false; };
   }, [brief.market]);
 
+  // Matterport scans of the existing building, when CoStar recorded any for this property
+  const parcelId = site?.parcelId;
+  useEffect(() => {
+    setTours([]);
+    if (!parcelId) return;
+    let alive = true;
+    fetch(siteDetailUrl(parcelId)).then((r) => (r.ok ? r.json() : null)).then((d) => alive && setTours(d?.matterport_model_ids ?? [])).catch(() => {});
+    return () => { alive = false; };
+  }, [parcelId]);
+
   const pickSite = useCallback(async (id: string, list?: ExploreSite[]) => {
     setSiteId(id);
     const s = (list ?? sites).find((x) => x.id === id);
@@ -119,18 +136,19 @@ export function Studio() {
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
 
-  const body = useCallback((b: Brief) => ({
+  const body = useCallback((b: Brief, ed: Edits = edits) => ({
     brief: { name: b.name, mw_it: b.mw, rack_kw: b.rackKw, redundancy: b.redundancy, cooling: b.cooling, halls: b.halls, site_w: b.siteW, site_d: b.siteD, setback_m: b.setback, expansion_pct: b.expansion, flexible_share: b.flex / 100 },
     site: site ? { id: site.id, name: site.name, lat: site.lat, lon: site.lng, gates: site.screen?.gates ?? [] } : {},
     priorities: prio,
-  }), [site, prio]);
+    edits: ed,
+  }), [site, prio, edits]);
 
-  const generate = useCallback(async (b: Brief, keepBase: boolean) => {
+  const generate = useCallback(async (b: Brief, keepBase: boolean, ed?: Edits) => {
     setBusy(true); setError(null);
     try {
-      const r = await api<StudioResult>('/studio/generate', body(b));
+      const r = await api<StudioResult>('/studio/generate', body(b, keepBase ? ed : {}));
       setResult(r); setSummary(null);
-      if (!keepBase) { setBase(r); setPreferred(null); setDecidedAt(null); setSel(null); }
+      if (!keepBase) { setBase(r); setPreferred(null); setDecidedAt(null); setSel(null); setEdits({}); }
       setActiveId((cur) => (keepBase && r.concepts.some((c) => c.id === cur) ? cur : r.concepts.find((c) => c.rank === 1)!.id));
       return r;
     } catch (e) { setError((e as Error).message); return null; } finally { setBusy(false); }
@@ -149,6 +167,46 @@ export function Studio() {
     const b = { ...brief, [k]: v };
     setBrief(b); void generate(b, true);
   }
+
+  // edits to the active concept: each one is sent back so the engine re-measures and re-checks the layout
+  function commitEdits(all: Edits) { setEdits(all); void generate(brief, true, all); }
+  const applyMove = useCallback((m: MoveEdit) => {
+    if (!concept) return;
+    const cur = edits[concept.id] ?? NO_EDIT;
+    let next: ConceptEdit;
+    if (m.code === 'BUILDING') next = { ...cur, building: { dx: cur.building.dx + m.dx, dy: cur.building.dy + m.dy } };
+    else {
+      const it = concept.yard.find((y) => y.code === m.code);
+      if (!it) return;
+      next = it.added ? { ...cur, added: cur.added.map((a) => (a.code === m.code ? { ...a, x: a.x + m.dx, y: a.y + m.dy } : a)) }
+        : { ...cur, yard: { ...cur.yard, [m.code]: { x: it.x + m.dx, y: it.y + m.dy } } };
+    }
+    const all = { ...edits, [concept.id]: next };
+    setEdits(all); void generate(brief, true, all);
+  }, [concept, edits, brief, generate]);
+  function addItem(type: AddedType) {
+    if (!concept || !result) return;
+    const cur = edits[concept.id] ?? NO_EDIT, a = ADD[type], sb = result.brief.setback_m;
+    let n = 1;
+    while (cur.added.some((x) => x.code === `${a.prefix}-${n}`)) n++;
+    // first free strip west of the building, stacking northwards
+    const x = Math.max(sb + 1, concept.building.x - a.w - 8);
+    const y = Math.min(result.brief.site_d - sb - a.d - 1, Math.max(sb + 1, concept.building.y) + cur.added.reduce((s, i) => s + i.d + 4, 0));
+    commitEdits({ ...edits, [concept.id]: { ...cur, added: [...cur.added, { code: `${a.prefix}-${n}`, type, x: Math.round(x), y: Math.round(y), w: a.w, d: a.d }] } });
+    setSel(`${a.prefix}-${n}`);
+  }
+  function removeItem(code: string) {
+    if (!concept) return;
+    const cur = edits[concept.id] ?? NO_EDIT;
+    commitEdits({ ...edits, [concept.id]: { ...cur, added: cur.added.filter((x) => x.code !== code) } });
+    setSel(null);
+  }
+  function resetEdits() {
+    if (!concept) return;
+    const { [concept.id]: _dropped, ...rest } = edits;
+    commitEdits(rest);
+  }
+  const aerialId = site ? (site.parcelId ?? `pt:${site.lat.toFixed(6)},${site.lng.toFixed(6)}`) : null;
 
   function decide() {
     const at = new Date().toISOString();
@@ -283,6 +341,7 @@ export function Studio() {
                             </div>
                           ))}
                         </div>
+                        {tours.length > 0 && <a className="st-tour" href={matterportEmbedUrl(tours[0])} target="_blank" rel="noreferrer"><BoxIcon size={14} /> Walk the existing building in 3D · {tours.length} Matterport scan{tours.length > 1 ? 's' : ''}</a>}
                         <h4>Site rectangle</h4>
                         <div className="st-row">
                           <Field label="Width"><div className="st-unit"><input type="number" value={brief.siteW} onChange={(e) => set('siteW', Math.max(60, +e.target.value || 60))} /><em>m</em></div></Field>
@@ -343,18 +402,34 @@ export function Studio() {
                 <div className="st-seg">
                   {result.concepts.map((c) => <button key={c.id} className={c.id === concept.id ? 'on' : ''} onClick={() => { setActiveId(c.id); setSel(null); }}>{c.rank === 1 && <Star size={12} />}{c.name}</button>)}
                 </div>
-                <div className="st-seg">
-                  <button className={view === '2d' ? 'on' : ''} onClick={() => setView('2d')}><Square size={13} /> 2D plan</button>
-                  <button className={view === '3d' ? 'on' : ''} onClick={() => setView('3d')}><BoxIcon size={13} /> 3D model</button>
-                  <button className={view === 'split' ? 'on' : ''} onClick={() => setView('split')}><Columns2 size={13} /> Side by side</button>
+                <div className="st-tools">
+                  <button className={`st-btn ${editMode ? 'primary' : ''}`} onClick={() => { setEditMode(!editMode); if (view === '2d') setView('3d'); }}><Move size={13} /> {editMode ? 'Editing layout' : 'Edit layout'}</button>
+                  <div className="st-seg">
+                    <button onClick={() => setCam({ preset: 'iso', n: cam.n + 1 })}>Angle view</button>
+                    <button onClick={() => setCam({ preset: 'top', n: cam.n + 1 })}>Top view</button>
+                  </div>
+                  <div className="st-seg">
+                    <button className={view === '2d' ? 'on' : ''} onClick={() => setView('2d')}><Square size={13} /> 2D plan</button>
+                    <button className={view === '3d' ? 'on' : ''} onClick={() => setView('3d')}><BoxIcon size={13} /> 3D model</button>
+                    <button className={view === 'split' ? 'on' : ''} onClick={() => setView('split')}><Columns2 size={13} /> Side by side</button>
+                  </div>
                 </div>
               </div>
+              {editMode && (
+                <div className="st-editbar">
+                  <span><b>Edit mode.</b> Drag the building or any outdoor item in the 3D model. Checks and numbers update when you let go.</span>
+                  <button className="st-btn" onClick={() => addItem('yard_bess')} disabled={busy}><BatteryCharging size={13} /> Add battery storage</button>
+                  <button className="st-btn" onClick={() => addItem('yard_solar')} disabled={busy}><Sun size={13} /> Add solar canopy</button>
+                  <button className="st-btn" onClick={() => addItem('yard_water')} disabled={busy}><Droplets size={13} /> Add water tank</button>
+                  <button className="st-btn" onClick={resetEdits} disabled={busy || !edits[concept.id]}><RotateCcw size={13} /> Undo all edits</button>
+                </div>
+              )}
               <div className="st-explore-body">
                 <div className={`st-views ${view}`}>
-                  {view !== '2d' && <div className="st-view"><Model3D concept={concept} siteW={result.brief.site_w} siteD={result.brief.site_d} layers={layers} selected={sel} onSelect={setSel} /></div>}
+                  {view !== '2d' && <div className="st-view"><Model3D concept={concept} siteW={result.brief.site_w} siteD={result.brief.site_d} setback={result.brief.setback_m} layers={layers} selected={sel} onSelect={setSel} aerialId={aerialId} edit={editMode} onMove={applyMove} view={cam} /></div>}
                   {view !== '3d' && <div className="st-view st-view-plan"><Plan2D concept={concept} siteW={result.brief.site_w} siteD={result.brief.site_d} setback={result.brief.setback_m} layers={layers} selected={sel} onSelect={setSel} /></div>}
                 </div>
-                <Inspector concept={concept} sel={sel} layers={layers} setLayers={setLayers} />
+                <Inspector concept={concept} sel={sel} layers={layers} setLayers={setLayers} edit={editMode} onRemove={removeItem} />
               </div>
             </section>
           )}
@@ -467,9 +542,11 @@ export function Studio() {
   );
 }
 
-function Inspector({ concept, sel, layers, setLayers }: { concept: Concept; sel: string | null; layers: Layers; setLayers: (l: Layers) => void }) {
+function Inspector({ concept, sel, layers, setLayers, edit, onRemove }: {
+  concept: Concept; sel: string | null; layers: Layers; setLayers: (l: Layers) => void; edit: boolean; onRemove: (code: string) => void;
+}) {
   const r: Room | undefined = [...concept.rooms, ...concept.yard].find((x) => x.code === sel);
-  const toggles: [keyof Layers, string, string?][] = [['racks', 'Rack rows'], ['labels', 'Room labels'], ['yard', 'Outdoor plant'], ['site', 'Whole site'], ['power', 'Power routes', ROUTE_COLOR.power], ['cooling', 'Cooling routes', ROUTE_COLOR.cooling], ['data', 'Data routes', ROUTE_COLOR.data]];
+  const toggles: [Exclude<keyof Layers, 'roof'>, string, string?][] = [['racks', 'Rack rows'], ['tags', 'Name tags'], ['yard', 'Outdoor plant'], ['aerial', 'Aerial photo'], ['labels', 'Plan labels'], ['site', 'Whole site in plan'], ['power', 'Power routes', ROUTE_COLOR.power], ['cooling', 'Cooling routes', ROUTE_COLOR.cooling], ['data', 'Data routes', ROUTE_COLOR.data]];
   const m = concept.metrics;
   return (
     <aside className="st-inspector">
@@ -479,6 +556,7 @@ function Inspector({ concept, sel, layers, setLayers }: { concept: Concept; sel:
           <label key={k}><input type="checkbox" checked={layers[k]} onChange={(e) => setLayers({ ...layers, [k]: e.target.checked })} />{color && <i style={{ background: color }} />}{label}</label>
         ))}
       </div>
+      <label className="st-roof"><span>Roof and rooftop solar</span><input type="range" min={0} max={1} step={0.05} value={layers.roof} onChange={(e) => setLayers({ ...layers, roof: +e.target.value })} /></label>
       <h4>{r ? 'Inspector' : 'This concept'}</h4>
       {r ? (
         <>
@@ -492,6 +570,7 @@ function Inspector({ concept, sel, layers, setLayers }: { concept: Concept; sel:
             {r.hall != null && <><dt>Serves</dt><dd>Data hall {r.hall}</dd></>}
           </dl>
           <p className="st-why"><b>Why is this here?</b> {WHY[r.type]}</p>
+          {edit && r.added && <button className="st-btn st-remove" onClick={() => onRemove(r.code)}><Trash2 size={13} /> Remove this item</button>}
         </>
       ) : (
         <>
@@ -524,6 +603,7 @@ function Analysis({ c, r, base }: { c: Concept; r: StudioResult; base: Concept |
   const homes = gate('Residential proximity'), flood = gate('Flood exposure'), water = gate('Water stress');
   const cap = c.money.capex;
   const bars: [string, number][] = [['Equipment', c.money.equipment], ['Building shell', c.money.shell], ['Distribution', c.money.distribution], ['Grid connection', c.money.interconnect]];
+  if (c.money.added > 0) bars.push(['Added by you', c.money.added]);
   const flexSave = c.money.energy_per_year_flat - c.money.energy_per_year;
   return (
     <>
@@ -550,7 +630,7 @@ function Analysis({ c, r, base }: { c: Concept; r: StudioResult; base: Concept |
           <Stat label="Carbon from electricity per year" value={`${num(c.planet.co2_t_per_year)} t`} sub={c.planet.co2_t_per_year_flat > c.planet.co2_t_per_year ? `${num(c.planet.co2_t_per_year_flat - c.planet.co2_t_per_year)} t less than running flat out` : `Grid at ${r.operating.carbon_flat} kg/MWh`} tag={r.operating.carbon_label} />
           <Delta now={c.planet.co2_t_per_year} was={base?.planet.co2_t_per_year} unit=" t" fmt={(n) => num(n)} />
           <Stat label="Carbon to build the shell" value={`${num(c.planet.embodied_t)} t`} tag="Estimated" />
-          <Stat label="Roof solar potential" value={`${num(c.planet.roof_solar_kwp)} kWp`} sub={`${pct(c.planet.roof_solar_share, 1)} of yearly electricity`} tag="Estimated" />
+          <Stat label="Solar potential" value={`${num(c.planet.roof_solar_kwp)} kWp`} sub={`${pct(c.planet.roof_solar_share, 1)} of yearly electricity${c.planet.canopy_solar_kwp ? ` · ${num(c.planet.canopy_solar_kwp)} kWp from canopies` : ''}`} tag="Estimated" />
           <Stat label="Flood zone" value={flood?.status ?? 'Unknown'} sub={flood?.reason} tag={flood?.label ?? 'Unknown'} />
         </div>
         <div className="st-card st-factor">
@@ -560,6 +640,7 @@ function Analysis({ c, r, base }: { c: Concept; r: StudioResult; base: Concept |
           <Stat label="Power drawn from the grid" value={`${c.resources.facility_mw} MW`} sub={r.site.substation_km != null ? `${r.site.substation_km} km to a high-voltage substation` : 'Substation distance unknown'} tag="Estimated" />
           <Stat label="Site left open" value={pct(c.resources.open_land_share)} sub={`${num(c.metrics.footprint_m2)} m² building`} tag="Estimated" />
           <Stat label="Room for future racks" value={num(c.resources.spare_positions)} sub="Rack positions, not powered capacity" tag="Estimated" />
+          {c.resources.bess_mwh > 0 && <Stat label="Battery storage" value={`${c.resources.bess_mwh} MWh`} sub={`${c.resources.bess_minutes} minutes at full load`} tag="Estimated" />}
         </div>
       </div>
       <div className="st-card">
@@ -585,7 +666,7 @@ function CompareTable({ r }: { r: StudioResult }) {
     ['Cooling route length', (c) => c.metrics.cooling_route_m, (n) => `${num(n)} m`, true],
     ['Noise at the boundary', (c) => c.people.noise_at_boundary_dba, (n) => `${n} dBA`, true],
     ['Carbon to build the shell', (c) => c.planet.embodied_t, (n) => `${num(n)} t`, true],
-    ['Roof solar potential', (c) => c.planet.roof_solar_kwp, (n) => `${num(n)} kWp`, false],
+    ['Solar potential', (c) => c.planet.roof_solar_kwp, (n) => `${num(n)} kWp`, false],
     ['Site left open', (c) => c.resources.open_land_share, (n) => pct(n), false],
   ];
   return (

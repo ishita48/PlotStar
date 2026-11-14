@@ -44,7 +44,31 @@ class SiteIn(BaseModel):
     gates: list[dict[str, Any]] = Field(default_factory=list, max_length=12)
 
 
+class Offset(BaseModel):
+    dx: float = Field(0, ge=-3000, le=3000)
+    dy: float = Field(0, ge=-3000, le=3000)
+
+
+class Pos(BaseModel):
+    x: float = Field(..., ge=-3000, le=8000)
+    y: float = Field(..., ge=-3000, le=8000)
+
+
+class Added(Pos):
+    code: str = Field(..., max_length=24, pattern=r"^[A-Za-z0-9-]+$")
+    type: Literal["yard_bess", "yard_solar", "yard_water"]
+    w: float = Field(..., ge=4, le=600)
+    d: float = Field(..., ge=4, le=600)
+
+
+class ConceptEdit(BaseModel):
+    building: Offset = Field(default_factory=Offset)
+    yard: dict[str, Pos] = Field(default_factory=dict)
+    added: list[Added] = Field(default_factory=list, max_length=24)
+
+
 class GenerateIn(BaseModel):
+    edits: dict[str, ConceptEdit] = Field(default_factory=dict)
     brief: Brief
     site: SiteIn = Field(default_factory=SiteIn)
     priorities: dict[str, float] = Field(default_factory=dict)
@@ -58,7 +82,7 @@ def generate(q: GenerateIn) -> dict[str, Any]:
         raise HTTPException(422, f"Unknown assumption keys: {', '.join(bad)}")
     try:
         return layout_engine.generate(q.brief.model_dump(), q.site.model_dump(), grid.grid_day(offline=True),
-                                      q.priorities, q.assumptions)
+                                      q.priorities, q.assumptions, {k: e.model_dump() for k, e in q.edits.items()})
     except ValueError as e:
         raise HTTPException(422, str(e)) from e
 

@@ -4,7 +4,11 @@ import { useEffect, useRef, useState } from 'react';
 import type { Concept, Room } from './types';
 import { ROUTE_COLOR, TYPE_STYLE } from './types';
 
-export interface Layers { racks: boolean; labels: boolean; power: boolean; cooling: boolean; data: boolean; yard: boolean; site: boolean }
+export interface Layers {
+  racks: boolean; labels: boolean; power: boolean; cooling: boolean; data: boolean; yard: boolean; site: boolean;
+  /** 3D only: floating name tags, the aerial photo under the model, and roof opacity from 0 (off) to 1. */
+  tags: boolean; aerial: boolean; roof: number;
+}
 
 export function Plan2D({
   concept, siteW, siteD, setback, layers, selected, onSelect, mini = false,
@@ -12,7 +16,7 @@ export function Plan2D({
   concept: Concept; siteW: number; siteD: number; setback: number; layers?: Layers; selected?: string | null;
   onSelect?: (code: string | null) => void; mini?: boolean;
 }) {
-  const L = layers ?? { racks: !mini, labels: !mini, power: false, cooling: false, data: false, yard: true, site: false };
+  const L = layers ?? { racks: !mini, labels: !mini, power: false, cooling: false, data: false, yard: true, site: false, tags: false, aerial: false, roof: 0 };
   const ref = useRef<SVGSVGElement>(null);
   const [box, setBox] = useState({ w: mini ? 380 : 700, h: mini ? 180 : 600 });
   useEffect(() => {

@@ -50,6 +50,9 @@ STUDIO_ASSUMPTIONS = [
     Assumption("roof_solar_kw_per_m2", 0.18, "kWp / m2", f"{_T}."),
     Assumption("solar_kwh_per_kwp", 1400.0, "kWh / kWp / yr", f"{_T}; use the local-conditions PVWatts figure when known.",
                verify=True),
+    Assumption("bess_mwh_per_m2", 0.1, "MWh / m2", f"{_T}: containerised battery storage with access aisles.", verify=True),
+    Assumption("bess_cost_per_mwh", 350_000, "USD / MWh", f"{_T} for installed battery storage.", verify=True),
+    Assumption("solar_cost_per_kwp", 1400.0, "USD / kWp", f"{_T} for an installed solar canopy.", verify=True),
     Assumption("max_site_coverage", 0.6, "share", f"{_T}: building plus yard may cover at most this share of the site."),
 ]
 for _a in STUDIO_ASSUMPTIONS:
@@ -60,6 +63,8 @@ REDUNDANCY = ("N", "N+1", "2N")
 STRINGS = {"N": 1.0, "N+1": 1.5, "2N": 2.0}
 RED_COST = {"N": "redundancy_cost_n", "N+1": "redundancy_cost_n1", "2N": "redundancy_cost_2n"}
 FLOOR_H = 6.0
+# outdoor items a user may add in the studio: display name and height
+ADDED = {"yard_bess": ("Battery storage", 3.0), "yard_solar": ("Solar canopy", 4.5), "yard_water": ("Water storage", 8.0)}
 
 
 def default_halls(mw: float) -> int:
@@ -304,7 +309,9 @@ def _gate(site: dict, name: str) -> dict | None:
 
 
 def generate(brief: dict[str, Any], site: dict[str, Any], grid: dict[str, Any], priorities: dict[str, float],
-             overrides: dict[str, float] | None = None) -> dict[str, Any]:
+             overrides: dict[str, float] | None = None, edits: dict[str, Any] | None = None) -> dict[str, Any]:
+    """`edits` holds the user's changes per concept id: {"building": {dx, dy}, "yard": {code: {x, y}}, "added": [...]}.
+    Edited geometry is measured and checked exactly like generated geometry."""
     ov = overrides or {}
     c = _Ctx(brief, ov)
     v = c.v
@@ -340,21 +347,29 @@ def generate(brief: dict[str, Any], site: dict[str, Any], grid: dict[str, Any], 
         yard = _yard(c, max(usable_d, 40.0))
         total_w = bw + gap + yard["w"]
         ox, oy = (site_w - total_w) / 2, (site_d - bd) / 2
+        ed = (edits or {}).get(cid) or {}
+        yx, yy = ox + bw + gap, (site_d - min(usable_d, max(i["y"] + i["d"] for i in yard["items"]))) / 2
+        ox, oy = ox + float((ed.get("building") or {}).get("dx", 0)), oy + float((ed.get("building") or {}).get("dy", 0))
         rooms = g["rooms"]
         for r in rooms:
             r["x"], r["y"] = r["x"] + ox, r["y"] + oy
             r["h"] = 0.15 if r["type"] == "corridor" else FLOOR_H
             for rw in r.get("rows", []):
                 rw["x"], rw["y"] = rw["x"] + ox, rw["y"] + oy
-        yx, yy = ox + bw + gap, (site_d - min(usable_d, max(i["y"] + i["d"] for i in yard["items"]))) / 2
         equipment = []
+        moved = ed.get("yard") or {}
         for it in yard["items"]:
             it["x"], it["y"] = it["x"] + yx, it["y"] + yy
+            if it["code"] in moved:
+                it["x"], it["y"] = float(moved[it["code"]]["x"]), float(moved[it["code"]]["y"])
             if it["type"] == "yard_gen":
                 for k in range(c.gens):
                     equipment.append(dict(code=f"G-{k + 1:02d}", type="generator", x=it["x"] + (k // it["per_col"]) * 6.0 + 1.5,
                                           y=it["y"] + (k % it["per_col"]) * 13.0 + 0.5, w=3.0, d=12.0, h=3.5))
-        yard_items = yard["items"]
+        yard_items = yard["items"] + [
+            dict(code=a["code"], name=ADDED[a["type"]][0], type=a["type"], x=float(a["x"]), y=float(a["y"]), w=float(a["w"]),
+                 d=float(a["d"]), h=ADDED[a["type"]][1], added=True)
+            for a in ed.get("added") or [] if a.get("type") in ADDED]
         halls = [r for r in rooms if r["type"] == "data_hall"]
         by = lambda t: next(i for i in yard_items if i["type"] == t)  # noqa: E731
         sub, gen, cool = by("yard_sub"), by("yard_gen"), by("yard_cool")
@@ -386,7 +401,10 @@ def generate(brief: dict[str, Any], site: dict[str, Any], grid: dict[str, Any], 
         cool_capex = c.mw * v(f"cooling_capex_{c.cooling}")
         shell = footprint * v("shell_cost_per_m2")
         distribution = lens["power"] * v("busway_cost_per_m") + lens["cooling"] * v("pipe_cost_per_m")
-        capex = equip + cool_capex + shell + distribution + interconnect
+        bess_mwh = sum(i["w"] * i["d"] for i in yard_items if i["type"] == "yard_bess") * v("bess_mwh_per_m2")
+        canopy_kwp = sum(i["w"] * i["d"] for i in yard_items if i["type"] == "yard_solar") * v("roof_solar_kw_per_m2")
+        added_cost = bess_mwh * v("bess_cost_per_mwh") + canopy_kwp * v("solar_cost_per_kwp")
+        capex = equip + cool_capex + shell + distribution + interconnect + added_cost
         energy_flat, energy_flex = fac_mwh * p_flat, fac_mwh * p_flex
         opex = c.mw * v("opex_per_mw_year")
         ten_year = capex + 10 * (energy_flex + opex + water_cost)
@@ -400,17 +418,25 @@ def generate(brief: dict[str, Any], site: dict[str, Any], grid: dict[str, Any], 
 
         # Planet
         embodied_t = footprint * v("embodied_kgco2_per_m2") / 1000.0
-        solar_kwp = footprint * v("roof_solar_usable_share") * v("roof_solar_kw_per_m2")
+        solar_kwp = footprint * v("roof_solar_usable_share") * v("roof_solar_kw_per_m2") + canopy_kwp
         solar_mwh = solar_kwp * v("solar_kwh_per_kwp") / 1000.0
         co2_flat, co2_flex = fac_mwh * c_flat / 1000.0, fac_mwh * c_flex / 1000.0
         solar_t = solar_mwh * c_flat / 1000.0
 
+        every = [dict(x=ox, y=oy, w=bw, d=bd, code="Building")] + yard_items
+        margin = min(min(i["x"], i["y"], site_w - i["x"] - i["w"], site_d - i["y"] - i["d"]) for i in every)
+        clash = [f"{a['code']} and {o['code']}" for n_, a in enumerate(every) for o in every[n_ + 1:]
+                 if min(a["x"] + a["w"], o["x"] + o["w"]) - max(a["x"], o["x"]) > 0.05
+                 and min(a["y"] + a["d"], o["y"] + o["d"]) - max(a["y"], o["y"]) > 0.05]
         gens_ok = c.gens >= c.gens_needed + (1 if c.red != "N" else 0) or c.red == "N"
         checks = [
             dict(name="Fits the building envelope", ok=fits,
                  detail=f"Building {bw:.0f} x {bd:.0f} m in a {env_w:.0f} x {env_d:.0f} m envelope."),
-            dict(name="Inside the setback", ok=ox >= setback - 1e-6 and oy >= setback - 1e-6 and total_w <= usable_w + 1e-6,
-                 detail=f"Building and yard need {total_w:.0f} m of the {usable_w:.0f} m available between setbacks."),
+            dict(name="Inside the setback", ok=margin >= setback - 1e-6,
+                 detail=("Something sits outside the site boundary." if margin < 0 else
+                         f"Closest point is {margin:.0f} m from the boundary; the setback is {setback:.0f} m.")),
+            dict(name="Nothing overlaps", ok=not clash,
+                 detail=f"Overlapping: {'; '.join(clash[:3])}." if clash else "Building and outdoor plant are clear of each other."),
             dict(name="All racks placed", ok=placed == c.racks, detail=f"{placed:,} of {c.racks:,} racks placed."),
             dict(name="Backup power covers the load", ok=gens_ok,
                  detail=f"{c.gens} generators of {v('genset_mw')} MW for a {c.fac_mw:.1f} MW facility load at {c.red}."),
@@ -432,7 +458,7 @@ def generate(brief: dict[str, Any], site: dict[str, Any], grid: dict[str, Any], 
                 r["need_m2"] = round(r["need_m2"], 1)
             r["area_m2"] = round(r["w"] * r["d"], 1)
         out.append(dict(
-            id=cid, name=name, strategy=strategy, feasible=all(k["ok"] for k in checks[:4]),
+            id=cid, name=name, strategy=strategy, feasible=all(k["ok"] for k in checks[:5]),
             building=dict(x=round(ox, 2), y=round(oy, 2), w=round(bw, 2), d=round(bd, 2), h=FLOOR_H),
             rooms=rooms, yard=[{k: (round(val, 2) if isinstance(val, float) else val) for k, val in i.items()} for i in yard_items],
             equipment=equipment, routes=routes, checks=checks,
@@ -443,18 +469,19 @@ def generate(brief: dict[str, Any], site: dict[str, Any], grid: dict[str, Any], 
                 power_route_m=round(lens["power"]), cooling_route_m=round(lens["cooling"]), data_route_m=round(lens["data"]),
                 site_coverage=round(coverage, 3), yard_area_m2=round(yard_area), generators=c.gens),
             money=dict(capex=round(capex), shell=round(shell), equipment=round(equip + cool_capex),
-                       distribution=round(distribution), interconnect=round(interconnect),
+                       distribution=round(distribution), interconnect=round(interconnect), added=round(added_cost),
                        energy_per_year=round(energy_flex), energy_per_year_flat=round(energy_flat),
                        opex_per_year=round(opex), water_per_year=round(water_cost), ten_year=round(ten_year)),
             people=dict(noise_at_boundary_dba=round(noise_edge, 1),
                         noise_at_home_dba=round(noise_home, 1) if noise_home is not None else None,
                         generator_to_boundary_m=round(edge), home_distance_m=home_m),
             planet=dict(co2_t_per_year=round(co2_flex), co2_t_per_year_flat=round(co2_flat), embodied_t=round(embodied_t),
-                        roof_solar_kwp=round(solar_kwp), roof_solar_mwh=round(solar_mwh),
+                        roof_solar_kwp=round(solar_kwp), canopy_solar_kwp=round(canopy_kwp), roof_solar_mwh=round(solar_mwh),
                         roof_solar_share=round(solar_mwh / fac_mwh, 4), solar_avoided_t=round(solar_t)),
             resources=dict(water_m3_per_year=round(water_m3), energy_mwh_per_year=round(fac_mwh),
                            facility_mw=round(c.fac_mw, 1), open_land_share=round(1 - coverage, 3),
-                           spare_positions=positions - placed + bay),
+                           spare_positions=positions - placed + bay, bess_mwh=round(bess_mwh, 1),
+                           bess_minutes=round(bess_mwh / c.fac_mw * 60.0, 1)),
         ))
 
     _score(out, priorities)

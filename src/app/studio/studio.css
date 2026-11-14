@@ -143,6 +143,15 @@
 .st-seg button { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border: 0; border-right: 1px solid var(--st-line); background: none; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
 .st-seg button:last-child { border-right: 0; }
 .st-seg button.on { background: var(--st-accent); color: #fff; font-weight: 600; }
+.st-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.st-tools .st-btn { height: 34px; }
+.st-editbar { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: var(--st-tint); border-bottom: 1px solid #c9d8c9; font-size: 12.5px; flex-wrap: wrap; }
+.st-editbar span { flex: 1; min-width: 240px; color: var(--st-ink-2); }
+.st-editbar .st-btn { height: 30px; font-size: 12.5px; }
+.st-roof { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; margin-top: 12px; }
+.st-remove { margin-top: 10px; color: var(--st-bad); border-color: #e6c2bd; }
+.st-tour { display: flex; align-items: center; gap: 8px; margin-top: 14px; padding: 10px 12px; border: 1px solid var(--st-line); border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--st-accent); text-decoration: none; }
+.st-tour:hover { border-color: var(--st-accent); background: var(--st-tint); }
 .st-explore-body { flex: 1; min-height: 0; display: flex; }
 .st-views { flex: 1; min-width: 0; display: grid; grid-template-columns: 1fr; }
 .st-views.split { grid-template-columns: 1fr 1fr; }
