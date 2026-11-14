@@ -19,6 +19,13 @@ interface Analysis {
 }
 export interface DesignSite { id: string; name: string; lat: number; lng: number; acres: number; aerialId: string; screen?: SiteScreen }
 type Mode = 'normal' | 'event' | 'outage';
+type Src<T> = ({ available: true; source: string } & T) | { available: false; why: string };
+export interface LocalContext {
+  climate: Src<{ mean_c: number; hottest_c: number; days_above_35c: number; cool_days_below_18c: number; year: number }>;
+  solar: Src<{ mwh_per_mwp_year: number; capacity_factor_pct: number }>;
+  households: Src<{ households_within_1mi_est: number | null; tract_households: number; tract: string }>;
+  retail_price: Src<{ cents_per_kwh: number; period: string; state: string }>;
+}
 
 const TYPES: Record<CType, { name: string; color: string; w: number; d: number; h: number }> = {
   data_hall: { name: 'Data hall', color: '#e9ece6', w: 60, d: 40, h: 12 },
@@ -142,6 +149,13 @@ export function DesignStep({ site, mw, cooling, depth, onNext }: { site: DesignS
   const [ask, setAsk] = useState('');
   const [addType, setAddType] = useState<CType>('solar');
   const [sheet, setSheet] = useState(false);
+  const [ctx, setCtx] = useState<LocalContext | null>(null);
+  useEffect(() => {
+    let alive = true;
+    setCtx(null);
+    fetch(`${PUBLIC_DATA_API}/context?lat=${site.lat}&lon=${site.lng}&state=${site.lng < -110 ? 'CA' : 'TX'}`).then((r) => (r.ok ? r.json() : null)).then((d) => alive && setCtx(d)).catch(() => {});
+    return () => { alive = false; };
+  }, [site.lat, site.lng]);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const generate = useCallback(async (instruction?: string, current?: Layout | null) => {
@@ -247,6 +261,18 @@ export function DesignStep({ site, mw, cooling, depth, onNext }: { site: DesignS
               </tbody></table>
             </section>
           )}
+          {ctx && (
+            <section>
+              <h3>Local conditions</h3>
+              <table className="ws-kv"><tbody>
+                <tr><th>Climate ({ctx.climate.available ? ctx.climate.year : '—'})</th><td>{ctx.climate.available ? `${ctx.climate.mean_c} °C average · ${ctx.climate.days_above_35c} days above 35 °C · ${ctx.climate.cool_days_below_18c} cool days` : `unavailable (${ctx.climate.why})`}</td></tr>
+                <tr><th>Solar yield here</th><td>{ctx.solar.available ? `${ctx.solar.mwh_per_mwp_year.toLocaleString()} MWh per MWp a year${m && m.solar_mwp ? ` → this design: ${Math.round(m.solar_mwp * ctx.solar.mwh_per_mwp_year).toLocaleString()} MWh/yr, ${(100 * m.solar_mwp * ctx.solar.mwh_per_mwp_year / (m.facility_mw * 0.8 * 8760)).toFixed(1)}% of its use` : ''}` : `unavailable (${ctx.solar.why})`}</td></tr>
+                <tr><th>Households within 1 mile</th><td>{ctx.households.available ? `≈ ${ctx.households.households_within_1mi_est?.toLocaleString() ?? '—'} (estimate from census tract ${ctx.households.tract})` : ctx.households.why}</td></tr>
+                <tr><th>Industrial power price</th><td>{ctx.retail_price.available ? `${ctx.retail_price.cents_per_kwh} ¢/kWh, ${ctx.retail_price.state} average, ${ctx.retail_price.period}` : `unavailable (${ctx.retail_price.why})`}</td></tr>
+              </tbody></table>
+              <p className="ws-note">Open-Meteo, NREL PVWatts, US Census, US EIA. The optimizer still prices energy at the ERCOT wholesale day; the retail average is shown for comparison.</p>
+            </section>
+          )}
           <section>
             <h3>{cur ? `Edit: ${cur.label || TYPES[cur.type].name}` : 'Edit the design'}</h3>
             {cur ? (
@@ -281,7 +307,7 @@ export function DesignStep({ site, mw, cooling, depth, onNext }: { site: DesignS
           <p className="ws-note">A concept layout for planning, not an engineering design. The parcel is drawn as a square of the recorded acreage on the real Vexcel aerial. Sizing rules are team assumptions.</p>
         </aside>
       </div>
-      {sheet && m && <CommunitySheet site={site} mw={mw} cooling={cooling} depth={depth} gensets={m.gensets} batteryMin={m.battery_minutes_at_full_load} solarMwp={m.solar_mwp} onClose={() => setSheet(false)} />}
+      {sheet && m && <CommunitySheet site={site} mw={mw} cooling={cooling} depth={depth} gensets={m.gensets} batteryMin={m.battery_minutes_at_full_load} solarMwp={m.solar_mwp} censusHouseholds={ctx?.households.available ? ctx.households.households_within_1mi_est : null} onClose={() => setSheet(false)} />}
     </main>
   );
 }

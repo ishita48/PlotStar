@@ -9,8 +9,8 @@ import { fmtNum } from './types';
 
 interface Impact { energy_gwh_per_year: number; water_gal_per_day: number; co2_t_per_year: number; carbon_label: string }
 
-export function CommunitySheet({ site, mw, cooling, depth, gensets, batteryMin, solarMwp, onClose }: {
-  site: DesignSite; mw: number; cooling: string; depth: number; gensets: number; batteryMin: number; solarMwp: number; onClose: () => void;
+export function CommunitySheet({ site, mw, cooling, depth, gensets, batteryMin, solarMwp, censusHouseholds = null, onClose }: {
+  site: DesignSite; mw: number; cooling: string; depth: number; gensets: number; batteryMin: number; solarMwp: number; censusHouseholds?: number | null; onClose: () => void;
 }) {
   const [imp, setImp] = useState<Impact | null>(null);
   useEffect(() => {
@@ -22,7 +22,7 @@ export function CommunitySheet({ site, mw, cooling, depth, gensets, batteryMin, 
   const within = site.screen?.power.residential_within_1mi;
   const households = imp ? Math.round((imp.water_gal_per_day * 365) / 100000) : null; // ~100k gal per household-year (team assumption)
   const rows: [string, string, string][] = [
-    ['Distance from homes', homes?.value != null ? `Nearest recorded home is ${homes.value} m away. ${within ?? '—'} CoStar-recorded homes or apartment communities within 1 mile (a lower bound, not a census).` : 'Not established.', `Stay at least ${homes?.limit ?? 300} m from homes. Checked against CoStar residential records.`],
+    ['Distance from homes', homes?.value != null ? `Nearest recorded home is ${homes.value} m away. ${within ?? '—'} CoStar-recorded homes or apartment communities within 1 mile (a lower bound).${censusHouseholds != null ? ` Census estimate: about ${fmtNum(censusHouseholds)} households within 1 mile.` : ''}` : 'Not established.', `Stay at least ${homes?.limit ?? 300} m from homes. Checked against CoStar residential records.`],
     ['Noise', `${gensets} backup generators and rooftop cooling units. Generators run only in a utility outage and for scheduled tests.`, 'Generator tests in daytime hours only; publish the test log. Night-time noise limit to be set with the county before permitting.'],
     ['Water', imp ? `About ${fmtNum(imp.water_gal_per_day)} gallons a day with ${cooling} cooling${households ? `, roughly the use of ${fmtNum(households)} households` : ''}. Local water stress: ${water?.value ?? 'unknown'}.` : 'Calculating…', 'Meter and publish monthly water use. No water cooling where stress is above the limit.'],
     ['Flood', flood ? `${flood.reason}.` : 'Not established.', 'No construction in a FEMA special flood hazard area.'],
