@@ -2,8 +2,9 @@
 //   * Flood zone   FEMA National Flood Hazard Layer, queried live      (hard gate, Sourced)
 //   * Homes nearby OpenStreetMap residential areas, pre-rasterized     (hard gate, Estimated)
 //   * Grid access  nearest substation and 345 kV line from OSM        (information, Estimated)
-// CoStar parcels appear as pins when web/data/parcels.json exists:
-//   [{ "id", "name", "lat", "lon", "acres", "price", "source" }]
+// CoStar sites appear as pins and a ranked shortlist when web/data/costar-sites.json
+// exists (built locally by bridge/costar_sites.py; it holds CoStar data, so it is
+// never committed).
 
 import { $, $$, h, fmt, ICON, chip } from "./util.js";
 import { auditable } from "./audit.js";
@@ -27,6 +28,7 @@ const KM_LAT = 111.32;
 const kmLon = (lat) => 111.32 * Math.cos((lat * Math.PI) / 180);
 
 let grid = null;
+let costar = null;
 let bits = null;
 let map, pin;
 let site = null;
@@ -63,10 +65,11 @@ export async function initScreener() {
   const when = new Date(grid.retrieved_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   $("#src-osm").innerHTML = `<i class="dot on"></i>Snapshot, ${when}`;
   $("#map-src").textContent = `OpenStreetMap · ${when}`;
-  loadParcels();
+  await loadCostar();
 
   // Shareable links: ?site=channelview opens with that example screened.
   const preset = new URLSearchParams(location.search).get("site");
+  if (preset === "costar-top") $('.preset[data-preset="costar-top"]')?.click();
   if (PRESETS[preset]) {
     const p = PRESETS[preset];
     map.setView([p.lat, p.lon], p.zoom);
@@ -121,19 +124,132 @@ function drawLayers() {
   }
 }
 
-async function loadParcels() {
-  let parcels;
+/* ---------------------------------------------------------------- CoStar sites */
+
+async function loadCostar() {
   try {
-    parcels = await getJSON("data/parcels.json", 5000);
+    costar = await getJSON("data/costar-sites.json", 8000);
   } catch {
-    return; // no CoStar extract loaded yet
+    return; // CoStar data isn't on this machine
   }
-  for (const p of parcels) {
-    const icon = L.divIcon({ className: "parcel-pin", html: "<span></span>", iconSize: [18, 18] });
-    L.marker([p.lat, p.lon], { icon, title: p.name || p.id })
-      .on("click", () => screen(p.lat, p.lon, { parcel: p }))
+  for (const c of costar.sites) {
+    const icon = L.divIcon({ className: `costar-pin ${c.screen.verdict}`, html: "<span></span>", iconSize: [14, 14] });
+    L.marker([c.lat, c.lon], { icon, title: `${c.name} (CoStar)`, riseOnHover: true })
+      .on("click", () => screen(c.lat, c.lon, { site: c }))
       .addTo(map);
   }
+  const top = costar.sites.find((c) => c.screen.verdict === "pass");
+  if (top) {
+    const b = h("button", { class: "preset", "data-preset": "costar-top" }, "Top CoStar site");
+    b.addEventListener("click", () => {
+      map.flyTo([top.lat, top.lon], 15, { duration: 0.9 });
+      screen(top.lat, top.lon, { site: top, preset: "costar-top" });
+    });
+    $(".presets").append(b);
+  }
+  $("#legend-costar").hidden = false;
+  const s = costar.summary;
+  $("#src-costar").innerHTML = `<i class="dot on"></i>${s.sites} Houston sites, on this laptop only`;
+  renderShortlist();
+}
+
+const sqft = (v) => (!v ? "—" : v >= 1e6 ? `${(v / 1e6).toFixed(2)}M sq ft` : `${Math.round(v / 1000)}K sq ft`);
+
+const powerText = (p) => {
+  const spec = [p.amps && `${fmt.int(p.amps)} A`, p.volts && `${p.volts} V`, p.phases && `${p.phases}-phase`].filter(Boolean).join(", ");
+  if (p.heavy === true) return `Heavy power${spec ? ` (${spec})` : ""}`;
+  if (p.heavy === false) return `Standard${spec ? ` (${spec})` : ""}`;
+  return spec || "Not recorded";
+};
+
+function costarAudit(c) {
+  return () => ({
+    title: c.name,
+    value: `CoStar property ${c.id}`,
+    label: "Sourced",
+    source: costar.source,
+    retrieved: `Screened ${new Date(costar.generated_at).toLocaleString("en-US")}`,
+    formula: `Fields from ${c.source.file} (id ${c.id}): lot size, building area, electric service, zoning, construction year, active listings, parcel numbers.\nShortlist order: ${costar.screening.shortlist_order}.`,
+    inputs: [["Rank", `${c.rank} of ${costar.sites.length}`], ["Matterport 3D models", String(c.matterport_models)]],
+    note: "CoStar data stays on the demo laptop; it is not published with the site.",
+  });
+}
+
+function costarCard(c) {
+  const listed = c.listing.active.length
+    ? `${c.listing.active.join(" and ")}${c.listing.asking_low ? `, asking ${fmt.money(c.listing.asking_low)}${c.listing.asking_high && c.listing.asking_high !== c.listing.asking_low ? `–${fmt.money(c.listing.asking_high)}` : ""}` : ""}`
+    : "Not listed now";
+  const facts = [
+    ["Use", `${c.use}${c.year_built ? `, built ${c.year_built}` : ""}`],
+    ["Lot", c.lot_acres ? `${c.lot_acres.toFixed(1)} acres` : "Not recorded"],
+    ["Building", c.building_sf ? `${fmt.int(c.building_sf)} sq ft` : "Not recorded"],
+    ["Power", powerText(c.power)],
+    ["Zoning", c.zoning || "Not recorded"],
+    ["Listed", listed],
+    ["Parcel", c.parcels[0] || "Not recorded"],
+    ["3D scan", c.matterport_models ? `${c.matterport_models} Matterport model${c.matterport_models > 1 ? "s" : ""}` : "None"],
+  ];
+  const src = h("span", {}, `CoStar · property ${c.id}`);
+  auditable(src, costarAudit(c));
+  return h("div", { class: "costar-card" },
+    h("p", { class: "costar-name" }, c.name, h("span", { class: "costar-rank" }, `#${c.rank}`)),
+    h("p", { class: "fine" }, c.address),
+    h("dl", { class: "costar-facts" }, facts.flatMap(([k, v]) => [h("dt", {}, k), h("dd", {}, v)])),
+    h("p", { class: "g-note" }, chip("Sourced"), " ", src));
+}
+
+function renderShortlist() {
+  const s = costar.summary;
+  const box = $("#costar");
+  const pass = costar.sites.filter((c) => c.screen.verdict === "pass");
+  const steps = [
+    ["CoStar's Houston industrial, flex and land sites", s.sites],
+    ["Outside FEMA's 100-year floodplain", costar.sites.filter((c) => c.screen.flood_status === "pass").length],
+    [`Also more than ${fmt.dist(0.5)} from homes`, pass.length],
+    ["Also have heavy power", s.pass_with_heavy_power],
+  ];
+  const max = steps[0][1] || 1;
+  const funnel = h("div", { class: "funnel" }, steps.map(([label, n]) =>
+    h("div", { class: "funnel-row" },
+      h("span", { class: "funnel-label" }, label),
+      h("span", { class: "funnel-bar" }, h("i", { style: { width: `${Math.max((n / max) * 100, 1.5)}%` } })),
+      h("span", { class: "funnel-n" }, fmt.int(n)))));
+
+  const row = (c) => {
+    const tr = h("tr", { tabindex: 0, title: "Show on the map" },
+      h("td", {}, c.rank),
+      h("td", {}, h("strong", {}, c.name), h("span", { class: "fine", style: { display: "block" } }, `${c.use} · ${c.city}`)),
+      h("td", {}, c.lot_acres ? `${c.lot_acres.toFixed(1)} ac` : "—"),
+      h("td", {}, sqft(c.building_sf)),
+      h("td", {}, c.power.heavy === true ? (c.power.amps ? `Heavy, ${fmt.int(c.power.amps)} A` : "Heavy") : c.power.heavy === false ? "Standard" : "—"),
+      h("td", {}, c.screen.line345_km != null ? fmt.dist(c.screen.line345_km) : "—"),
+      h("td", {}, c.screen.flood?.zone ? `Zone ${c.screen.flood.zone}` : "—"),
+      h("td", {}, c.listing.active.length ? c.listing.active.join(", ") : "—"));
+    const go = () => {
+      map.flyTo([c.lat, c.lon], 15, { duration: 0.9 });
+      screen(c.lat, c.lon, { site: c });
+      $("#map").scrollIntoView({ behavior: "smooth", block: "center" });
+    };
+    tr.addEventListener("click", go);
+    tr.addEventListener("keydown", (e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), go()));
+    return tr;
+  };
+  const top = pass.slice(0, 8);
+  box.replaceChildren(
+    h("div", { class: "shortlist-head" },
+      h("div", {}, h("p", { class: "kicker" }, "CoStar data · Houston"), h("h3", {}, "Which of CoStar's Houston sites could host a data center?")),
+      chip("Sourced")),
+    h("p", { class: "shortlist-lede" },
+      `Every industrial, flex and land property in CoStar's Houston data, run through the same gates. ${s.flood_fails} sit in the floodplain and ${s.homes_fails} are within ${fmt.dist(0.5)} of homes. ${pass.length} pass; ${s.pass_with_heavy_power} of those already have heavy power.`),
+    funnel,
+    h("div", { class: "table-scroll" },
+      h("table", { class: "data-table shortlist-table" },
+        h("thead", {}, h("tr", {}, ...["#", "Site", "Lot", "Building", "Power", "345 kV line", "Flood", "Listed"].map((t) => h("th", {}, t)))),
+        h("tbody", {}, top.map(row)))),
+    h("p", { class: "fine", style: { marginTop: "10px" } },
+      `Showing the top ${top.length} of ${pass.length} that pass. Order: ${costar.screening.shortlist_order}. Largest lot in the data: ${s.largest_lot_acres} acres; median ${s.median_lot_acres} acres.`),
+  );
+  box.hidden = false;
 }
 
 /* ---------------------------------------------------------------- geometry */
@@ -145,7 +261,7 @@ function residentialKm(lat, lon) {
   const b = grid.bbox;
   const r0 = Math.floor((lat - b.south) / r.cell_lat);
   const c0 = Math.floor((lon - b.west) / r.cell_lon);
-  const span = Math.ceil(SEARCH_KM / 0.2) + 1;
+  const span = Math.ceil(SEARCH_KM / (r.cell_lat * KM_LAT)) + 1;
   const kx = kmLon(lat);
   let best = null;
   for (let row = r0 - span; row <= r0 + span; row++) {
@@ -246,7 +362,7 @@ async function screen(lat, lon, opts = {}) {
   }
   const inside = !!grid && inArea(lat, lon);
   site = {
-    lat, lon, parcel: opts.parcel || null, inside,
+    lat, lon, costar: opts.site || null, inside,
     flood: { state: "pending" },
     homesKm: inside ? residentialKm(lat, lon) : undefined,
     sub: inside ? nearestSubstation(lat, lon) : null,
@@ -280,7 +396,7 @@ function homesAudit() {
     retrieved: new Date(grid.retrieved_at).toLocaleString("en-US"),
     formula: `${grid.residential.method}.\nDistance = straight line from this point to the nearest marked cell.\nFail if distance ≤ buffer.`,
     inputs: [["Buffer (team assumption)", fmt.dist(bufferKm)], ["Residential areas used", fmt.int(grid.residential.areas_used)]],
-    note: "Bounding boxes make this conservative, and OSM land-use coverage is incomplete. Aerial imagery (Vexcel) confirms homes before a decision.",
+    note: "OSM land-use coverage is incomplete, and cells are about 110 m across. Aerial imagery (Vexcel) confirms homes before a decision.",
   };
 }
 
@@ -362,10 +478,12 @@ function ensureSkeleton() {
     h("div", { class: "threshold" },
       h("label", { for: "buffer" }, h("span", {}, "Homes buffer ", h("span", { class: "fine" }, "· team assumption")), out),
       range),
-    h("div", { class: "gaps" },
-      h("p", {}, "Still needed before a decision"),
-      h("ul", {}, GAPS.map((g) => h("li", {}, g)))),
+    h("div", { class: "gaps" }, h("p", {}, "Still needed before a decision"), h("ul", {})),
   );
+}
+
+function gapsFor(s) {
+  return s.costar ? [...GAPS.slice(0, 3), "Lease or sale terms (CoStar has availability, not price)"] : GAPS;
 }
 
 function renderPanel() {
@@ -390,9 +508,10 @@ function renderPanel() {
   } else if (gates.some((g) => g.status === "review")) {
     v = ["v-review", ICON.alert, "Needs review", "Some checks couldn't be completed here."];
   } else {
-    v = ["v-pass", ICON.check, "Passes the first screen", `No hard gate failed. ${GAPS.length} checks still need data.`];
+    v = ["v-pass", ICON.check, "Passes the first screen", `No hard gate failed. ${gapsFor(site).length} checks still need data.`];
   }
   const [cls, icon, title, sub] = v;
+  $("#screen-panel .gaps ul").replaceChildren(...gapsFor(site).map((g) => h("li", {}, g)));
 
   const { lat, lon } = site;
   const la = Math.abs(lat).toFixed(4);
@@ -401,7 +520,7 @@ function renderPanel() {
     h("div", { class: `verdict ${cls}` },
       h("span", { class: "v-icon", html: icon }),
       h("div", {}, h("h3", {}, title), h("p", {}, sub))),
-    site.parcel ? parcelHeader(site.parcel) : null,
+    site.costar ? costarCard(site.costar) : null,
     h("p", { class: "coords" },
       `${la}° ${lat >= 0 ? "N" : "S"}, ${lo}° ${lon >= 0 ? "E" : "W"} · `,
       h("a", { href: `https://www.openstreetmap.org/?mlat=${lat.toFixed(5)}&mlon=${lon.toFixed(5)}#map=16/${lat.toFixed(5)}/${lon.toFixed(5)}`, target: "_blank", rel: "noopener" }, "open map")),
@@ -409,10 +528,4 @@ function renderPanel() {
   ].filter(Boolean));
 }
 
-function parcelHeader(p) {
-  return h("div", { class: "g-detail", style: { marginTop: "12px" } },
-    h("strong", {}, p.name || p.id), " ",
-    p.acres ? `· ${p.acres} acres ` : "",
-    p.price ? `· ${fmt.money(p.price)} ` : "",
-    chip("Sourced"), " ", h("span", { class: "fine" }, p.source || "CoStar Data Extract"));
-}
+

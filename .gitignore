@@ -5,3 +5,5 @@ __pycache__/
 .hotspot
 .env
 captures/
+/Data/
+web/data/costar-sites.json

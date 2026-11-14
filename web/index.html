@@ -116,7 +116,7 @@
         <div class="sec-head">
           <p class="eyebrow"><span>01</span>Where to build</p>
           <h2>Screen any site in Houston, instantly.</h2>
-          <p class="sec-lede">Click anywhere on the map. SiteStar checks FEMA's flood map live, measures the distance to homes and to the high-voltage grid, and applies hard gates. A site that fails one is out, however cheap it is.</p>
+          <p class="sec-lede">Click anywhere on the map, or on one of CoStar's Houston sites. SiteStar checks FEMA's flood map live, measures the distance to homes and to the high-voltage grid, and applies hard gates. A site that fails one is out, however cheap it is.</p>
         </div>
 
         <div class="screener">
@@ -135,6 +135,7 @@
                 <span class="item"><span class="sw sw-line" style="background:var(--volt-138)"></span>138 kV line</span>
                 <span class="item"><span class="sw-sub"></span>Substation</span>
                 <span class="item"><span class="sw-homes"></span>Residential area</span>
+                <span class="item" id="legend-costar" hidden><span class="sw-costar"></span>CoStar site (hollow: fails)</span>
               </div>
               <span class="chip chip-sourced" id="map-src">OpenStreetMap</span>
             </div>
@@ -148,6 +149,8 @@
             </div>
           </aside>
         </div>
+
+        <div class="card shortlist" id="costar" hidden></div>
       </div>
     </section>
 
@@ -338,7 +341,7 @@
               <tr><td>FEMA National Flood Hazard Layer</td><td>Flood zone for any point you click</td><td><span class="status"><i class="dot on"></i>Live, per click</span></td></tr>
               <tr><td>OpenStreetMap</td><td>Substations, 138 and 345 kV lines, residential areas</td><td><span class="status" id="src-osm"><i class="dot"></i>Loading</span></td></tr>
               <tr><td>Our hardware</td><td>Machine watts, job progress, ESP32 grid button, drone camera</td><td><span class="status" id="src-hw"><i class="dot"></i>Offline</span></td></tr>
-              <tr><td>CoStar Data Extract</td><td>Real commercial parcels, prices and availability</td><td><span class="status"><i class="dot sim"></i>Being integrated</span></td></tr>
+              <tr><td>CoStar Data Extract</td><td>Houston industrial, flex and land properties: lot, building, power, zoning, listings, parcel numbers</td><td><span class="status" id="src-costar"><i class="dot"></i>On the demo laptop only</span></td></tr>
               <tr><td>Vexcel imagery</td><td>Aerial images to confirm homes near each parcel</td><td><span class="status"><i class="dot sim"></i>Being integrated</span></td></tr>
               <tr><td>WRI Aqueduct</td><td>Water stress by basin</td><td><span class="status"><i class="dot"></i>Planned</span></td></tr>
             </tbody>

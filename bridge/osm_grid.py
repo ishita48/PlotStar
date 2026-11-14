@@ -6,8 +6,8 @@
 Writes web/data/houston-grid.json with:
   * substations  [lon, lat, kV, name, operator]
   * lines        high-voltage transmission (138 kV and 345 kV), simplified
-  * residential  OSM landuse=residential areas, rasterized to ~220 m cells
-                 (bounding boxes, so it errs toward flagging homes nearby)
+  * residential  OSM landuse=residential areas (their real outlines),
+                 rasterized to ~110 m cells
 
 Data (c) OpenStreetMap contributors, ODbL. A nearby substation is not
 available capacity; OSM land-use coverage is incomplete.
@@ -27,14 +27,13 @@ OVERPASS = "https://overpass-api.de/api/interpreter"
 USER_AGENT = "SiteStar-hackathon/0.1"
 BBOX = (29.45, -95.85, 30.15, -94.95)  # south, west, north, east (Greater Houston)
 OUT = Path(__file__).resolve().parent.parent / "web" / "data" / "houston-grid.json"
-CELL_LAT, CELL_LON = 0.002, 0.0023    # ~220 m x ~220 m at 29.8 N
-MAX_BOX_KM = 6                        # ignore absurdly large residential bounding boxes
+CELL_LAT, CELL_LON = 0.001, 0.00115   # ~110 m x ~110 m at 29.8 N
 
 BB = "({},{},{},{})".format(*BBOX)
 QUERIES = {
     "substations": f'[out:json][timeout:120];(node["power"="substation"]{BB};way["power"="substation"]{BB};);out center tags;',
     "lines": f'[out:json][timeout:180];way["power"="line"]["voltage"~"(138000|345000)"]{BB};out geom tags;',
-    "residential": f'[out:json][timeout:240];(way["landuse"="residential"]{BB};relation["landuse"="residential"]{BB};);out bb qt;',
+    "residential": f'[out:json][timeout:240];(way["landuse"="residential"]{BB};relation["landuse"="residential"]{BB};);out geom qt;',
 }
 
 
@@ -95,26 +94,45 @@ def build(raw: dict) -> dict:
     s, w, n, e_ = BBOX
     rows, cols = round((n - s) / CELL_LAT), round((e_ - w) / CELL_LON)
     bits = bytearray((rows * cols + 7) // 8)
-    used = skipped = 0
+
+    def mark(r, c):
+        if 0 <= r < rows and 0 <= c < cols:
+            i = r * cols + c
+            bits[i >> 3] |= 1 << (i & 7)
+
+    used = 0
     for el in raw["residential"]["elements"]:
-        b = el.get("bounds")
-        if not b:
-            continue
-        h_km = (b["maxlat"] - b["minlat"]) * 111.3
-        w_km = (b["maxlon"] - b["minlon"]) * 96.6
-        if h_km > MAX_BOX_KM or w_km > MAX_BOX_KM:
-            skipped += 1
+        # Rings: a closed way, or every member way of a multipolygon (inner rings
+        # make holes, which the even-odd fill below handles).
+        rings = []
+        if el["type"] == "way" and el.get("geometry"):
+            rings.append([(g["lon"], g["lat"]) for g in el["geometry"]])
+        for m in el.get("members", []):
+            if m.get("type") == "way" and m.get("geometry") and m.get("role") in ("outer", "inner", ""):
+                rings.append([(g["lon"], g["lat"]) for g in m["geometry"]])
+        segs = [(a, b) for ring in rings for a, b in zip(ring, ring[1:]) if a != b]
+        if not segs:
             continue
         used += 1
-        r0 = max(int((b["minlat"] - s) / CELL_LAT), 0)
-        r1 = min(int((b["maxlat"] - s) / CELL_LAT), rows - 1)
-        c0 = max(int((b["minlon"] - w) / CELL_LON), 0)
-        c1 = min(int((b["maxlon"] - w) / CELL_LON), cols - 1)
-        for r in range(r0, r1 + 1):
-            for c in range(c0, c1 + 1):
-                i = r * cols + c
-                bits[i >> 3] |= 1 << (i & 7)
+        for ring in rings:  # areas smaller than a cell still count
+            for lon, lat in ring:
+                mark(int((lat - s) / CELL_LAT), int((lon - w) / CELL_LON))
+        lats = [p[1] for ring in rings for p in ring]
+        r0 = max(int((min(lats) - s) / CELL_LAT), 0)
+        r1 = min(int((max(lats) - s) / CELL_LAT), rows - 1)
+        for r in range(r0, r1 + 1):  # scanline, even-odd fill at cell centers
+            y = s + (r + 0.5) * CELL_LAT
+            xs = sorted(
+                a[0] + (y - a[1]) * (b[0] - a[0]) / (b[1] - a[1])
+                for a, b in segs if (a[1] <= y) != (b[1] <= y)
+            )
+            for x0, x1 in zip(xs[::2], xs[1::2]):
+                c0 = max(int((x0 - w) / CELL_LON - 0.5) + 1, 0) if x0 > w else 0
+                c1 = min(int((x1 - w) / CELL_LON - 0.5), cols - 1)
+                for c in range(c0, c1 + 1):
+                    mark(r, c)
     marked = sum(bin(x).count("1") for x in bits)
+    skipped = 0
 
     return {
         "retrieved_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -126,7 +144,7 @@ def build(raw: dict) -> dict:
             "rows": rows, "cols": cols, "cell_lat": CELL_LAT, "cell_lon": CELL_LON,
             "bits": base64.b64encode(bytes(bits)).decode(),
             "areas_used": used, "areas_skipped_too_large": skipped, "cells_marked": marked,
-            "method": "OSM landuse=residential bounding boxes rasterized to ~220 m cells",
+            "method": "OSM landuse=residential outlines rasterized to ~110 m cells",
         },
     }
 
