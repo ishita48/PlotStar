@@ -78,3 +78,8 @@ model AmenityCache {
   payload String
   updatedAt DateTime @updatedAt
 }
+model ProtectionWorkspace {
+  id String @id
+  snapshot String
+  updatedAt DateTime @updatedAt
+}

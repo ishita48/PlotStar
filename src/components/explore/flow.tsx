@@ -1,6 +1,7 @@
 'use client';
 // Guided flow: one question per screen, one primary button. Same backend as before.
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { ArrowLeft, ArrowRight, Check } from 'lucide-react';
 import { Brand } from '../brand';
@@ -117,6 +118,7 @@ export function Flow() {
             </li>
           ))}
         </ol>
+        <Link href="/dashboard-2" className="ws-btn">Open Dashboard 2</Link>
       </header>
       {error && <div className="fl-error">{error}</div>}
 

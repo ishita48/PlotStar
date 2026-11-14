@@ -29,6 +29,28 @@ npm.cmd run start
 
 ## A judge's walkthrough
 
+### Dashboard 2
+
+Open **Dashboard 2** from `/projects` or `/explore`, or visit `/dashboard-2`. This separate AFTERLIGHT
+Locate remains a standalone **UI prototype**: **Describe → Pick → Finalize**, using hardcoded sample
+locations, scores and map artwork. Complete Locate, then open **Design → Use this model** to explore
+the reused HAVEN six-level sample digital twin. Orbit, zoom, reset the camera or inspect a level.
+
+**Protect → Select → Place → Deploy** configures electricity/water limits, leak/fire detection,
+monitoring points and a predefined evacuation plan. **Confirm Deploy** opens the HAVEN command
+center. Trigger deterministic leak, fire or usage demos; acknowledge incidents, reset simulation,
+and complete recovery. **Edit protections** returns to configuration. Settings, deployment, incidents
+and activity persist in the existing SQLite database, separately for each site/type/city.
+
+Everything in this command center is explicitly **simulation mode**. Hardware and external HAVEN
+uAgents are not connected. Routes are defined demo scenarios, use stairs, and are not real-world
+safety verification. The model is representative, not a generated parcel design; monitoring points
+cover Level 4 only. Locate still resets on refresh: choose the same site/type/city and reopen Protect
+to resume its saved plan. The original workspaces remain available. See
+[HAVEN integration and reuse notes](docs/haven-integration.md).
+
+### Original workspace
+
 1. On the landing page, select **Start building** and describe a project, or select **Explore the demo**.
 2. Discover shows four illustrative candidate sites around Princeton. The ranking uses distinct criteria for residential, data center, park, and commercial developments. Change scoring priorities and apply them. Select map markers or candidate cards and compare costs, operating yields, risks and assumed neighborhood context.
 3. **Edit brief** exposes capacity, location, budget, rent/revenue, occupancy, expense ratio, floors, parking and setbacks. All calculations use saved assumptions. The land-price slider is an explicitly temporary scenario.

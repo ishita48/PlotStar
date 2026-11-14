@@ -1,5 +1,24 @@
 # PlotStar verification
 
+## Dashboard 2 HAVEN integration — November 14, 2026
+
+- Locate's existing UI preview remains independent; its no-API browser regression check passes.
+- Design and Protect reuse HAVEN's six-level geometry and instanced renderer. Shared monitoring
+  defaults/recommendations were extracted unchanged so the original telemetry pipeline uses the same rules.
+- Type checking, production build and all 18 unit tests pass.
+- The full browser suite passes all 11 tests (2.6 minutes), including the original project,
+  design, monitoring, telemetry/SSE, report-export and mobile journeys.
+- All five focused Dashboard 2 browser checks pass: real WebGL, desktop/mobile layouts, configured
+  thresholds, sensor points, route exclusion, leak/fire/usage simulation, acknowledgement without clearing
+  hazards, reset/recovery, persisted deployment, returning to setup, independent facilities, stale-write
+  rejection and same-origin validation. The tests use the isolated SQLite test database.
+- Sample model and simulation labels are explicit. No hardware or external HAVEN agents are connected.
+  Evacuation paths come from the configured demo topology, use stairs and are not step-free.
+- Desktop/mobile QA: `output/qa/dashboard-2/haven/`. Source inventory and operation notes:
+  `docs/haven-integration.md`. The separate HAVEN repository was read but not edited.
+
+## Original verification record
+
 Verified locally on November 14, 2026 (America/New_York).
 
 - `npm.cmd run build`: passes; production compilation, static rendering, API route generation and TypeScript checking complete.

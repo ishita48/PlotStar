@@ -135,6 +135,11 @@ export function Dashboard() {
             Workspace <span>/</span> <b>All projects</b>
           </div>
           <div className="topbar-right">
+            <Button asChild variant="outline" size="sm">
+              <Link href="/dashboard-2">
+                Open Dashboard 2 <ArrowUpRight size={14} />
+              </Link>
+            </Button>
             <span className="saved-indicator">
               <span className="pulse-dot" /> SQLite connected
             </span>

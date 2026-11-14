@@ -186,11 +186,9 @@ test('judge journey in the browser: create, score, model, save, simulate, export
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/');
-  await expect(
-    page.getByRole('heading', { name: 'Find it. Design it. Protect it.' }),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Where to build\./ })).toBeVisible();
   await page.screenshot({ path: 'output/qa/landing-desktop.png', fullPage: true });
-  await page.getByRole('link', { name: 'Start building', exact: false }).first().click();
+  await page.goto('/projects?new=1');
   await page
     .getByRole('textbox', { name: 'Development brief' })
     .fill(
@@ -252,12 +250,15 @@ test('judge journey in the browser: create, score, model, save, simulate, export
 test('mobile landing and dashboard fit without horizontal overflow', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
-  await expect(page.getByRole('link', { name: 'Open workspace' })).toBeVisible();
+  const openWorkspace = page.getByRole('navigation').getByRole('link', { name: 'Open workspace' });
+  await expect(openWorkspace).toBeVisible();
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
   ).toBeTruthy();
   await page.screenshot({ path: 'output/qa/landing-mobile.png', fullPage: true });
-  await page.getByRole('link', { name: 'Open workspace' }).click();
+  await openWorkspace.click();
+  await expect(page.getByRole('heading', { name: 'What do you want to build?' })).toBeVisible();
+  await page.goto('/projects');
   await expect(page.getByRole('heading', { name: 'A place for big ideas.' })).toBeVisible();
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
