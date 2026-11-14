@@ -7,6 +7,18 @@ import Link from 'next/link';
 import { Activity, ArrowRight, Boxes, Clock, Database, GitBranch, Layers, MapPin, Search, Sparkles, Table } from 'lucide-react';
 import { Brand } from '../brand';
 import { PUBLIC_DATA_API } from '@/lib/plotstar-api';
+import { BarChart, LineChart, OTHER, ScatterChart, SLOT } from './charts';
+
+interface ChartData {
+  telemetry_minutes: { minute: string; machine: string; avg_watts: number }[];
+  telemetry_raw: { ts: string; machine: string; watts: number | null }[];
+  price_day: { date: string; prices: number[]; hub: string } | null;
+  gate_fails: { gate: string; fails: number }[];
+  projects: { id: string; name: string; cooling: string; capex: number; npv: number; mw_it: number; status: string }[];
+}
+interface TrigStatus { running: boolean; events: number; alerts: number; windows: number; rules: string[]; atlas_triggers: string[]; error: string | null; counts?: Record<string, number> }
+interface Note { kind: string; source: string; message: string; at: string; by?: string | null }
+const COOL: Record<string, string> = { liquid: SLOT[0], air: SLOT[1], hybrid: SLOT[2] };
 
 interface CollInfo { documents: number; indexes: string[]; validator: boolean; timeseries: Record<string, unknown> | null; search_indexes: { name: string; type: string; status: string; queryable: boolean }[] }
 interface Status { available: boolean; reason?: string; database?: string; collections?: Record<string, CollInfo>; embeddings?: { model: string; dims: number; enabled: boolean } }
@@ -42,6 +54,10 @@ export function DataView() {
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [feed, setFeed] = useState<Ev[]>([]);
   const [err, setErr] = useState<Record<string, string>>({});
+  const [charts, setCharts] = useState<ChartData | null>(null);
+  const [trig, setTrig] = useState<TrigStatus | null>(null);
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [alerts, setAlerts] = useState<Note[]>([]);
   const es = useRef<EventSource | null>(null);
 
   const fail = (k: string) => (e: Error) => setErr((x) => ({ ...x, [k]: e.message }));
@@ -58,13 +74,28 @@ export function DataView() {
     api('/atlas/status').then(setStatus).catch(() => setStatus({ available: false, reason: 'data service unreachable' }));
     api('/atlas/analytics').then(setAn).catch(fail('analytics'));
     api('/atlas/decisions?limit=12').then((d) => setDecisions(d.decisions)).catch(fail('decisions'));
+    api('/atlas/charts').then(setCharts).catch(fail('charts'));
+    const pollTrig = () => { api('/atlas/triggers').then(setTrig).catch(() => {}); api('/atlas/notifications?limit=8').then((d) => setNotes(d.notifications)).catch(() => {}); api('/atlas/alerts?limit=6').then((d) => setAlerts(d.alerts)).catch(() => {}); };
+    pollTrig();
+    const tmr = setInterval(pollTrig, 8000);
+    const stopTimer = () => clearInterval(tmr);
+    window.addEventListener('beforeunload', stopTimer);
     doSearch('greens'); doSim(SAMPLE_SIM[0]);
     const s = new EventSource(`${PUBLIC_DATA_API}/atlas/stream`);
     es.current = s;
     const on = (e: MessageEvent) => { try { const ev = JSON.parse(e.data) as Ev; if (ev.type !== 'heartbeat') setFeed((f) => [ev, ...f].slice(0, 12)); } catch { /* ignore */ } };
     for (const t of ['open', 'insert', 'update', 'replace', 'delete', 'error', 'unavailable']) s.addEventListener(t, on as EventListener);
-    return () => s.close();
+    return () => { s.close(); stopTimer(); window.removeEventListener('beforeunload', stopTimer); };
   }, [doSearch, doSim]);
+
+  const wattSeries = (() => {
+    if (!charts) return [];
+    const byMachine = (rows: { key: string; machine: string; v: number | null }[]) =>
+      ['baseline', 'plotstar'].map((m, i) => ({ name: m, color: SLOT[i], points: rows.filter((r) => r.machine === m && r.v != null).map((r) => ({ x: Date.parse(r.key), y: r.v as number })) })).filter((s) => s.points.length);
+    const mins = byMachine(charts.telemetry_minutes.map((r) => ({ key: r.minute, machine: r.machine, v: r.avg_watts })));
+    return mins.some((s) => s.points.length >= 2) ? mins : byMachine(charts.telemetry_raw.map((r) => ({ key: r.ts, machine: r.machine, v: r.watts })));
+  })();
+  const hhmm = (x: number) => new Date(x).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   const colls = Object.entries(status?.collections ?? {}).filter(([n]) => !n.startsWith('system.'));
   const totalDocs = colls.reduce((a, [, c]) => a + c.documents, 0);
@@ -199,6 +230,45 @@ export function DataView() {
             </div>
           </section>
         )}
+
+        {/* charts: the same aggregations, drawn */}
+        {charts && (
+          <section className="st-card">
+            <h3><Activity size={15} /> Charts <span className="dt-muted">drawn from Atlas aggregations; every chart has a table view</span></h3>
+            <div className="dt-charts">
+              <LineChart title="Hardware watts" sub={wattSeries.length ? 'baseline vs PlotStar machine, last 6 h' : 'last 6 h'} series={wattSeries} xFmt={hhmm} yFmt={(v) => `${Math.round(v)} W`} />
+              <LineChart title={`ERCOT day-ahead price, ${charts.price_day?.date ?? '—'}`} sub={charts.price_day ? `${charts.price_day.hub}, $/MWh by hour ending` : undefined} labelPeak
+                series={charts.price_day ? [{ name: 'price', color: SLOT[0], points: charts.price_day.prices.map((p, i) => ({ x: i + 1, y: p })) }] : []} xFmt={(x) => `${x}:00`} yFmt={(v) => `$${v.toFixed(0)}`} />
+              <BarChart title="Why sites fail" sub="parcels failing each hard gate" rows={charts.gate_fails.map((g) => ({ label: g.gate, value: g.fails }))} />
+              <ScatterChart title="Projects: cost to build vs NPV" sub="colour = cooling; grey = other" xLabel="Cost to build ($)" yLabel="NPV, 15 yr ($)"
+                series={[{ name: 'liquid', color: SLOT[0] }, { name: 'air', color: SLOT[1] }, { name: 'hybrid', color: SLOT[2] }]}
+                points={charts.projects.map((p) => ({ x: p.capex, y: p.npv, label: p.name, series: COOL[p.cooling] ? p.cooling : 'other', extra: `${p.mw_it} MW · ${p.status}` }))}
+                xFmt={(v) => `$${(v / 1e6).toFixed(0)}M`} yFmt={(v) => `${v < 0 ? '−' : ''}$${Math.abs(v / 1e6).toFixed(0)}M`} />
+            </div>
+          </section>
+        )}
+
+        {/* triggers: real Atlas Triggers + the in-app worker */}
+        <section className="dt-two">
+          <div className="st-card">
+            <h3><GitBranch size={15} /> Triggers <span className="dt-muted">Atlas Triggers (App Services) and the in-app change-stream worker</span></h3>
+            {!trig ? <p className="dt-muted">Loading…</p> : (
+              <>
+                <ul className="dt-rules">{trig.rules.map((r) => <li key={r}><span className={`dt-tag ${/Atlas/.test(r) ? '' : 'dt-tag-wait'}`}>{/Atlas/.test(r) ? 'Atlas' : 'in-app'}</span>{r.replace(/\s*\((Atlas[^)]*|in-app[^)]*)\)/, '')}</li>)}</ul>
+                <p className="dt-muted">Atlas-side triggers: <code>{trig.atlas_triggers.join(', ') || 'none'}</code> · worker {trig.running ? 'running' : 'stopped'} · {trig.events} events seen{trig.counts ? ` · ${trig.counts.notifications} notifications · ${trig.counts.alerts} alerts · ${trig.counts.grid_minutes} minute windows` : ''}{trig.error ? ` · ${trig.error}` : ''}</p>
+              </>
+            )}
+          </div>
+          <div className="st-card">
+            <h3><Activity size={15} /> Notifications &amp; alerts <span className="dt-muted">written by the triggers</span></h3>
+            {notes.length === 0 && alerts.length === 0 ? <p className="dt-muted">Nothing yet — save a decision in the Studio, or push telemetry above {'>'}900 W.</p> : (
+              <ul className="dt-notes">
+                {alerts.map((a, i) => <li key={`a${i}`}><span className="dt-ev dt-ev-delete">alert</span><span>{a.message}</span><small>{a.at.slice(11, 19)}</small></li>)}
+                {notes.map((n, i) => <li key={`n${i}`}><span className={`dt-ev ${n.source === 'atlas-trigger' ? 'dt-ev-insert' : 'dt-ev-open'}`}>{n.source === 'atlas-trigger' ? 'Atlas' : 'in-app'}</span><span>{n.message}</span><small>{n.at.slice(11, 19)}</small></li>)}
+              </ul>
+            )}
+          </div>
+        </section>
 
         {/* audit */}
         <section className="st-card">

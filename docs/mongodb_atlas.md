@@ -53,16 +53,45 @@ Registered locally (not committed) as `mongodb` with `MDB_MCP_READ_ONLY=true`, u
 Claude Code can then run `find`, `aggregate`, `count`, `list-collections`, `collection-schema` and friends
 against the cluster in a new session. To re-register: `claude mcp add --scope local mongodb -e MDB_MCP_CONNECTION_STRING=<uri> -e MDB_MCP_READ_ONLY=true -- npx -y mongodb-mcp-server`.
 
-## Console-only Atlas features (not provisionable from the app)
+## Triggers — real Atlas Triggers, created from code
 
-- **Triggers** (App Services): Database → Triggers → Add → collection `decisions`, operation Insert, function:
-  send a webhook/Slack message with `fullDocument.project_id` and `.by`. Also useful: an insert trigger on
-  `grid_telemetry` that writes an alert document when `watts > 900`.
-- **Charts (Visualization)**: Data Visualization → add dashboard on `plotstar` → suggested charts: sites by
-  `screen_status` (donut), `gates.gate` fails (bar), `lot_acres` histogram, `studio_projects` capex vs NPV
-  (scatter, colour by `brief.cooling`), `grid_telemetry` watts over time (line, by `meta.machine`).
-- **Stream Processing**: needs a Stream Processing Instance (paid tier). A natural use is a windowed
-  `$tumblingWindow` over `grid_telemetry` to emit minute averages into a `grid_minutes` collection.
-- **Data Federation**: can expose the CoStar extract files in S3 as a federated collection; not used because
-  the kit is licensed and kept off cloud storage.
-- **Search & Vector Search**: already created from code (three indexes, the free-tier maximum).
+`services/api/scripts/atlas_triggers.py` creates (idempotently, through the App Services admin API) an app
+`plotstar-triggers` linked to the cluster with three enabled triggers, each running a function **inside Atlas**:
+
+| Trigger | Type | Fires on | Function writes |
+|---|---|---|---|
+| `decisions_insert` | DATABASE | `plotstar.decisions` insert | a `notifications` document (`source: atlas-trigger`) |
+| `projects_change` | DATABASE | `studio_projects` insert/update/replace/delete | `portfolio_snapshot` (totals via `$group`) |
+| `grid_minutes_rollup` | SCHEDULED, every minute | cron | one-minute windows per machine over `grid_telemetry` → `grid_minutes` (`$dateTrunc` + `$group`) |
+
+Verified: a project save produced an Atlas-written notification within seconds and refreshed the snapshot.
+The script records the trigger names in `meta.atlas_triggers`; the API's in-app worker (`app/triggers.py`)
+reads that and only runs the rules Atlas does not own. One rule can never be an Atlas Trigger: MongoDB does
+not support change streams on time-series collections, so the **high-watts alert (> 900 W) runs at ingest**
+in `atlas.telemetry_point`. `GET /atlas/triggers` shows which rule runs where; `/atlas/notifications`,
+`/atlas/alerts`, `/atlas/grid_minutes`, `/atlas/portfolio_snapshot` expose what they wrote.
+
+## Charts
+
+Atlas Charts has no API for creating dashboards, so the Data page draws the charts itself from the same
+aggregations (`GET /atlas/charts`): hardware watts over time (two series), the latest ERCOT day-ahead day,
+why sites fail, and project cost-to-build vs NPV by cooling — each with hover and a table view. To add the
+same views in Atlas Charts: Data Visualization → dashboard on `plotstar` → `grid_minutes` avg_watts by minute
+(line, series `machine`), `sites` unwind `gates` filter `status: Fail` count by `gates.gate` (bar),
+`studio_projects` `summary.capex` × `summary.npv` colour `brief.cooling` (scatter).
+
+## Stream Processing
+
+The minute-window rollup is the Stream Processing pattern (`$tumblingWindow` over `grid_telemetry`) and runs
+as the scheduled Atlas Trigger above. A dedicated Stream Processing Instance (paid tier; processors are created
+with `sp.createStreamProcessor` in mongosh, not REST) would replace it with true sub-second windows — the
+pipeline would be `$source: grid_telemetry` → `$tumblingWindow {interval: 1 minute, pipeline: [$group avg/max]}`
+→ `$merge: grid_minutes`.
+
+## Not built, and why
+
+- **Data Federation** needs an S3/Azure/GCS bucket as the federated source; AWS is out of scope for this build,
+  and the CoStar kit is licensed and stays off cloud storage.
+- **Agent Engine / AI Model APIs** are console preview features with no admin API I could verify; nothing is
+  claimed for them.
+- **Search & Vector Search** are already created from code (three indexes, the free-tier maximum).

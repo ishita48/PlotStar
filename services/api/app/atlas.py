@@ -350,9 +350,34 @@ def telemetry_point(machine: str, watts: float | None, progress: float | None, s
             if db is not None:
                 db.grid_telemetry.insert_one({"ts": datetime.now(timezone.utc), "meta": {"machine": machine, "source": source, "meter": meter},
                                               "watts": watts, "progress": progress, "state": state})
+                from . import triggers  # ingest-time rule: time-series collections cannot have change streams or Atlas Triggers
+                triggers.on_telemetry(machine, watts, state, source)
         except Exception:
             pass
     threading.Thread(target=go, daemon=True).start()
+
+
+def chart_data() -> dict[str, Any] | None:
+    """Series for the Data page charts, each one aggregation: watts per minute per machine, the latest ERCOT day,
+    gate failures, and project capex vs NPV by cooling."""
+    db = _db()
+    if db is None:
+        return None
+    since = datetime.now(timezone.utc) - timedelta(hours=6)
+    minutes = [{"minute": r["minute"].isoformat(timespec="minutes"), "machine": r["machine"], "avg_watts": r["avg_watts"],
+                "max_watts": r.get("max_watts"), "points": r.get("points"), "source": r.get("source")}
+               for r in db.grid_minutes.find({"minute": {"$gte": since}}, {"_id": 0}).sort("minute", 1)]
+    raw = [{"ts": r["ts"].isoformat(timespec="seconds"), "machine": r["meta"]["machine"], "watts": r.get("watts")}
+           for r in db.grid_telemetry.find({"ts": {"$gte": since}}, {"ts": 1, "meta.machine": 1, "watts": 1}).sort("ts", 1).limit(2000)]
+    day = db.grid_days.find_one({}, {"_id": 0, "date": 1, "prices": 1, "carbon": 1, "hub": 1, "source": 1}, sort=[("date", -1)])
+    fails = list(db.sites.aggregate([{"$unwind": "$gates"}, {"$match": {"gates.status": "Fail"}},
+                                     {"$group": {"_id": "$gates.gate", "fails": {"$sum": 1}}}, {"$sort": {"fails": -1}},
+                                     {"$project": {"_id": 0, "gate": "$_id", "fails": 1}}]))
+    projects = list(db.studio_projects.aggregate([{"$match": {"summary.capex": {"$exists": True}}},
+        {"$project": {"_id": 0, "id": "$_id", "name": 1, "mw_it": 1, "status": 1, "cooling": "$brief.cooling",
+                      "capex": "$summary.capex", "npv": "$summary.npv"}}]))
+    return {"telemetry_minutes": minutes, "telemetry_raw": raw, "price_day": day, "gate_fails": fails, "projects": projects,
+            "computed_by": "Atlas aggregations"}
 
 
 # --------------------------------------------------------------------------------------------------- reads

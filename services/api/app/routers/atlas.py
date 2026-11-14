@@ -85,6 +85,54 @@ def decisions(limit: int = Query(20, ge=1, le=200)) -> dict[str, Any]:
     return {"decisions": _need(atlas.recent_decisions(limit))}
 
 
+@router.get("/triggers")
+def triggers_status() -> dict[str, Any]:
+    """Which rules run as real Atlas Triggers (App Services) and which run in the API's change-stream worker."""
+    from .. import triggers
+    return triggers.status()
+
+
+def _rows(coll: str, limit: int, sort: str = "at") -> list[dict[str, Any]]:
+    db = _need(atlas._db())
+    out = []
+    for d in db[coll].find({}, {"_id": 0}).sort(sort, -1).limit(limit):
+        for k, v in list(d.items()):
+            if hasattr(v, "isoformat"):
+                d[k] = v.isoformat(timespec="seconds")
+        out.append(d)
+    return out
+
+
+@router.get("/notifications")
+def notifications(limit: int = Query(20, ge=1, le=200)) -> dict[str, Any]:
+    return {"notifications": _rows("notifications", limit)}
+
+
+@router.get("/alerts")
+def alerts(limit: int = Query(20, ge=1, le=200)) -> dict[str, Any]:
+    return {"alerts": _rows("alerts", limit)}
+
+
+@router.get("/grid_minutes")
+def grid_minutes(limit: int = Query(120, ge=1, le=2000)) -> dict[str, Any]:
+    return {"minutes": _rows("grid_minutes", limit, sort="minute")}
+
+
+@router.get("/portfolio_snapshot")
+def portfolio_snapshot() -> dict[str, Any]:
+    db = _need(atlas._db())
+    d = db.portfolio_snapshot.find_one({"_id": "latest"}) or {}
+    d.pop("_id", None)
+    if hasattr(d.get("updated_at"), "isoformat"):
+        d["updated_at"] = d["updated_at"].isoformat(timespec="seconds")
+    return d
+
+
+@router.get("/charts")
+def charts() -> dict[str, Any]:
+    return _need(atlas.chart_data())
+
+
 @router.get("/stream")
 async def stream(request: Request) -> EventSourceResponse:
     """Live change-stream feed (SSE): inserts/updates/deletes on projects, decisions and sites as they happen."""

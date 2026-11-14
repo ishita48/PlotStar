@@ -23,7 +23,10 @@ async def lifespan(_: FastAPI):
     screen.init()
     optimizer_mod.init()
     livegrid_state.init()
+    from . import triggers  # in-app change-stream worker; Atlas Triggers own what they can (see scripts/atlas_triggers.py)
+    triggers.start()
     yield
+    triggers.stop()
 
 
 app = FastAPI(title=f"{config.PRODUCT_NAME} API", version="0.1.0", lifespan=lifespan)

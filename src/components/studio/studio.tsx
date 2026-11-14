@@ -6,7 +6,7 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import {
   ArrowLeft, ArrowRight, Box as BoxIcon, Check, CircleAlert, CircleCheck, Coins, Columns2, Download, Droplets, Leaf, Lock,
-  FileUp, MapPin, Move, RotateCcw, RotateCw, Sparkles, Square, Star, Trash2, Users,
+  Briefcase, Building2, FileText, FileUp, MapPin, Move, RotateCcw, RotateCw, Sparkles, Square, Star, Trash2, Users,
 } from 'lucide-react';
 import { Brand } from '../brand';
 import { matterportEmbedUrl, PUBLIC_DATA_API, siteDetailUrl, vexcel3dRootUrl, vexcelMetaUrl, vexcelOrthoUrl } from '@/lib/plotstar-api';
@@ -19,6 +19,10 @@ import type { MoveEdit, ViewPreset } from './model3d';
 import { Copilot, type BriefPatch } from './copilot';
 import { Guide } from './guide/guide';
 import { ImportDesign, type NotePreview } from './import/import-design';
+import { CostarDossier } from './costar/dossier';
+import { ExistingVsProposed } from './costar/existing-vs-proposed';
+import { DealDesk } from './deal/deal-desk';
+import { openInvestmentMemo } from './deal/memo';
 import type { AddedType, Brief, Concept, ConceptEdit, Edits, Factor, Room, StudioResult } from './types';
 import { COOLING_LABEL, ROUTE_COLOR, TYPE_STYLE, WHY, download, money, num, pct, toDxf } from './types';
 
@@ -87,7 +91,7 @@ export function Studio() {
   const [result, setResult] = useState<StudioResult | null>(null);
   const [base, setBase] = useState<StudioResult | null>(null);
   const [activeId, setActiveId] = useState<string>('');
-  const [view, setView] = useState<'2d' | '3d' | 'split'>('split');
+  const [view, setView] = useState<'2d' | '3d' | 'split' | 'existing'>('split');
   const [layers, setLayers] = useState<Layers>({ racks: true, labels: true, power: false, cooling: false, data: false, yard: true, site: false, tags: true, aerial: true, roof: 0, level: null, explode: 0, context: false });
   const [sel, setSel] = useState<string | null>(null);
   const [edits, setEdits] = useState<Edits>({});
@@ -96,6 +100,10 @@ export function Studio() {
   const [tours, setTours] = useState<string[]>([]);
   const [decidedBy, setDecidedBy] = useState('');
   const [importing, setImporting] = useState(false);
+  const [dossier, setDossier] = useState<null | 'comps' | 'building'>(null);
+  const [dealDesk, setDealDesk] = useState(false);
+  const [inspection, setInspection] = useState('');
+  const [landDirty, setLandDirty] = useState(false);
   const [projectId, setProjectId] = useState(() => `p-${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`);
   const [store, setStore] = useState<{ available: boolean; reason: string | null } | null>(null);
   const [saved, setSaved] = useState<SavedProject[]>([]);
@@ -126,7 +134,7 @@ export function Studio() {
   }, [brief.market]);
 
   // Matterport scans of the existing building, when CoStar recorded any for this property
-  const parcelId = site?.parcelId;
+  const parcelId = site?.parcelId ?? null; // 'costar:<id>'; null for a dropped pin
   useEffect(() => {
     setTours([]);
     if (!parcelId) return;
@@ -243,6 +251,19 @@ export function Studio() {
   }
   const aerialId = site ? (site.parcelId ?? `pt:${site.lat.toFixed(6)},${site.lng.toFixed(6)}`) : null;
 
+  // CoStar dossier: use a comps-derived land value for this site, then regenerate once the site state has updated
+  function useLandValue(value: number, label: string, basis: string) {
+    if (!site) return;
+    setSites((all) => all.map((x) => (x.id === site.id ? ({ ...x, landCost: value, landCostBasis: basis, labels: { ...(x as SiteExtra).labels, landCost: label } } as ExploreSite) : x)));
+    setLandDirty(true);
+  }
+  const siteLand = (site as SiteExtra | null)?.landCost;
+  useEffect(() => {
+    if (!landDirty) return;
+    setLandDirty(false);
+    if (result) void generate(brief, true, edits);
+  }, [siteLand]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Vexcel: capture details of the aerial, and whether a 3D mesh of the surroundings exists here
   const siteLat = site?.lat, siteLng = site?.lng;
   useEffect(() => {
@@ -311,6 +332,7 @@ export function Studio() {
   const report = useMemo(() => result && chosen && ({
     project: brief.name, decided_at: decidedAt, decided_by: decidedBy || null, preferred_concept: chosen.name, reasons,
     your_edits: edits[chosen.id] ?? null, ranking: result.ranking, finance: result.finance,
+    costar_parcel: site?.parcelId ?? null, inspection_notes: inspection || null,
     land: { cost: result.site.land_cost, label: result.site.land_label, basis: result.site.land_basis },
     aerial: aerialId ? { source: 'Vexcel ortho imagery', ...aerialMeta } : null,
     site: site ? { id: site.id, name: site.name, address: site.area, lat: site.lat, lon: site.lng, source: isUser(site) ? 'User-chosen location' : 'CoStar Data Extract', gates: site.screen?.gates } : null,
@@ -318,7 +340,7 @@ export function Studio() {
     concepts: result.concepts.map(({ rooms: _r, yard: _y, equipment: _e, routes: _ro, ...rest }) => rest),
     chosen_geometry: { building: chosen.building, rooms: chosen.rooms.map(({ rows: _rows, ...r }) => r), yard: chosen.yard },
     assumptions: result.assumptions, note: result.note,
-  }), [result, chosen, brief.name, decidedAt, decidedBy, reasons, site, prio, edits, aerialId, aerialMeta]);
+  }), [result, chosen, brief.name, decidedAt, decidedBy, reasons, site, prio, edits, aerialId, aerialMeta, inspection]);
 
   const canNext = [!!site && sub === 2, true, !!result, !!result, !!result, !!preferred && reasons.trim().length > 0, false][step];
   const reach = (i: number) => i <= 1 || (!!result && (i < 6 || !!decidedAt));
@@ -339,6 +361,7 @@ export function Studio() {
         <nav className="st-top-nav">
           <Link href="/studio/agent">How the AI works</Link>
           <Link href="/studio/data">Data</Link>
+          <button type="button" onClick={() => setDealDesk(true)}><Briefcase size={12} /> Deal desk</button>
           <Link href="/explore">Live operations</Link>
           <Link href="/">Home</Link>
         </nav>
@@ -471,7 +494,7 @@ export function Studio() {
                           <Field label="Land kept open"><div className="st-unit"><input type="number" value={brief.expansion} onChange={(e) => set('expansion', Math.max(0, Math.min(80, +e.target.value || 0)))} /><em>%</em></div></Field>
                         </div>
                         <p className="st-muted st-small">{num(brief.siteW * brief.siteD)} m² ({num((brief.siteW * brief.siteD) / 4046.86, 1)} acres). Pre-filled from the lot size as a rectangle; the true parcel shape is not in the data. <Tag label="Estimated" /></p>
-                        <div className="st-form-foot"><button className="st-btn" onClick={() => setSiteId(null)}>Change site</button><button className="st-btn" onClick={() => setImporting(true)}><FileUp size={13} /> Import your design</button><button className="st-btn primary" onClick={() => setSub(2)}>Next: Review brief <ArrowRight size={14} /></button></div>
+                        <div className="st-form-foot"><button className="st-btn" onClick={() => setSiteId(null)}>Change site</button><button className="st-btn" onClick={() => setImporting(true)}><FileUp size={13} /> Import your design</button>{parcelId && <button className="st-btn" onClick={() => setDossier('comps')}><Building2 size={13} /> CoStar dossier</button>}<button className="st-btn primary" onClick={() => setSub(2)}>Next: Review brief <ArrowRight size={14} /></button></div>
                       </>
                     )}
                   </div>
@@ -537,6 +560,7 @@ export function Studio() {
                     <button className={view === '2d' ? 'on' : ''} onClick={() => setView('2d')}><Square size={13} /> 2D plan</button>
                     <button className={view === '3d' ? 'on' : ''} onClick={() => setView('3d')}><BoxIcon size={13} /> 3D model</button>
                     <button className={view === 'split' ? 'on' : ''} onClick={() => setView('split')}><Columns2 size={13} /> Side by side</button>
+                    {tours.length > 0 && parcelId && <button className={view === 'existing' ? 'on' : ''} onClick={() => setView('existing')}><Building2 size={13} /> Existing building</button>}
                   </div>
                 </div>
               </div>
@@ -553,8 +577,10 @@ export function Studio() {
               )}
               <div className="st-explore-body">
                 <div className={`st-views ${view}`}>
-                  {view !== '2d' && <div className="st-view"><Model3D concept={concept} siteW={result.brief.site_w} siteD={result.brief.site_d} setback={result.brief.setback_m} layers={layers} selected={sel} onSelect={setSel} aerialId={aerialId} edit={editMode} onMove={applyMove} view={cam} context={layers.context ? ctx : null} /></div>}
-                  {view !== '3d' && <div className="st-view st-view-plan"><Plan2D concept={concept} siteW={result.brief.site_w} siteD={result.brief.site_d} setback={result.brief.setback_m} layers={layers} selected={sel} onSelect={setSel} aerialId={aerialId} /></div>}
+                  {view === 'existing' && parcelId && <div className="st-view st-view-existing"><ExistingVsProposed parcelId={parcelId} mwIt={brief.mw} rackKw={brief.rackKw} onNote={setInspection}
+                    conceptSlot={<Model3D concept={concept} siteW={result.brief.site_w} siteD={result.brief.site_d} setback={result.brief.setback_m} layers={layers} selected={sel} onSelect={setSel} aerialId={aerialId} edit={false} onMove={applyMove} view={cam} context={null} />} /></div>}
+                  {view !== '2d' && view !== 'existing' && <div className="st-view"><Model3D concept={concept} siteW={result.brief.site_w} siteD={result.brief.site_d} setback={result.brief.setback_m} layers={layers} selected={sel} onSelect={setSel} aerialId={aerialId} edit={editMode} onMove={applyMove} view={cam} context={layers.context ? ctx : null} /></div>}
+                  {view !== '3d' && view !== 'existing' && <div className="st-view st-view-plan"><Plan2D concept={concept} siteW={result.brief.site_w} siteD={result.brief.site_d} setback={result.brief.setback_m} layers={layers} selected={sel} onSelect={setSel} aerialId={aerialId} /></div>}
                 </div>
                 <Inspector concept={concept} sel={sel} layers={layers} setLayers={setLayers} edit={editMode} onRemove={removeItem} onGeom={setGeom} hasContext={!!ctx} />
               </div>
@@ -565,6 +591,7 @@ export function Studio() {
             <section className="st-page">
               <small className="st-eyebrow">04 · Analyze</small>
               <div className="st-head-row"><h1>{concept.name}</h1>
+                {parcelId && <button className="st-btn" onClick={() => setDossier('comps')}><Building2 size={13} /> CoStar dossier</button>}
                 <div className="st-seg">{result.concepts.map((c) => <button key={c.id} className={c.id === concept.id ? 'on' : ''} onClick={() => setActiveId(c.id)}>{c.name}</button>)}</div></div>
               <p className="st-lede">{concept.strategy}</p>
               <div className="st-card st-whatif">
@@ -659,6 +686,13 @@ export function Studio() {
                 <p className="st-muted">The saved decision with the brief, site gates and their sources, every computed quantity, and every assumption with its basis. This is planning evidence, not certified engineering.</p>
                 <button className="st-btn" onClick={() => download(`${brief.name.replace(/\W+/g, '-').toLowerCase()}-decision.json`, JSON.stringify(report, null, 2), 'application/json')}><Download size={14} /> Download decision report</button>
               </div>
+              {parcelId && (
+                <div className="st-card">
+                  <h3>Investment memo (CoStar evidence)</h3>
+                  <p className="st-muted">A printable memo built from this parcel&apos;s CoStar record, sale comps, occupancy and the chosen concept, with every figure sourced. Print → PDF.</p>
+                  <button className="st-btn" onClick={() => void openInvestmentMemo(parcelId, brief.mw, brief.rackKw).then((e) => e && setError(e))}><FileText size={14} /> Open investment memo</button>
+                </div>
+              )}
               <div className="st-card">
                 <h3>Prove it in operation</h3>
                 <p className="st-muted">Run the operating plan against live grid prices and a grid emergency on the team's hardware.</p>
@@ -673,6 +707,10 @@ export function Studio() {
         onApply={applyPatch} onSelectSite={(id) => { const s = sites.find((x) => x.id === id); if (s) void pickSite(id); }} busy={busy} />}
       <Guide body={result ? body(brief) : null} conceptId={concept?.id ?? null} selected={sel} stage={STEPS[step].key} market={brief.market}
         hasSite={!!site} onApply={applyPatch} />
+      {dossier && <CostarDossier parcelId={parcelId} lotAcres={site?.lotAcres ?? null} mwIt={brief.mw} rackKw={brief.rackKw} initialTab={dossier}
+        onUseLandValue={useLandValue} onNote={setInspection} onClose={() => setDossier(null)} />}
+      {dealDesk && <DealDesk market={brief.market} mwIt={brief.mw} rackKw={brief.rackKw} onClose={() => setDealDesk(false)}
+        onUseSite={(id) => { setDealDesk(false); setStep(0); setSub(1); const s = sites.find((x) => x.id === id || x.parcelId === id); void pickSite(s?.id ?? id); }} />}
       {importing && <ImportDesign body={body(brief)} onClose={() => setImporting(false)}
         onResult={(r, _notes: NotePreview[]) => { setResult(r); setBase(r); setEdits({}); setPreferred(null); setDecidedAt(null);
           setSel(null); setActiveId(r.concepts.find((c) => c.rank === 1)!.id); setImporting(false); setStep(2); }} />}
