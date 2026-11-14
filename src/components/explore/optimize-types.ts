@@ -9,6 +9,7 @@ export interface Combo {
   stress_hours: number[];
   pue: number;
   land: number;
+  interconnect?: number;
   capex: number;
   energy_cost_year: number;
   water_gal_year: number;

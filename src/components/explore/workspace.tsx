@@ -11,6 +11,7 @@ import { ResultStrip } from './plan-panel';
 import { ResultsTable } from './results-table';
 import { SiteDetail } from './site-detail';
 import { AssumptionsDrawer, CompareDrawer } from './drawers';
+import { DecisionView } from './decision-view';
 import type { ExploreSite } from './types';
 import { verdict } from './types';
 
@@ -48,7 +49,8 @@ export function Workspace() {
   // stage
   const [mode, setMode] = useState<MapMode>('browse');
   const [basemap, setBasemap] = useState<'map' | 'satellite'>('map');
-  const [stage, setStage] = useState<'map' | '3d' | 'live'>('map');
+  const [stage, setStage] = useState<'decision' | 'map' | '3d' | 'live'>('decision');
+  const [changedFrom, setChangedFrom] = useState<string | null>(null);
   const [polygon, setPolygon] = useState<Ring | null>(null);
   // data
   const [result, setResult] = useState<SearchResult | null>(null);
@@ -74,7 +76,7 @@ export function Workspace() {
   const optimizeReq = useMemo(() => ({ market, polygon, min_acres: minAcres, thresholds, mw_it: mw, flexible_share: flex / 100, carbon_price_per_t: 50, assumptions: overrides, limit: 150, offline: true }), [market, polygon, minAcres, thresholds, mw, flex, overrides]);
 
   const runAll = useCallback(async () => {
-    setLoading(true); setRunBusy(true); setError(null);
+    setLoading(true); setRunBusy(true); setError(null); setChangedFrom(null);
     try {
       const d = await post<SearchResult>('/search', searchReq);
       setResult(d);
@@ -87,12 +89,13 @@ export function Workspace() {
     } finally { setLoading(false); setRunBusy(false); }
   }, [searchReq, optimizeReq]);
 
-  const whatIf = useCallback(async (changes: Record<string, number>) => {
+  const whatIf = useCallback(async (changes: Record<string, unknown>) => {
     if (!run) return;
     setRunBusy(true);
     try {
       const r = await post<OptimizeResult>('/scenarios/run', { run_id: run.run_id, changes });
-      setRun({ ...r, request: { ...run.request, ...changes } });
+      setChangedFrom(run.optimized && r.optimized && run.optimized.site_id !== r.optimized.site_id ? run.optimized.site_name : null);
+      setRun({ ...r, request: { ...run.request, ...changes } as OptimizeResult['request'] });
     } catch (e) { setError((e as Error).message); } finally { setRunBusy(false); }
   }, [run]);
 
@@ -152,7 +155,7 @@ export function Workspace() {
           <label className="ws-field"><span>Min. lot size <span className="unit">acres</span></span><input type="number" min={0} step={0.5} value={minAcres} onChange={(e) => setMinAcres(+e.target.value)} /></label>
           <label className="ws-field"><span>Max. acquisition <span className="unit">$</span></span><input type="number" min={0} step={100000} placeholder="any" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value === '' ? '' : +e.target.value)} /></label>
           <div className="ws-checks">
-            {([[needRoom, setNeedRoom, `Supports ${mw} MW at density assumption`], [noFlood, setNoFlood, 'Exclude FEMA special flood hazard areas'], [heavyPower, setHeavyPower, 'Heavy power service recorded (≥ 800 A)'], [waterCooling, setWaterCooling, 'Water cooling permissible'], [hideBad, setHideBad, 'Hide sites failing a gate']] as [boolean, (b: boolean) => void, string][]).map(([v, set, label]) => (
+            {([[needRoom, setNeedRoom, `Lot large enough for ${mw} MW (land only, not power)`], [noFlood, setNoFlood, 'Exclude FEMA special flood hazard areas'], [heavyPower, setHeavyPower, 'Heavy power service recorded (≥ 800 A)'], [waterCooling, setWaterCooling, 'Water cooling permissible'], [hideBad, setHideBad, 'Hide sites failing a gate']] as [boolean, (b: boolean) => void, string][]).map(([v, set, label]) => (
               <label key={label} className="ws-check"><input type="checkbox" checked={v} onChange={(e) => set(e.target.checked)} />{label}</label>
             ))}
           </div>
@@ -191,6 +194,7 @@ export function Workspace() {
               {polygon && result && <span className="ws-help">{result.in_polygon} properties inside the area</span>}
             </div>
             <div className="ws-seg">
+              <button className={stage === 'decision' ? 'on' : ''} onClick={() => setStage('decision')}>Decision</button>
               <button className={stage === 'map' && basemap === 'map' ? 'on' : ''} onClick={() => (setStage('map'), setBasemap('map'))}><MapIcon size={13} /> Map</button>
               <button className={stage === 'map' && basemap === 'satellite' ? 'on' : ''} onClick={() => (setStage('map'), setBasemap('satellite'))}><Satellite size={13} /> Satellite</button>
               <button className={stage === '3d' ? 'on' : ''} disabled={!selected} onClick={() => setStage('3d')}><Box size={13} /> 3D site</button>
@@ -198,8 +202,10 @@ export function Workspace() {
             </div>
           </div>
 
-          <div className="ws-stage">
-            {stage === 'live' ? (
+          <div className={`ws-stage ${stage === 'decision' ? 'full' : ''}`}>
+            {stage === 'decision' ? (
+              <DecisionView run={run} sites={sites} mw={mw} busy={runBusy} changedFrom={changedFrom} onWhatIf={whatIf} onOpenSite={(id) => (setSelectedId(id), setStage('map'))} onLive={() => setStage('live')} />
+            ) : stage === 'live' ? (
               <Meters priceDate={run?.grid.price_date} />
             ) : stage === '3d' && selected?.parcelId ? (
               <Site3D key={selected.id} parcelId={selected.parcelId} lat={selected.lat} lng={selected.lng} mw={mw} acres={selected.lotAcres ?? null} />
@@ -213,9 +219,9 @@ export function Workspace() {
             {error && <div className="xp-toast xp-toast-bad">{error}</div>}
           </div>
 
-          {run && <ResultStrip run={run} />}
+          {stage !== 'decision' && run && <ResultStrip run={run} />}
 
-          <ResultsTable sites={sites} selectedId={selectedId} pickId={run?.optimized?.site_id} compare={compare} counts={result?.counts} onSelect={(id) => (setSelectedId(id), stage === 'live' && setStage('map'))} onToggleCompare={toggleCompare} loading={loading} />
+          {stage !== 'decision' && <ResultsTable sites={sites} selectedId={selectedId} pickId={run?.optimized?.site_id} compare={compare} counts={result?.counts} onSelect={(id) => (setSelectedId(id), stage === 'live' && setStage('map'))} onToggleCompare={toggleCompare} loading={loading} />}
         </main>
 
         <aside className="ws-right">
