@@ -1,4 +1,4 @@
-// Client for the PlotStar data API (services/api, FastAPI). Real CoStar parcels, screening, Vexcel, Matterport.
+// Client for the GeoStar data API (services/api, FastAPI). Real CoStar parcels, screening, Vexcel, Matterport.
 import type { Site } from './types';
 
 /** Server-side base URL (Next route handlers). */
@@ -23,10 +23,10 @@ export async function fetchRealSites(market: Market, minAcres = 5, limit = 8): P
     res = await fetch(`${DATA_API}/sites/candidates?${q}`, { cache: 'no-store' });
   } catch {
     throw new Error(
-      `PlotStar data API is not reachable at ${DATA_API}. Start services/api (uvicorn app.main:app --port 8000).`,
+      `GeoStar data API is not reachable at ${DATA_API}. Start services/api (uvicorn app.main:app --port 8000).`,
     );
   }
-  if (!res.ok) throw new Error(`PlotStar data API error ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(`GeoStar data API error ${res.status}: ${await res.text()}`);
   const body = (await res.json()) as { sites: Site[] };
   return body.sites;
 }

@@ -1,4 +1,4 @@
-// PlotStar grid-event button (ESP32). Talks to the PlotStar data API (FastAPI, port 8000), the same backend
+// GeoStar grid-event button (ESP32). Talks to the GeoStar data API (FastAPI, port 8000), the same backend
 // the site optimizer uses. NOT flashed or tested on hardware in this build.
 //
 //   Button (GPIO 4 to GND)  -> POST /hardware/emergency {"source":"button"}  (cut depth comes from the active plan)

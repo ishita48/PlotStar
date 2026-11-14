@@ -1,4 +1,4 @@
-"""MongoDB Atlas as PlotStar's data platform: schema, geo, time-series, Atlas Search, Vector Search, change streams.
+"""MongoDB Atlas as GeoStar's data platform: schema, geo, time-series, Atlas Search, Vector Search, change streams.
 
 Collections (database `plotstar`):
   studio_projects  one document per Studio project (store.py) + a Gemini embedding for similarity

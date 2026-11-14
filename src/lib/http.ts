@@ -34,7 +34,7 @@ export function routeError(e: unknown) {
       { status: 400 },
     );
   if (e instanceof HttpError) return Response.json({ error: e.message }, { status: e.status });
-  console.error('PlotStar API error', e instanceof Error ? e.message : 'Unknown error');
+  console.error('GeoStar API error', e instanceof Error ? e.message : 'Unknown error');
   return Response.json(
     { error: 'Unable to complete this request. Please try again.' },
     { status: 500 },

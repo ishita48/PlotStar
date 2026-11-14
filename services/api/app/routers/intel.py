@@ -8,7 +8,7 @@ POST /deal-room                   save a comp selection or scenario (body: {kind
 POST /deal/run                    Deal-to-Design: criteria → ranked, sourced shortlist + memo + timeline
 GET  /deal/runs, /deal/runs/{id}  saved runs (summaries from Atlas; the full result from the local store)
 POST /deal-room/notes             save an inspection note for a property
-GET  /mongo/status                what PlotStar keeps in MongoDB, the batch writer's counters, the data rule
+GET  /mongo/status                what GeoStar keeps in MongoDB, the batch writer's counters, the data rule
 """
 from __future__ import annotations
 

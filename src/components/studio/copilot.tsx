@@ -1,5 +1,5 @@
 'use client';
-// PlotStar copilot: ask about the open project in plain words. The backend (services/api/app/copilot.py) runs a
+// GeoStar copilot: ask about the open project in plain words. The backend (services/api/app/copilot.py) runs a
 // LangGraph plan -> act -> verify -> respond loop over deterministic tools (layout engine, CoStar extract). Every figure
 // shown here comes from those tools; what-ifs are previews that change nothing until the user presses Apply.
 import { useEffect, useRef, useState } from 'react';
@@ -74,7 +74,7 @@ export function Copilot({ body, conceptId, selected, stage, market, onApply, onS
       if (!r.ok) throw new Error(typeof d?.detail === 'string' ? d.detail : `The copilot is not available (${r.status}).`);
       setMsgs((m) => [...m, { role: 'copilot', data: d as Answer }]);
     } catch (e) {
-      setMsgs((m) => [...m, { role: 'error', text: (e as Error).message.includes('fetch') ? `Can't reach the PlotStar API at ${PUBLIC_DATA_API}.` : (e as Error).message }]);
+      setMsgs((m) => [...m, { role: 'error', text: (e as Error).message.includes('fetch') ? `Can't reach the GeoStar API at ${PUBLIC_DATA_API}.` : (e as Error).message }]);
     } finally { setWaiting(false); }
   }
 
@@ -83,12 +83,12 @@ export function Copilot({ body, conceptId, selected, stage, market, onApply, onS
     setMsgs((m) => m.map((x, j) => (j === i && x.role === 'copilot' ? { ...x, applied: true } : x)));
   }
 
-  if (!open) return <button className={s.fab} onClick={() => setOpen(true)} aria-label="Open the PlotStar copilot"><Sparkles size={15} /> Ask PlotStar</button>;
+  if (!open) return <button className={s.fab} onClick={() => setOpen(true)} aria-label="Open the GeoStar copilot"><Sparkles size={15} /> Ask GeoStar</button>;
 
   return (
-    <section className={s.panel} aria-label="PlotStar copilot">
+    <section className={s.panel} aria-label="GeoStar copilot">
       <header className={s.head}>
-        <div><b><Sparkles size={14} /> Ask PlotStar</b><span>{stage}{conceptId ? ' · active concept' : ''}{selected ? ` · ${selected} selected` : ''}</span></div>
+        <div><b><Sparkles size={14} /> Ask GeoStar</b><span>{stage}{conceptId ? ' · active concept' : ''}{selected ? ` · ${selected} selected` : ''}</span></div>
         <button className={s.icon} onClick={() => setOpen(false)} aria-label="Close the copilot"><X size={15} /></button>
       </header>
       <div className={s.body}>
@@ -233,7 +233,7 @@ function IntelCard({ t }: { t: ToolRun }) {
             <tr key={r.parcel_id} className={r.gates_failed?.length ? s.muted : ''}><td>{r.rank ?? '—'}</td><td>{r.name ?? r.parcel_id}</td>
               <td>{usd(r.acquisition)}</td><td>{usd(r.npv)}</td><td>{r.error ? 'Error' : r.gates_failed?.length ? `Fails ${r.gates_failed.join(', ')}` : 'Pass'}</td></tr>))}</tbody></table>
       )}
-      <small className={s.src}>{(t.output.sources?.length ?? 0) > 0 ? `${t.output.sources!.length} CoStar record references · ` : ''}{t.ms} ms · same tool as the PlotStar CoStar MCP server</small>
+      <small className={s.src}>{(t.output.sources?.length ?? 0) > 0 ? `${t.output.sources!.length} CoStar record references · ` : ''}{t.ms} ms · same tool as the GeoStar CoStar MCP server</small>
     </div>
   );
 }

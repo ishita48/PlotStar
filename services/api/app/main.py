@@ -1,4 +1,4 @@
-"""PlotStar API (FastAPI). Run: uvicorn app.main:app --reload --port 8000"""
+"""GeoStar API (FastAPI). Run: uvicorn app.main:app --reload --port 8000"""
 from __future__ import annotations
 
 from contextlib import asynccontextmanager

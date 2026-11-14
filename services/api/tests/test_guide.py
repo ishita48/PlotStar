@@ -40,5 +40,5 @@ def test_status_and_services_are_readable(monkeypatch):
     assert st["configured"] is False and len(st["tools"]) == 6
     services = c.get("/guide/agents").json()["services"]
     names = [s["name"] for s in services]
-    assert {"PlotStar Guide", "PlotStar copilot", "Layout engine", "CoStar Data Extract", "MongoDB Atlas"} <= set(names)
+    assert {"GeoStar Guide", "GeoStar copilot", "Layout engine", "CoStar Data Extract", "MongoDB Atlas"} <= set(names)
     assert all(isinstance(s["running"], bool) and s["detail"] for s in services)

@@ -77,10 +77,13 @@ export interface ConceptEdit {
 }
 export type Edits = Record<string, ConceptEdit>;
 
+export type ProjectKind = 'data-center' | 'wind' | 'solar' | 'student' | 'park' | 'commercial';
 export interface Brief {
   name: string; market: 'Houston' | 'Los Angeles'; mw: number; rackKw: number; redundancy: 'N' | 'N+1' | '2N';
   cooling: 'air' | 'hybrid' | 'water' | 'liquid'; halls: number | null; siteW: number; siteD: number; setback: number;
   expansion: number; flex: number; storeys: number; rent: number | null;
+  /** chosen on Define's first screen; saved with the project, not sent to the layout engine */
+  kind?: ProjectKind; vision?: string;
 }
 
 export const COOLING_LABEL: Record<Brief['cooling'], string> = {

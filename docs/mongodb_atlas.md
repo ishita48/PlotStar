@@ -1,6 +1,6 @@
-# MongoDB Atlas in PlotStar
+# MongoDB Atlas in GeoStar
 
-PlotStar uses Atlas (cluster `PlotStar`, database `plotstar`) as its data platform. Everything below is
+GeoStar uses Atlas (cluster `PlotStar`, database `plotstar`) as its data platform. Everything below is
 built and verified from code in `services/api/app/atlas.py` and `store.py`; the last section lists the
 console-only Atlas features and exactly how to turn them on.
 

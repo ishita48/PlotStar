@@ -7314,7 +7314,7 @@ tbody tr:hover td {
   }
 }
 
-/* ---------- PlotStar real-data elements (CoStar / screening / Vexcel / Matterport) ---------- */
+/* ---------- GeoStar real-data elements (CoStar / screening / Vexcel / Matterport) ---------- */
 .data-label {
   display: inline-flex;
   align-items: center;

@@ -81,7 +81,7 @@ def notify_decision(db, doc: dict[str, Any]) -> None:
                                  "by": doc.get("by"), "status": doc.get("status"), "mw_it": doc.get("mw_it"), "at": datetime.now(timezone.utc), "message": msg})
     if WEBHOOK:
         try:
-            httpx.post(WEBHOOK, json={"text": f"PlotStar: {msg}"}, timeout=5)
+            httpx.post(WEBHOOK, json={"text": f"GeoStar: {msg}"}, timeout=5)
         except Exception:
             pass
 

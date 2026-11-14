@@ -1,4 +1,4 @@
-# Running PlotStar on AWS
+# Running GeoStar on AWS
 
 Status: the code paths below exist; nothing has been deployed or run against AWS from this repo (no AWS
 credentials were available while building). Treat this as a checklist, not a verified runbook.

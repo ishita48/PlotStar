@@ -1,4 +1,4 @@
-# PlotStar
+# GeoStar
 
 **Find it. Design it. Protect it.** A complete local hackathon application connecting development-specific site intelligence, editable conceptual architecture, and HAVEN sensor monitoring through one persisted project.
 
@@ -59,7 +59,7 @@ to resume its saved plan. The original workspaces remain available. See
 6. **Approve & plan protection** persists the approved concept and generates sensors on each floor. Site fit warnings block approval. Approval is conceptual; no regulatory or engineering compliance is implied.
 7. In Protect, inspect the twin, change floors, select a sensor, edit coordinates, assign a zone/device ID, add or remove sensors. Rings show illustrative coverage only. Smoke/fire, water, temperature and electrical monitoring are supported.
 8. Trigger **Water leak**, **Overheating**, or **Fire alarm**. The threshold engine changes sensor values and zone colors, creates a deduplicated incident, and provides Guardian/maintenance recommendations. Acknowledge and resolve incidents. **Reset simulation** resets simulated readings and resolves simulated incidents while retaining hardware readings/incidents. Simulation history persists.
-9. Ask PlotStar about site comparisons, a 20% land-price increase, two additional floors, design returns, development risks, or water sensor placement. The conversation persists with the project.
+9. Ask GeoStar about site comparisons, a 20% land-price increase, two additional floors, design returns, development risks, or water sensor placement. The conversation persists with the project.
 10. Open **Project report → Export PDF** for a downloadable, paginated report including site comparison, financial scenarios, concept, sensor plan, incidents, assumptions, sources and outstanding approvals. Reload and reopen the project to confirm persistence.
 
 Three seeded demonstrations: `demo-1` student dormitory, `demo-2` 100 MW data center, and `demo-3` community park. Dashboard projects can also be compared side by side. Newly created projects are independent of seeded examples.
@@ -174,12 +174,12 @@ alerts when a site, price or risk changes.
 **How should it run?** One optimizer picks the site, the cooling and the hourly schedule together (`POST /optimize`):
 it enumerates site x cooling x flexibility, drops anything that fails a gate or needs more curtailment than the
 flexible share allows, and places the day's flexible work into the cleanest, cheapest hours of the real ERCOT day
-(day-ahead prices, Sourced; carbon from the fuel mix, Estimated). It shows **PlotStar pick vs cost-first pick**
+(day-ahead prices, Sourced; carbon from the fuel mix, Estimated). It shows **GeoStar pick vs cost-first pick**
 with CO2, cost and MW-at-grid-peak deltas, and re-runs in about a second when you move the price or carbon slider.
 "Why this pick?" explains the decision from the run's own numbers (a LangChain deep agent when a model key is set).
 
-**Prove it.** Two machines run the same job, cost-first and PlotStar. The grid day replays in 60 s; press
-**Grid emergency** and the PlotStar machine eases off while the cost-first one does not. The Grid Passport records
+**Prove it.** Two machines run the same job, cost-first and GeoStar. The grid day replays in 60 s; press
+**Grid emergency** and the GeoStar machine eases off while the cost-first one does not. The Grid Passport records
 response time, measured reduction, duration and whether the job finished. Without hardware the screen shows a
 simulation, labeled as such.
 

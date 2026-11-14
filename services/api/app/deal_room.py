@@ -1,7 +1,7 @@
 """Deal room: analyses, comp selections, scenarios, inspection notes, deal runs and the tool audit trail.
 
 Data rule (decided by the user): raw CoStar records and CoStar-derived payloads (comp rows, addresses, prices,
-valuations) stay in the local store. MongoDB Atlas holds PlotStar's own state and metadata keyed by CoStar ids, so a
+valuations) stay in the local store. MongoDB Atlas holds GeoStar's own state and metadata keyed by CoStar ids, so a
 deal can be reviewed and audited from any machine without copying licensed data to the cloud.
 
 Atlas collections (schema_version 2):
@@ -209,7 +209,7 @@ _RUN_ROW = ("parcel_id", "rank", "npv", "npv_p10", "npv_p90", "capex", "months_t
 
 
 def save_deal_run(result: dict[str, Any]) -> str:
-    """Full result (with CoStar names, addresses, acquisition values) locally; PlotStar's own outputs to Atlas."""
+    """Full result (with CoStar names, addresses, acquisition values) locally; GeoStar's own outputs to Atlas."""
     run_id = uuid.uuid4().hex[:16]
     now = time.time()
     if _local():

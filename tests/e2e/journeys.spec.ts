@@ -186,7 +186,7 @@ test('judge journey in the browser: create, score, model, save, simulate, export
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: /Where to build\./ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Every place\s*has a story\./ })).toBeVisible();
   await page.screenshot({ path: 'output/qa/landing-desktop.png', fullPage: true });
   await page.goto('/projects?new=1');
   await page
@@ -229,7 +229,7 @@ test('judge journey in the browser: create, score, model, save, simulate, export
   await page.screenshot({ path: 'output/qa/protect-desktop.png', fullPage: true });
   await page.getByRole('button', { name: 'Reset simulation', exact: true }).click();
   await expect(page.locator('.incident-card .status-pill')).toHaveText('resolved');
-  await page.getByRole('button', { name: 'Ask PlotStar', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Ask GeoStar', exact: true }).first().click();
   await page.getByRole('button', { name: 'What if I add two more floors?', exact: true }).click();
   await expect(page.locator('.chat-message.assistant').last()).toContainText('Adding 2 floors');
   await page.getByRole('button', { name: 'Close assistant', exact: true }).click();
@@ -250,14 +250,14 @@ test('judge journey in the browser: create, score, model, save, simulate, export
 test('mobile landing and dashboard fit without horizontal overflow', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
-  const openWorkspace = page.getByRole('navigation').getByRole('link', { name: 'Open workspace' });
+  const openWorkspace = page.getByRole('navigation').getByRole('link', { name: 'Open the studio' });
   await expect(openWorkspace).toBeVisible();
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
   ).toBeTruthy();
   await page.screenshot({ path: 'output/qa/landing-mobile.png', fullPage: true });
   await openWorkspace.click();
-  await expect(page.getByRole('heading', { name: 'What do you want to build?' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'What are you building, and where?' })).toBeVisible();
   await page.goto('/projects');
   await expect(page.getByRole('heading', { name: 'A place for big ideas.' })).toBeVisible();
   expect(

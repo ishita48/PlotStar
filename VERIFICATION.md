@@ -1,4 +1,4 @@
-# PlotStar verification
+# GeoStar verification
 
 ## Dashboard 2 HAVEN integration — November 14, 2026
 

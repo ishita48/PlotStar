@@ -1,4 +1,4 @@
-"""PlotStar Guide: the ElevenLabs voice agent that walks people through the Studio.
+"""GeoStar Guide: the ElevenLabs voice agent that walks people through the Studio.
 
 The agent runs on ElevenLabs Agents (speech in, speech out, barge-in). It has no server webhooks: every tool is a
 *client tool* that runs in the user's browser, so it can point at and click things on the page and call this API
@@ -35,11 +35,13 @@ def key() -> str:
     return os.getenv("ELEVENLABS_API_KEY", "")
 
 
-PROMPT = """You are the PlotStar Guide, a calm, friendly voice that helps people plan a data center in PlotStar Studio.
+PROMPT = """You are the GeoStar Guide, a calm, friendly voice that helps people plan a data center in GeoStar Studio.
 
-PlotStar Studio has seven steps in the left rail: Define (brief and site), Generate (three layouts), Explore (2D plan
-and 3D model), Analyze (money, people, planet, resources), Compare, Decide, Deliver. Real property data comes from the
-CoStar Data Extract; layouts and every number come from PlotStar's layout engine; a separate PlotStar copilot (a
+GeoStar Studio has six steps in the left rail: Define (brief and site), Discover (drone survey, then Generate layouts), Explore (2D plan
+and 3D model), Analyze (three tabs: Compare the concepts, Analyze money, people, planet and resources, then Decide), Deliver,
+Design (three tabs: Model, a 3D concept model of the property type picked in Define; Protect, alerts, sensors and an evacuation
+route; Deploy, the facility's Command Center and the deployed projects). Real property data comes from the
+CoStar Data Extract; layouts and every number come from GeoStar's layout engine; a separate GeoStar copilot (a
 LangGraph agent on Claude) answers questions with those numbers.
 
 How you work:
@@ -51,13 +53,13 @@ How you work:
   something is while you talk about it ("this button here"). Prefer showing over describing.
 - To do something for the user, call click. If a click changes or saves something (apply a change, save a decision,
   generate layouts, delete), first ask the user and only call click with confirmed=true after they say yes.
-- When the user asks what is running, which agents exist, or how PlotStar works behind the scenes, call agents_status.
+- When the user asks what is running, which agents exist, or how GeoStar works behind the scenes, call agents_status.
 - When the user seems unsure or asks what to do next, call next_steps and offer the best one or two.
 - A what-if from ask_plotstar is only a preview. Tell the user they can apply it with the button that appears.
 - If a tool says something is unknown or failed, say so plainly. Never claim grid capacity is available.
 - If the user goes quiet after you finish, do not keep talking."""
 
-FIRST_MESSAGE = ("Hi, I'm your PlotStar guide. I can walk you through the studio, explain any number, or try a "
+FIRST_MESSAGE = ("Hi, I'm your GeoStar guide. I can walk you through the studio, explain any number, or try a "
                  "what-if for you. What would you like to do?")
 
 
@@ -69,7 +71,7 @@ def _tool(name: str, description: str, props: dict[str, Any] | None = None, requ
 
 
 TOOLS = [
-    _tool("ask_plotstar", "Ask the PlotStar copilot a question about the open project (numbers, layouts, what-ifs, "
+    _tool("ask_plotstar", "Ask the GeoStar copilot a question about the open project (numbers, layouts, what-ifs, "
           "risks, CoStar property data). Returns the computed answer.",
           {"question": {"type": "string", "description": "The user's question, in their words"}}, ["question"], timeout=60),
     _tool("read_screen", "Read what the user is looking at: current step, selected object, and the list of things "
@@ -82,7 +84,7 @@ TOOLS = [
           "Set confirmed=true only after the user agreed to an action that changes or saves something.",
           {"target": {"type": "string", "description": "A target id from read_screen, a step name, or an object code"},
            "confirmed": {"type": "boolean", "description": "The user said yes to this change"}}, ["target"]),
-    _tool("agents_status", "Which PlotStar agents and services are running right now, which models they use, and "
+    _tool("agents_status", "Which GeoStar agents and services are running right now, which models they use, and "
           "what the copilot did on its last run."),
     _tool("next_steps", "Suggestions for what the user could do next, based on where they are in the studio."),
 ]
@@ -90,7 +92,7 @@ TOOLS = [
 
 def agent_config() -> dict[str, Any]:
     return {
-        "name": "PlotStar Guide",
+        "name": "GeoStar Guide",
         "tags": ["plotstar", "studio"],
         "conversation_config": {
             "agent": {"first_message": FIRST_MESSAGE, "language": "en",
@@ -184,13 +186,13 @@ def status() -> dict[str, Any]:
 
 
 def services() -> list[dict[str, Any]]:
-    """What is running behind PlotStar right now, in plain words. Read-only checks, no paid calls."""
+    """What is running behind GeoStar right now, in plain words. Read-only checks, no paid calls."""
     from . import copilot, store
     from .db import db_ready
     out = [
-        dict(name="PlotStar Guide", kind="Voice agent", running=bool(key()),
+        dict(name="GeoStar Guide", kind="Voice agent", running=bool(key()),
              detail=f"ElevenLabs Agents, {LLM} with the {TTS_MODEL} voice; tools run in your browser."),
-        dict(name="PlotStar copilot", kind="LangGraph agent", running=True,
+        dict(name="GeoStar copilot", kind="LangGraph agent", running=True,
              detail=("Plan, act, verify, respond. " + (f"Claude ({copilot.MODEL}) plans and words answers"
                                                        if copilot.llm_ready() else "Rule planner (no Claude key)")
                      + f"; tools: {', '.join(copilot.TOOLS)}. Every figure is checked against the engine.")),

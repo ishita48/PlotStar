@@ -174,7 +174,7 @@ export function Workspace({ id }: { id: string }) {
           <FileText size={18} /> Project report
         </button>
         <button className="side-nav" onClick={() => setAssistant(true)}>
-          <Sparkles size={18} /> PlotStar assistant <span className="ai-tag">AI</span>
+          <Sparkles size={18} /> GeoStar assistant <span className="ai-tag">AI</span>
         </button>
         <div className="sidebar-bottom">
           <div className="project-saved">
@@ -186,7 +186,7 @@ export function Workspace({ id }: { id: string }) {
           <div className="profile">
             <span>PS</span>
             <div>
-              PlotStar studio<small>Connected development</small>
+              GeoStar studio<small>Connected development</small>
             </div>
           </div>
         </div>
@@ -243,7 +243,7 @@ export function Workspace({ id }: { id: string }) {
               </p>
             </div>
             <Button variant="outline" size="sm" onClick={() => setAssistant(true)}>
-              <Sparkles size={15} /> Ask PlotStar
+              <Sparkles size={15} /> Ask GeoStar
             </Button>
           </div>
           {error && (
@@ -287,17 +287,17 @@ export function Workspace({ id }: { id: string }) {
       {!assistant && (
         <button className="assistant-fab" onClick={() => setAssistant(true)}>
           <Sparkles size={19} />
-          <span>Ask PlotStar</span>
+          <span>Ask GeoStar</span>
           <span className="fab-dot" />
         </button>
       )}
       {assistant && (
-        <aside className="assistant-panel" aria-label="PlotStar assistant">
+        <aside className="assistant-panel" aria-label="GeoStar assistant">
           <header>
             <div>
               <Sparkles size={19} />
               <span>
-                PlotStar intelligence<small>CONTEXTUAL TO YOUR PROJECT</small>
+                GeoStar intelligence<small>CONTEXTUAL TO YOUR PROJECT</small>
               </span>
             </div>
             <button aria-label="Close assistant" onClick={() => setAssistant(false)}>
@@ -315,13 +315,13 @@ export function Workspace({ id }: { id: string }) {
             </div>
             {p.messages.map((m) => (
               <div className={`chat-message ${m.role}`} key={m.id}>
-                <span>{m.role === 'user' ? 'YOU' : 'PLOTSTAR'}</span>
+                <span>{m.role === 'user' ? 'YOU' : 'GEOSTAR'}</span>
                 <p>{m.content}</p>
               </div>
             ))}
             {thinking && (
               <div className="chat-message assistant">
-                <span>PLOTSTAR</span>
+                <span>GEOSTAR</span>
                 <p className="thinking">Connecting the dots…</p>
               </div>
             )}

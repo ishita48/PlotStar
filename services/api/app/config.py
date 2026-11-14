@@ -9,8 +9,8 @@ from dotenv import load_dotenv
 REPO_ROOT = Path(__file__).resolve().parents[3]
 load_dotenv(REPO_ROOT / ".env")
 
-PRODUCT_NAME = "PlotStar"
-TEAM_NAME = "PlotStar"
+PRODUCT_NAME = "GeoStar"
+TEAM_NAME = "GeoStar"
 
 COSTAR_KIT_DIR = Path(os.getenv("COSTAR_KIT_DIR", REPO_ROOT.parent / "PlotStar-data" / "costar-kit"))
 if not COSTAR_KIT_DIR.is_absolute():

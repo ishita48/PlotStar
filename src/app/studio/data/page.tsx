@@ -4,8 +4,8 @@ import '../studio.css';
 import './data.css';
 
 export const metadata: Metadata = {
-  title: 'Data · PlotStar',
-  description: 'PlotStar\'s MongoDB Atlas data platform, live: schema, search, vectors, geo, analytics and change streams.',
+  title: 'Data · GeoStar',
+  description: 'GeoStar\'s MongoDB Atlas data platform, live: schema, search, vectors, geo, analytics and change streams.',
 };
 
 export default function DataPage() {

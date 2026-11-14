@@ -1,5 +1,5 @@
 'use client';
-// Judge-facing showcase of PlotStar's AI: ask a question, watch the real LangGraph pipeline run.
+// Judge-facing showcase of GeoStar's AI: ask a question, watch the real LangGraph pipeline run.
 // Everything shown is from the live backend (POST /copilot/ask, GET /copilot/status) — nothing is faked.
 // The engine decides every number; the model only plans tools and explains, and its wording is checked.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -92,7 +92,7 @@ export function AgentView() {
     <div className="st ag">
       <header className="st-top">
         <Brand />
-        <div className="st-top-title"><b>Agent</b><span>How PlotStar&apos;s AI works</span></div>
+        <div className="st-top-title"><b>Agent</b><span>How GeoStar&apos;s AI works</span></div>
         <nav className="st-top-nav">
           <Link href="/studio">Open the studio</Link>
           <Link href="/">Home</Link>
@@ -103,7 +103,7 @@ export function AgentView() {
         <section className="ag-hero">
           <small className="st-eyebrow">LangChain · LangGraph · LangSmith</small>
           <h1>Ask the agent. Watch it think.</h1>
-          <p className="ag-lede">PlotStar&apos;s copilot runs a LangGraph pipeline: it plans which tools to call, runs them on the
+          <p className="ag-lede">GeoStar&apos;s copilot runs a LangGraph pipeline: it plans which tools to call, runs them on the
             deterministic engine, checks every number in its answer, then explains. The model never invents a figure.</p>
         </section>
 

@@ -11,7 +11,7 @@ export function Report({ p }: { p: Project }) {
     <div className="report-layout">
       <section className="report-cover">
         <div>
-          <div className="eyebrow">PLOTSTAR / INVESTMENT & PLANNING</div>
+          <div className="eyebrow">GEOSTAR / INVESTMENT & PLANNING</div>
           <h2>{p.name}</h2>
           <p>
             <MapPin size={15} />

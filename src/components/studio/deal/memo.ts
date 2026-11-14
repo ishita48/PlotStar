@@ -31,13 +31,13 @@ export async function openInvestmentMemo(parcelId: string, mwIt: number, rackKw:
 <style>body{font:13px/1.55 -apple-system,Segoe UI,system-ui,sans-serif;color:#18231d;margin:40px;max-width:760px}h1{font-size:22px;margin:0 0 4px;letter-spacing:-.01em}
 h2{font-size:12px;margin:26px 0 8px;text-transform:uppercase;letter-spacing:.1em;color:#264d39}dl{display:grid;grid-template-columns:200px 1fr;gap:4px 16px;margin:0}dt{color:#747f78}dd{margin:0}
 .rec{font-size:17px;font-weight:600;color:#264d39;margin:10px 0 2px}small{color:#747f78}ul{padding-left:18px}.note{color:#747f78;font-size:11.5px;margin-top:28px;border-top:1px solid #dfe3da;padding-top:12px}</style></head><body>
-<h1>${esc(m.title)}</h1><small>PlotStar investment memo · CoStar property ${esc(m.property.parcel_id)} · ${new Date().toLocaleDateString()}</small>
+<h1>${esc(m.title)}</h1><small>GeoStar investment memo · CoStar property ${esc(m.property.parcel_id)} · ${new Date().toLocaleDateString()}</small>
 <p class="rec">${esc(m.recommendation)}</p><p>Because ${esc(m.because)}.<br><small>Rule: ${esc(m.rule)}</small></p>
 <h2>Property (CoStar)</h2><dl><dt>Type</dt><dd>${esc(m.property.type ?? 'Unknown')}</dd><dt>Lot</dt><dd>${esc(m.property.lot_acres ?? 'Unknown')} acres</dd>
 <dt>Building</dt><dd>${m.property.building_sf ? esc(Math.round(m.property.building_sf).toLocaleString()) + ' sf' : 'Unknown'}${m.property.year_built ? ', built ' + esc(m.property.year_built) : ''}</dd><dt>Record</dt><dd><small>${esc(m.property.source)}</small></dd></dl>
 <h2>Acquisition</h2><dl><dt>Value</dt><dd>${esc(usd(m.acquisition.value))} <small>(${esc(m.acquisition.label)})</small></dd><dt>Basis</dt><dd>${esc(m.acquisition.basis)}</dd>
 ${m.acquisition.comps_used != null ? `<dt>Comparable sales used</dt><dd>${esc(m.acquisition.comps_used)} (${esc(m.acquisition.comps_stale ?? 0)} older ones shown but not used)</dd>` : ''}</dl>
-<h2>Development (PlotStar model)</h2><dl><dt>Concept</dt><dd>${esc(d.concept)}</dd><dt>Build cost</dt><dd>${esc(usd(d.capex))}</dd><dt>Total investment</dt><dd>${esc(usd(d.total_investment))}</dd>
+<h2>Development (GeoStar model)</h2><dl><dt>Concept</dt><dd>${esc(d.concept)}</dd><dt>Build cost</dt><dd>${esc(usd(d.capex))}</dd><dt>Total investment</dt><dd>${esc(usd(d.total_investment))}</dd>
 <dt>NPV P50 (P10 to P90)</dt><dd>${esc(usd(d.npv))} (${esc(usd(d.npv_p10))} to ${esc(usd(d.npv_p90))})</dd><dt>Payback</dt><dd>${d.payback_years != null ? esc(d.payback_years) + ' years' : 'Not within the analysis period'}</dd>
 <dt>Months to power</dt><dd>${esc(d.months_to_power)}</dd></dl><p><small>${esc(m.irr_note ?? '')}</small></p>
 <h2>Diligence still required</h2><ul>${gaps}</ul>

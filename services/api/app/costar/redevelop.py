@@ -3,7 +3,7 @@
 Each category (industrial conversion, data center redevelopment, expansion, adaptive reuse, land acquisition) is a list
 of items. Every item is pass, flag or unknown, with the value, the threshold, the reason and the source. The score is
 simply "passes out of known items"; unknown items are listed, never counted as passes or failures. Thresholds are
-PlotStar screening rules (team assumptions, listed in THRESHOLDS), not CoStar facts and not engineering findings.
+GeoStar screening rules (team assumptions, listed in THRESHOLDS), not CoStar facts and not engineering findings.
 
 Market status is read from active listings only. A property with no active listing is "not marketed": nothing here
 implies it is for sale.
@@ -21,13 +21,13 @@ CATEGORIES = ("industrial_conversion", "data_center_redevelopment", "expansion",
 LABELS = {"industrial_conversion": "Industrial conversion", "data_center_redevelopment": "Data center redevelopment",
           "expansion": "Expansion on the lot", "adaptive_reuse": "Adaptive reuse", "land_acquisition": "Land acquisition"}
 
-# PlotStar screening thresholds (team assumptions). Each is quoted in the item that uses it.
+# GeoStar screening thresholds (team assumptions). Each is quoted in the item that uses it.
 THRESHOLDS = {
     "min_lot_acres_dc": 5.0, "min_lot_acres_industrial": 3.0, "min_building_sf_dc": 20_000, "min_clear_height_dc_ft": 18.0,
     "min_clear_height_logistics_ft": 24.0, "max_stories_dc": 2, "heavy_power_amps": 800, "max_coverage_expansion": 0.35,
     "max_coverage_industrial": 0.45, "max_coverage_land": 0.10, "reuse_built_before": 1995, "min_home_distance_m": 300,
 }
-THRESHOLD_BASIS = "PlotStar screening rule (team assumption), not a CoStar fact or an engineering finding."
+THRESHOLD_BASIS = "GeoStar screening rule (team assumption), not a CoStar fact or an engineering finding."
 SQFT_PER_ACRE = 43_560.0
 
 

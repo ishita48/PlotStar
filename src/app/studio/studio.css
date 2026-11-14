@@ -1,4 +1,4 @@
-/* PlotStar Studio. Calm, light, one accent (forest green). Mono small-caps for labels, large quiet headings. */
+/* GeoStar Studio. Calm, light, one accent (forest green). Mono small-caps for labels, large quiet headings. */
 .st {
   --st-bg: #f5f6f2; --st-panel: #ffffff; --st-line: #dfe3da; --st-line-2: #edf0e9; --st-ink: #18231d; --st-ink-2: #44504a;
   --st-muted: #747f78; --st-accent: #264d39; --st-accent-2: #34664b; --st-tint: #e9f0e8; --st-ok: #2e7d4f; --st-warn: #a8731c;
@@ -86,7 +86,8 @@
 .st-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
 
 /* define */
-.st-tabs { display: flex; gap: 6px; margin: 20px 0 16px; }
+.st-tabs { display: flex; gap: 6px; margin: 17px -3px 13px; overflow-x: auto; padding: 3px; }
+.st-tabs button { flex: none; white-space: nowrap; }
 .st-tabs button { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 14px 0 8px; border: 1px solid var(--st-line); background: #fff; border-radius: 8px; cursor: pointer; font-size: 13px; }
 .st-tabs button i { width: 22px; height: 22px; border-radius: 50%; background: var(--st-bg); display: grid; place-items: center; font-style: normal; font-size: 11.5px; }
 .st-tabs button.on { border-color: var(--st-accent); color: var(--st-accent); font-weight: 600; background: var(--st-tint); }
@@ -94,6 +95,43 @@
 .st-tabs button:disabled { opacity: 0.45; cursor: not-allowed; }
 .st-form { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px 24px; }
 .st-form-foot { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+/* define: what to build */
+.st-kind { display: flex; flex-direction: column; gap: 20px; }
+.st-kind-types { border: 0; margin: 0; padding: 0; min-width: 0; }
+.st-kind-types legend { font-size: 13px; font-weight: 600; padding: 0; margin-bottom: 10px; }
+.st-kind-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.st-kind-card { position: relative; display: flex; flex-direction: column; gap: 14px; padding: 14px 16px 16px; border: 1px solid var(--st-line); border-radius: 12px; background: #fff; cursor: pointer; transition: border-color 0.18s, background 0.18s, box-shadow 0.18s; }
+.st-kind-card:hover { border-color: #b4c1b3; }
+.st-kind-card input { position: absolute; opacity: 0; pointer-events: none; }
+.st-kind-card:has(input:focus-visible) { outline: 2px solid var(--st-accent-2); outline-offset: 2px; }
+.st-kind-card.on { border-color: var(--st-accent); background: var(--st-tint); box-shadow: 0 0 0 3px rgba(52, 102, 75, 0.10); }
+.st-kind-icon { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; background: var(--st-tint); color: var(--st-accent); }
+.st-kind-card.on .st-kind-icon { background: var(--st-accent); color: #fff; }
+.st-kind-card.later .st-kind-icon { background: var(--st-bg); color: var(--st-muted); }
+.st-kind-copy { display: flex; flex-direction: column; gap: 2px; line-height: 1.3; }
+.st-kind-copy b { font-size: 13.5px; font-weight: 600; }
+.st-kind-copy small { font-size: 12px; color: var(--st-muted); }
+.st-kind-mark { position: absolute; top: 14px; right: 14px; width: 16px; height: 16px; border-radius: 50%; border: 1px solid #c9d0c6; background: #fff; display: grid; place-items: center; color: #fff; }
+.st-kind-card.on .st-kind-mark { background: var(--st-accent); border-color: var(--st-accent); }
+.st-kind-where { position: relative; display: block; }
+.st-kind-where svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--st-muted); pointer-events: none; }
+.st-kind-where select { padding-left: 34px !important; }
+.st-kind-label { display: flex; justify-content: space-between; gap: 12px; }
+.st-kind-label em { font-style: normal; font-weight: 400; font-size: 11.5px; color: var(--st-muted); }
+.st-kind-foot { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 16px; border-top: 1px solid var(--st-line-2); }
+.st-kind-foot .st-small { margin: 0; }
+.st-kind ~ .st-saved { background: var(--st-panel); border: 1px solid var(--st-line); border-radius: 12px; padding: 0 20px; margin-bottom: 16px; }
+.st-kind ~ .st-saved summary { display: flex; align-items: center; gap: 8px; height: 48px; cursor: pointer; list-style: none; font-size: 13px; font-weight: 600; }
+.st-kind ~ .st-saved summary::-webkit-details-marker { display: none; }
+.st-kind ~ .st-saved summary::after { content: ''; margin-left: auto; width: 7px; height: 7px; border-right: 1.5px solid var(--st-muted); border-bottom: 1.5px solid var(--st-muted); transform: rotate(45deg) translateY(-2px); transition: transform 0.18s; }
+.st-kind ~ .st-saved[open] summary::after { transform: rotate(225deg) translateY(-2px); }
+.st-kind ~ .st-saved summary span { font-size: 11px; font-weight: 500; padding: 1px 7px; border-radius: 999px; background: var(--st-tint); color: var(--st-accent); }
+.st-kind ~ .st-saved summary small { font-family: var(--st-mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 400; color: var(--st-muted); }
+.st-kind ~ .st-saved summary:focus-visible { outline: 2px solid var(--st-accent-2); outline-offset: 2px; border-radius: 6px; }
+.st-kind ~ .st-saved ul { padding-bottom: 8px; }
+.st-kind-note { font-size: 12.5px; color: var(--st-warn); line-height: 1.45; }
+@media (max-width: 900px) { .st-kind-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 560px) { .st-kind-grid { grid-template-columns: 1fr; } .st-kind-foot { flex-direction: column; align-items: stretch; } }
 .st-site { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr); gap: 16px; height: calc(100vh - 300px); min-height: 430px; }
 .st-map { position: relative; border: 1px solid var(--st-line); border-radius: 10px; overflow: hidden; background: #e9ece6; }
 .st-map-tools { position: absolute; left: 12px; bottom: 12px; z-index: 3; }

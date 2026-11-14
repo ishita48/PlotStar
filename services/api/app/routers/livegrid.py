@@ -46,7 +46,7 @@ class PlanIn(BaseModel):
 
 @router.post("/livegrid/plan")
 def set_plan(body: PlanIn) -> dict[str, Any]:
-    """Make the PlotStar machine follow this run's recommended hourly plan (and curtail to its depth on an event)."""
+    """Make the GeoStar machine follow this run's recommended hourly plan (and curtail to its depth on an event)."""
     loaded = O.load_run(body.run_id)
     if not loaded:
         raise HTTPException(404, "Unknown run_id")

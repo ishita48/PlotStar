@@ -1,5 +1,5 @@
 'use client';
-// PlotStar analyst workspace: criteria -> screened candidates (table + map) -> optimizer result -> site detail.
+// GeoStar analyst workspace: criteria -> screened candidates (table + map) -> optimizer result -> site detail.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { Activity, Bell, Bookmark, Box, Columns3, Eraser, Map as MapIcon, MapPin, PenLine, Satellite, Search, SlidersHorizontal } from 'lucide-react';

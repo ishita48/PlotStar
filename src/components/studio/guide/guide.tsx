@@ -1,7 +1,7 @@
 'use client';
-// PlotStar Guide: talk to the studio. An ElevenLabs voice agent (services/api/app/guide.py) whose tools run here in
+// GeoStar Guide: talk to the studio. An ElevenLabs voice agent (services/api/app/guide.py) whose tools run here in
 // the browser: it reads the screen, moves a pointer to what it is talking about, clicks for the user (asking first
-// when a click changes something), and answers project questions through the PlotStar copilot, so every number it
+// when a click changes something), and answers project questions through the GeoStar copilot, so every number it
 // says comes from the layout engine or the CoStar extract.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -170,7 +170,7 @@ function GuideInner({ body, conceptId, selected, stage, market, hasSite, onApply
       lastRun.current = d as CopilotRun;
       if (d.proposal) { setProposal(d.proposal); setApplied(false); }
       return `${d.answer}${d.proposal ? ' (A preview with an Apply button is now on screen.)' : ''}`;
-    } catch { return `The PlotStar API at ${PUBLIC_DATA_API} is not reachable.`; }
+    } catch { return `The GeoStar API at ${PUBLIC_DATA_API} is not reachable.`; }
   });
 
   useConversationClientTool('agents_status', async () => {
@@ -178,21 +178,24 @@ function GuideInner({ body, conceptId, selected, stage, market, hasSite, onApply
       const d = await (await fetch(`${PUBLIC_DATA_API}/guide/agents`)).json();
       const run = lastRun.current;
       return JSON.stringify({ services: d.services, last_copilot_run: run ? { planned_by: run.planned_by, tools: run.tools.map((t) => `${t.name} ${t.ms} ms`), total_ms: run.ms } : 'none yet in this conversation' });
-    } catch { return 'The PlotStar API is not reachable, so I cannot list the services.'; }
+    } catch { return 'The GeoStar API is not reachable, so I cannot list the services.'; }
   });
 
   useConversationClientTool('next_steps', () => {
     const { stage: st, hasSite: site, selected: sel, body: b } = latest.current;
     const tips: Record<string, string[]> = {
-      Define: site ? ['Review the brief, then continue to Generate.', 'Ask what the site checks mean.']
+      Define: site ? ['Review the brief, then continue to Discover.', 'Ask what the site checks mean.']
         : ['Pick a numbered CoStar property on the map, or drop your own pin.', 'Ask me to find industrial sites with heavy power.'],
-      Generate: ['Set what matters most with the four priority sliders, then press Generate layouts.'],
+      Discover: ['Fly the drone over the site and capture a 360° survey, or skip it.', 'Press Generate layouts when you are ready.'],
       Explore: [sel ? `Ask why ${sel} is sized the way it is, or what doubling its rack density would do.` : 'Click a data hall in the plan to inspect it.',
         'Switch between the 2D plan and 3D model, or turn on the power and cooling routes.'],
       Analyze: ['Try a what-if: switch cooling or redundancy and watch cost, water and carbon move together.', 'Ask for the biggest risks.'],
       Compare: ['Ask which concept is cheaper over ten years, then select a preferred one.'],
       Decide: ['Pick the preferred concept, write why, and save the decision.'],
-      Deliver: ['Export the DXF for CAD, or download the decision report.'],
+      Deliver: ['Export the DXF for CAD, or download the decision report.', 'Then open Design to see the 3D facility model.'],
+      Design: ['Orbit and zoom the concept model for the property type you picked, then press Use this model.', 'Then open the Protect tab.'],
+      Protect: ['Choose which alerts to watch and their limits, place the sensors, pick an evacuation route, then deploy.'],
+      Deploy: ['Watch the facility in its Command Center, or open another deployed project from the list.'],
     };
     return (tips[st] ?? ['Ask me anything about the project.']).concat(b ? [] : ['Layouts are not generated yet.']).join(' ');
   });
@@ -213,13 +216,13 @@ function GuideInner({ body, conceptId, selected, stage, market, hasSite, onApply
       });
     } catch (e) {
       const msg = (e as Error).name === 'NotAllowedError' ? 'Microphone access was blocked. Allow it in the address bar to talk to the guide.' : (e as Error).message;
-      setError(msg.includes('fetch') ? `Can't reach the PlotStar API at ${PUBLIC_DATA_API}.` : msg);
+      setError(msg.includes('fetch') ? `Can't reach the GeoStar API at ${PUBLIC_DATA_API}.` : msg);
     }
   }
   function stop() { endSession(); setOpen(false); setPointer(null); setCompact(false); }
   function send(e: React.FormEvent) { e.preventDefault(); if (typed.trim() && live) { sendUserMessage(typed.trim()); setLines((l) => [...l.slice(-5), { who: 'you', text: typed.trim() }]); setTyped(''); } }
 
-  const label = status === 'connecting' ? 'Connecting…' : !live ? 'Talk to PlotStar' : isSpeaking ? 'Speaking' : muted ? 'Muted' : 'Listening';
+  const label = status === 'connecting' ? 'Connecting…' : !live ? 'Talk to GeoStar' : isSpeaking ? 'Speaking' : muted ? 'Muted' : 'Listening';
 
   return (
     <>
@@ -234,28 +237,28 @@ function GuideInner({ body, conceptId, selected, stage, market, hasSite, onApply
       )}
 
       {!open ? (
-        <button className={s.orbBtn} onClick={() => void start()} data-guide-ui aria-label="Talk to the PlotStar guide">
-          <AudioLines size={16} /> Talk to PlotStar
+        <button className={s.orbBtn} onClick={() => void start()} data-guide-ui aria-label="Talk to the GeoStar guide">
+          <AudioLines size={16} /> Talk to GeoStar
         </button>
       ) : (
         compact ? (
-        <section className={s.pill} data-guide-ui aria-label="PlotStar voice guide, collapsed" style={place}
+        <section className={s.pill} data-guide-ui aria-label="GeoStar voice guide, collapsed" style={place}
           onPointerDown={onDragStart} onPointerMove={onDragMove} onPointerUp={(e) => { if (!onDragEnd() && !(e.target as Element).closest('button')) setCompact(false); }}>
           <div className={`${s.orb} ${s.orbSmall} ${isSpeaking ? s.speaking : ''}`} style={{ ['--lvl' as string]: level }}>
             {status === 'connecting' ? <Loader2 size={14} className={s.spin} /> : <AudioLines size={14} />}
           </div>
-          <div className={s.pillText}><b>{label}</b><span>{[...lines].reverse().find((l) => l.who === 'guide')?.text ?? 'PlotStar guide'}</span></div>
+          <div className={s.pillText}><b>{label}</b><span>{[...lines].reverse().find((l) => l.who === 'guide')?.text ?? 'GeoStar guide'}</span></div>
           <button className={s.icon} onClick={() => setCompact(false)} aria-label="Expand the guide"><Maximize2 size={14} /></button>
           {live && <button className={s.icon} onClick={() => setMuted(!muted)} aria-label={muted ? 'Unmute microphone' : 'Mute microphone'}>{muted ? <MicOff size={14} /> : <Mic size={14} />}</button>}
           <button className={s.icon} onClick={stop} aria-label="End the conversation">{live ? <PhoneOff size={14} /> : <X size={14} />}</button>
         </section>
         ) : (
-        <section className={s.panel} data-guide-ui aria-label="PlotStar voice guide" style={place}>
+        <section className={s.panel} data-guide-ui aria-label="GeoStar voice guide" style={place}>
           <div className={`${s.top} ${s.handle}`} onPointerDown={onDragStart} onPointerMove={onDragMove} onPointerUp={onDragEnd} title="Drag to move">
             <div className={`${s.orb} ${isSpeaking ? s.speaking : ''}`} style={{ ['--lvl' as string]: level }}>
               {status === 'connecting' ? <Loader2 size={16} className={s.spin} /> : <AudioLines size={16} />}
             </div>
-            <div className={s.state}><b>{label}</b><span>PlotStar guide · ElevenLabs voice</span></div>
+            <div className={s.state}><b>{label}</b><span>GeoStar guide · ElevenLabs voice</span></div>
             <button className={s.icon} onClick={() => setCompact(true)} aria-label="Collapse the guide"><Minimize2 size={15} /></button>
             {live && <button className={s.icon} onClick={() => setMuted(!muted)} aria-label={muted ? 'Unmute microphone' : 'Mute microphone'}>{muted ? <MicOff size={15} /> : <Mic size={15} />}</button>}
             <button className={s.icon} onClick={stop} aria-label="End the conversation">{live ? <PhoneOff size={15} /> : <X size={15} />}</button>

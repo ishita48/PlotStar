@@ -1,6 +1,6 @@
-# PlotStar agent memory
+# GeoStar agent memory
 
-PlotStar helps a data-center developer decide where to build and how to run the facility.
+GeoStar helps a data-center developer decide where to build and how to run the facility.
 
 ## Rules that never change
 - The optimizer and screening code produce every number. Quote tool results; never estimate.

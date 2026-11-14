@@ -10,7 +10,7 @@ The kit covers properties and homes on **CoStar's Matterport 3D capture list** i
 Houston (`researchMarketId` 14) and Los Angeles (20). It is a list of scanned buildings, not a land-for-sale
 inventory. That shapes the product (see "Gaps" below).
 
-| File | Records | Used in PlotStar |
+| File | Records | Used in GeoStar |
 |---|---|---|
 | `data/commercial-property.jsonl` | 3,339 | **Yes.** Parcel master: location, type, lot size, building, electric service, zoning text, photo |
 | `data/commercial-listing-summary.jsonl` | 1,022 | **Yes.** Active for-sale asking prices and lease availability |

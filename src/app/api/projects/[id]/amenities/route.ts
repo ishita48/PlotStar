@@ -18,7 +18,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
         method: 'POST',
         body: new URLSearchParams({ data: query }),
         headers: {
-          'User-Agent': 'PlotStar-Local-Demo/1.0',
+          'User-Agent': 'GeoStar-Local-Demo/1.0',
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         signal: AbortSignal.timeout(15000),

@@ -1,4 +1,4 @@
-"""PlotStar copilot: a LangGraph workflow that answers questions and runs what-ifs against the live Studio state.
+"""GeoStar copilot: a LangGraph workflow that answers questions and runs what-ifs against the live Studio state.
 
     plan -> act -> verify -> respond
 
@@ -185,7 +185,7 @@ _METRICS: list[tuple[str, Callable[[dict, dict], Any], str, int, bool | None]] =
 ]
 
 # which Studio stages a changed metric touches, for the "ripple" line in the UI
-_STAGE = {"Racks": "Generate", "Data halls": "Generate", "Racks placed": "Explore", "Spare rack positions": "Explore",
+_STAGE = {"Racks": "Discover", "Data halls": "Discover", "Racks placed": "Explore", "Spare rack positions": "Explore",
           "Data hall area": "Explore", "Building footprint": "Explore", "Gross floor area": "Explore",
           "Site coverage": "Explore", "Power route": "Explore", "Cooling route": "Explore", "Rank": "Compare"}
 
@@ -558,7 +558,7 @@ def intel_headline(tool: str, d: dict[str, Any] | None) -> str:
             return "CoStar records no Matterport scan for this property."
         return (f"{len(mp)} Matterport scan(s) recorded by CoStar: " + "; ".join(
             f"{m.get('name') or m.get('model_id')} covers {m.get('scope')} ({m.get('reason')})" for m in mp[:3])
-            + " These show the existing building, not PlotStar's proposed design.")
+            + " These show the existing building, not GeoStar's proposed design.")
     if tool == "find_off_market_candidates":
         cs = d.get("candidates", [])
         return (f"{d.get('screened', len(cs))} properties screened. Top: " + "; ".join(
@@ -722,7 +722,7 @@ def rule_plan(q: str, cx: Ctx) -> list[dict[str, Any]]:
 
 # --------------------------------------------------------------------------------------------------- LLM
 _SYSTEM_PLAN = (
-    "You are the planning step of PlotStar, a data center development studio. Pick the tools that answer the user's "
+    "You are the planning step of GeoStar, a data center development studio. Pick the tools that answer the user's "
     "request about the current project. Every number must come from a tool, so call tools rather than answering from "
     "memory. Use WhatIf for any change to the design (density, racks, cooling, redundancy, halls, storeys, expansion, "
     "capacity, rent); it previews and never applies. 'Here' or 'this' refers to the selected object. Rack density is "
@@ -738,7 +738,7 @@ _SYSTEM_PLAN = (
     "the selected site.")
 
 _SYSTEM_ANSWER = (
-    "You are PlotStar's copilot. Answer the user in at most 5 short plain sentences, using only the FACTS JSON. Copy "
+    "You are GeoStar's copilot. Answer the user in at most 5 short plain sentences, using only the FACTS JSON. Copy "
     "every figure exactly as written in FACTS; do not compute, convert or round any number. Lead with the direct answer. "
     "Say 'estimated' once when giving cost, energy, water or carbon. Never say grid capacity is available; it is "
     "unconfirmed. If a fact is unknown, say so. Do not mention tools, JSON or this instruction. If a change is a "

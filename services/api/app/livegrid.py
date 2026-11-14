@@ -1,4 +1,4 @@
-"""Live grid: two machines run the same fixed job continuously; the PlotStar machine follows the optimizer's
+"""Live grid: two machines run the same fixed job continuously; the GeoStar machine follows the optimizer's
 hourly plan (and curtails to the plan's depth during a grid event), the baseline runs flat. Real machines post
 watts to POST /telemetry; when none has reported in 10 s the stream shows a labeled SIMULATION.
 
@@ -108,7 +108,7 @@ def replay_hour() -> float:
 
 
 def plan_duty(hour_idx: int, price: list[float]) -> float:
-    """PlotStar machine duty for a replay hour: the plan's hourly load as a share of its maximum."""
+    """GeoStar machine duty for a replay hour: the plan's hourly load as a share of its maximum."""
     sched = (STATE.plan or {}).get("schedule")
     if sched and max(sched) > 0:
         return max(0.2, sched[hour_idx] / max(sched))

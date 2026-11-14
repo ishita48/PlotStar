@@ -109,7 +109,7 @@ def run(agent_samples: int = 0) -> dict[str, Any]:
 
 
 def to_markdown(rep: dict[str, Any]) -> str:
-    L = [f"# PlotStar evaluation report\n\nGenerated {rep['generated_at']} · {rep['scenarios']} scenarios (Houston, real CoStar sites, cached ERCOT day).\n",
+    L = [f"# GeoStar evaluation report\n\nGenerated {rep['generated_at']} · {rep['scenarios']} scenarios (Houston, real CoStar sites, cached ERCOT day).\n",
          "## Optimizer decisions vs baseline\n", "| Check | Pass | Fail | Not applicable |", "|---|---|---|---|"]
     for n, s in rep["summary"].items():
         L.append(f"| {n} | {s['pass']} | {s['fail']} | {s['n/a']} |")

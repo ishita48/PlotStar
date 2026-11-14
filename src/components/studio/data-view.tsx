@@ -1,5 +1,5 @@
 'use client';
-// Judge-facing view of PlotStar's MongoDB Atlas data platform. Every panel is a live call to the data service:
+// Judge-facing view of GeoStar's MongoDB Atlas data platform. Every panel is a live call to the data service:
 // schema/index status, Atlas Search with facets, Vector Search over site embeddings, $geoNear, $facet analytics,
 // the decisions audit trail, and a change-stream feed over SSE. Nothing here is mocked.
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -113,7 +113,7 @@ export function DataView() {
   const wattSeries = (() => {
     if (!charts) return [];
     const byMachine = (rows: { key: string; machine: string; v: number | null }[]) =>
-      ['baseline', 'plotstar'].map((m, i) => ({ name: m, color: SLOT[i], points: rows.filter((r) => r.machine === m && r.v != null).map((r) => ({ x: Date.parse(r.key), y: r.v as number })) })).filter((s) => s.points.length);
+      ['baseline', 'plotstar'].map((m, i) => ({ name: m === 'plotstar' ? 'geostar' : m, color: SLOT[i], points: rows.filter((r) => r.machine === m && r.v != null).map((r) => ({ x: Date.parse(r.key), y: r.v as number })) })).filter((s) => s.points.length);
     const mins = byMachine(charts.telemetry_minutes.map((r) => ({ key: r.minute, machine: r.machine, v: r.avg_watts })));
     return mins.some((s) => s.points.length >= 2) ? mins : byMachine(charts.telemetry_raw.map((r) => ({ key: r.ts, machine: r.machine, v: r.watts })));
   })();
@@ -140,7 +140,7 @@ export function DataView() {
         <section className="dt-hero">
           <small className="st-eyebrow">MongoDB Atlas · {status?.database ?? '…'}</small>
           <h1>Every site, decision and watt, queryable.</h1>
-          <p className="dt-lede">PlotStar keeps its CoStar parcels, Studio projects, audit trail, grid prices and live hardware telemetry in Atlas:
+          <p className="dt-lede">GeoStar keeps its CoStar parcels, Studio projects, audit trail, grid prices and live hardware telemetry in Atlas:
             JSON-schema-validated collections, a time-series collection, 2dsphere geo, Atlas Search, Vector Search and change streams.
             Everything on this page is a live query.</p>
           {status && !status.available && <p className="dt-err">Atlas is not reachable: {status.reason}</p>}
@@ -248,7 +248,7 @@ export function DataView() {
               <div><small>Distance to nearest home (m)</small>{an.sites.home_buckets.map((b) => <Bar key={String(b._id)} label={b._id === 'unknown' ? 'unknown' : `${b._id}+`} value={b.n} max={Math.max(...an.sites.home_buckets.map((x) => x.n))} />)}</div>
               <div><small>Projects</small>{tot && <p><b>{tot.projects}</b> projects · {num(tot.mw)} MW · {money(tot.capex)} capex · {tot.decided} decided</p>}{an.projects.by_cooling.map((c) => <Bar key={c._id} label={`${c._id} · ${num(c.mw)} MW`} value={c.n} max={Math.max(...an.projects.by_cooling.map((x) => x.n))} />)}</div>
               <div><small>ERCOT day-ahead (grid_days)</small>{an.grid_days.map((g) => <p key={g._id}><b>{g._id}</b> {g.days} days {g.first}–{g.last} · avg ${g.avg_price.toFixed(1)}/MWh · peak ${g.max_peak.toFixed(0)}</p>)}</div>
-              <div><small>Hardware telemetry, last 24 h (time-series)</small>{an.telemetry_24h.length === 0 ? <p className="dt-muted">no points yet</p> : an.telemetry_24h.map((t) => <p key={t._id}><b>{t._id}</b> {t.points} points · avg {num(t.avg_watts)} W · max {num(t.max_watts)} W</p>)}</div>
+              <div><small>Hardware telemetry, last 24 h (time-series)</small>{an.telemetry_24h.length === 0 ? <p className="dt-muted">no points yet</p> : an.telemetry_24h.map((t) => <p key={t._id}><b>{t._id === 'plotstar' ? 'geostar' : t._id}</b> {t.points} points · avg {num(t.avg_watts)} W · max {num(t.max_watts)} W</p>)}</div>
               <div><small>Evidence fetches on record</small>{an.evidence.slice(0, 6).map((e) => <p key={e._id}><b>{e._id}</b> {e.fetches} · {num(e.bytes / 1024)} KB</p>)}</div>
             </div>
           </section>
@@ -259,7 +259,7 @@ export function DataView() {
           <section className="st-card">
             <h3><Activity size={15} /> Charts <span className="dt-muted">drawn from Atlas aggregations; every chart has a table view</span></h3>
             <div className="dt-charts">
-              <LineChart title="Hardware watts" sub={wattSeries.length ? 'baseline vs PlotStar machine, last 6 h' : 'last 6 h'} series={wattSeries} xFmt={hhmm} yFmt={(v) => `${Math.round(v)} W`} />
+              <LineChart title="Hardware watts" sub={wattSeries.length ? 'baseline vs GeoStar machine, last 6 h' : 'last 6 h'} series={wattSeries} xFmt={hhmm} yFmt={(v) => `${Math.round(v)} W`} />
               <LineChart title={`ERCOT day-ahead price, ${charts.price_day?.date ?? '—'}`} sub={charts.price_day ? `${charts.price_day.hub}, $/MWh by hour ending` : undefined} labelPeak
                 series={charts.price_day ? [{ name: 'price', color: SLOT[0], points: charts.price_day.prices.map((p, i) => ({ x: i + 1, y: p })) }] : []} xFmt={(x) => `${x}:00`} yFmt={(v) => `$${v.toFixed(0)}`} />
               <BarChart title="Why sites fail" sub="parcels failing each hard gate" rows={charts.gate_fails.map((g) => ({ label: g.gate, value: g.fails }))} />

@@ -1,11 +1,11 @@
-"""Shared MongoDB access for PlotStar's app state (copilot memory, deal runs, designs, audit, guide state).
+"""Shared MongoDB access for GeoStar's app state (copilot memory, deal runs, designs, audit, guide state).
 
 One client for the whole API: the pooled MongoClient that store.py opens for Atlas, reused here, so every module
 shares its connection pool, timeouts and retry settings. When Atlas is unreachable every helper returns None and the
 caller falls back (memory or the local SQLite store); nothing in the analysis depends on Atlas being up.
 
 Data rule (decided by the user): raw CoStar kit records, and payloads derived from them (comp rows, addresses, sale
-prices, valuations), stay in the local store. Atlas holds PlotStar's own state and metadata keyed by CoStar ids.
+prices, valuations), stay in the local store. Atlas holds GeoStar's own state and metadata keyed by CoStar ids.
 
 Optimisations:
 - writes that only need to land eventually (audit, telemetry-like logs) use w=1 and a background batch writer
@@ -29,7 +29,7 @@ _lock = threading.Lock()
 
 
 def db():
-    """The PlotStar database on Atlas, or None."""
+    """The GeoStar database on Atlas, or None."""
     col = store._collection()
     if col is None:
         return None

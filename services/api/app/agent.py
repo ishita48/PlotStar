@@ -17,7 +17,7 @@ from . import optimizer as O
 from .db import session
 
 SYSTEM = (
-    "You are PlotStar's explainer for data-center siting. The optimizer has already decided; your job is to explain "
+    "You are GeoStar's explainer for data-center siting. The optimizer has already decided; your job is to explain "
     "the decision in plain language for a non-expert in under 180 words. Use ONLY numbers returned by your tools, "
     "quote them with their labels (Sourced / Estimated / Simulated), and say what is a scenario assumption. "
     "Never invent prices, capacities or savings. If a question needs a number you do not have, say so. "
@@ -30,7 +30,7 @@ SYSTEM = (
 # ----------------------------------------------------------------------------- tools (plain functions)
 
 def tool_get_run(run_id: str) -> dict[str, Any]:
-    """Optimizer run: PlotStar pick vs cost-first pick, deltas, rejected sites, grid-day labels."""
+    """Optimizer run: GeoStar pick vs cost-first pick, deltas, rejected sites, grid-day labels."""
     loaded = O.load_run(run_id)
     if not loaded:
         return {"error": "unknown run_id"}
@@ -102,7 +102,7 @@ def deterministic(run_id: str, question: str | None) -> dict[str, Any]:
     if not o:
         return {"answer": "No site can run this project with the current limits. Loosen a must-have or lower the MW and search again.",
                 "trace": trace, "model": "deterministic"}
-    parts = [f"PlotStar picks {o['site_name']} for {r['mw_it']:g} MW: {o['cooling']} cooled, "
+    parts = [f"GeoStar picks {o['site_name']} for {r['mw_it']:g} MW: {o['cooling']} cooled, "
              + (f"easing off {o['d']:.0%} of load for about {o['f'] * 8760:.0f} hours a year when the grid is stressed. "
                 if o["f"] > 0 else "full power all year. ")]
     parts.append(f"Heavy jobs move into the cleanest, cheapest hours: on the ERCOT {gd['price_date']} day ({gd['price_label']}) "
@@ -115,7 +115,7 @@ def deterministic(run_id: str, question: str | None) -> dict[str, Any]:
                          f"{d['co2_est_t_year']:,.0f} t less CO₂ a year and ${abs(d['cost']):,.0f} "
                          f"{'less' if d['cost'] >= 0 else 'more'} over ten years (Estimated).")
         else:
-            parts.append(f"Cost-first would pick {b['site_name']} with a flat schedule. PlotStar's plan saves about "
+            parts.append(f"Cost-first would pick {b['site_name']} with a flat schedule. GeoStar's plan saves about "
                          f"{d['co2_est_t_year']:,.0f} t CO₂ a year and ${abs(d['cost']):,.0f} over ten years (Estimated)"
                          + (f"; it needs flexibility because that site's firm power is a scenario at {o['firm_capacity_share']:.0%} of the request (Simulated)." if o["f"] > 0 else "."))
     if run["rejected"]:
@@ -201,7 +201,7 @@ def tool_run_optimizer(mw_it: float, flexible_share: float = 0.3, market: str = 
 
 
 CHAT_SYSTEM = (
-    "You are PlotStar's research agent for data-center site selection, working for a developer's site-selection team. "
+    "You are GeoStar's research agent for data-center site selection, working for a developer's site-selection team. "
     "You answer by calling tools; the optimizer and screening code produce every number. Rules: "
     "(1) Use ONLY numbers returned by tools and say whether each is Sourced, Estimated or Simulated when it matters. "
     "(2) For any what-if, call run_what_if or run_optimizer; never estimate an effect yourself. "

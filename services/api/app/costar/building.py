@@ -219,7 +219,7 @@ def conversion(parcel_id: str, mw_it: float, rack_kw: float = 20.0, grid: dict[s
                            basis="CoStar has no clear height for this building."))
     else:
         s_height = add("Clear height", floor_h, clear_ft * 0.3048, "m",
-                       f"PlotStar's layouts assume {floor_h:g} m floor to floor; CoStar records {clear_ft:g} ft clear.")
+                       f"GeoStar's layouts assume {floor_h:g} m floor to floor; CoStar records {clear_ft:g} ft clear.")
     mw, method = service_capacity_mw(p.get("amps_high"), p.get("volts_high"))
     fac = float(res["brief"]["facility_mw"])
     checks.append(dict(name="Existing electric service", status="does not fit" if mw is not None and mw < fac else "unknown",
@@ -243,4 +243,4 @@ def conversion(parcel_id: str, mw_it: float, rack_kw: float = 20.0, grid: dict[s
     return dict(parcel_id=parcel_id, mw_it=mw_it, rack_kw=rack_kw, status=overall, checks=checks, missing=missing,
                 racks_needed=res["brief"]["racks"], racks_that_fit_by_area=max_racks, concept=best["name"],
                 label="Estimated", note="Conceptual screening, not engineering feasibility. A structural and MEP survey decides.",
-                source=f"CoStar Data Extract, {p.get('source_file')} row {p.get('source_row')}; PlotStar layout engine")
+                source=f"CoStar Data Extract, {p.get('source_file')} row {p.get('source_row')}; GeoStar layout engine")

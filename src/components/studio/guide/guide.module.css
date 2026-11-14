@@ -1,4 +1,4 @@
-/* PlotStar voice guide. Studio tokens (--st-*) are inherited from .st. */
+/* GeoStar voice guide. Studio tokens (--st-*) are inherited from .st. */
 .orbBtn {
   position: fixed; right: 184px; bottom: 76px; z-index: 41; display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 16px;
   border-radius: 999px; border: 1px solid var(--st-accent); background: #fff; color: var(--st-accent); font-weight: 600; font-size: 13px;

@@ -1,7 +1,7 @@
 'use client';
-// PlotStar Studio: brief -> three layouts -> explore -> analyze -> compare -> decide -> deliver.
+// GeoStar Studio: define -> discover -> explore -> analyze (compare · analyze · decide) -> deliver -> design (model · protect · deploy).
 // Geometry and every number come from POST /studio/generate; nothing is computed or invented in the browser.
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import {
@@ -22,6 +22,14 @@ import { ImportDesign, type NotePreview } from './import/import-design';
 import { CostarDossier } from './costar/dossier';
 import { ExistingVsProposed } from './costar/existing-vs-proposed';
 import { DealDesk } from './deal/deal-desk';
+import { KindPicker } from './kind-picker';
+import { DroneSurvey } from './discover/drone-survey';
+import { FacilityModel } from './design/facility-model';
+import { KINDS } from './kind-picker';
+import { ProtectModule } from '../dashboard-2/protection-workspace';
+import { DeployedProjects, ProjectCommandCenter } from '../dashboard-2/deployed-projects';
+import { useProtection } from '../dashboard-2/use-protection';
+import type { Facility } from '@/lib/haven/engine';
 import { openInvestmentMemo } from './deal/memo';
 import type { AddedType, Brief, Concept, ConceptEdit, Edits, Factor, Room, StudioResult } from './types';
 import { COOLING_LABEL, ROUTE_COLOR, TYPE_STYLE, WHY, download, money, num, pct, toDxf } from './types';
@@ -29,11 +37,18 @@ import { COOLING_LABEL, ROUTE_COLOR, TYPE_STYLE, WHY, download, money, num, pct,
 const ExploreMap = dynamic(() => import('../explore/explore-map'), { ssr: false, loading: () => <div className="st-loading">Loading map…</div> });
 const Model3D = dynamic(() => import('./model3d'), { ssr: false, loading: () => <div className="st-loading">Loading 3D model…</div> });
 
-const STEPS = [
-  { key: 'Define', hint: 'Brief and site' }, { key: 'Generate', hint: 'Create your options' }, { key: 'Explore', hint: 'Inspect the plans' },
-  { key: 'Analyze', hint: 'Money, people, planet' }, { key: 'Compare', hint: 'Weigh the trade-offs' }, { key: 'Decide', hint: 'Record your choice' },
-  { key: 'Deliver', hint: 'Export the concept' },
-] as const;
+// Pages keep their own numbers (each screen and its logic is keyed to one); the rail groups them into steps.
+const PAGES = ['Define', 'Discover', 'Explore', 'Analyze', 'Compare', 'Decide', 'Deliver', 'Design', 'Protect', 'Deploy'] as const;
+const STEPS: { key: string; hint: string; pages: number[] }[] = [
+  { key: 'Define', hint: 'Brief and site', pages: [0] }, { key: 'Discover', hint: 'Survey the site', pages: [1] },
+  { key: 'Explore', hint: 'Inspect the plans', pages: [2] }, { key: 'Analyze', hint: 'Compare and decide', pages: [4, 3, 5] },
+  { key: 'Deliver', hint: 'Export the concept', pages: [6] }, { key: 'Design', hint: 'Model, protect, deploy', pages: [7, 8, 9] },
+];
+/** Sub-tab names for steps that group several pages (Analyze: Compare first; Design: Model first). */
+const TAB_LABEL: Record<number, string> = { 4: 'Compare', 3: 'Analyze', 5: 'Decide', 7: 'Model', 8: 'Protect', 9: 'Deploy' };
+/** Page order for Next and Back. */
+const ORDER = [0, 1, 2, 4, 3, 5, 6, 7, 8, 9];
+const railOf = (page: number) => STEPS.findIndex((st) => st.pages.includes(page));
 const FACTORS: { key: Factor; label: string; icon: typeof Coins; ask: string }[] = [
   { key: 'money', label: 'Money', icon: Coins, ask: 'Lowest cost to build and run for ten years' },
   { key: 'people', label: 'People', icon: Users, ask: 'Standby generators kept far from the boundary' },
@@ -43,7 +58,7 @@ const FACTORS: { key: Factor; label: string; icon: typeof Coins; ask: string }[]
 const GATE_FACTOR: Record<string, Factor> = {
   'Residential proximity': 'people', 'Sensitive places': 'people', 'Land in use': 'people', 'Flood exposure': 'planet', 'Water stress': 'resources', 'Grid proximity': 'resources',
 };
-const DEFAULT: Brief = { name: 'Houston 20 MW', market: 'Houston', mw: 20, rackKw: 20, redundancy: 'N+1', cooling: 'liquid', halls: null, siteW: 320, siteD: 240, setback: 8, expansion: 10, flex: 30, storeys: 1, rent: null };
+const DEFAULT: Brief = { kind: 'data-center', vision: '', name: 'Houston 20 MW', market: 'Houston', mw: 20, rackKw: 20, redundancy: 'N+1', cooling: 'liquid', halls: null, siteW: 320, siteD: 240, setback: 8, expansion: 10, flex: 30, storeys: 1, rent: null };
 const SAVE_KEY = 'plotstar-studio-v1';
 const NO_EDIT: ConceptEdit = { building: { dx: 0, dy: 0 }, rotate: false, yard: {}, added: [] };
 const ADD: Record<AddedType, { prefix: string; w: number; d: number; label: string }> = {
@@ -129,7 +144,7 @@ export function Studio() {
     let alive = true;
     api<{ sites: Omit<ExploreSite, 'letter'>[] }>('/search', { market: brief.market, thresholds: { min_home_distance_m: 300 }, assumptions: {}, filters: { min_acres: 5 }, limit: 150 })
       .then((d) => alive && setSites((own) => [...own.filter(isUser), ...d.sites.map((s, i) => ({ ...s, letter: String(i + 1) }) as ExploreSite)]))
-      .catch(() => alive && setError(`Can't reach the PlotStar data service at ${PUBLIC_DATA_API}. Start it and reload.`));
+      .catch(() => alive && setError(`Can't reach the GeoStar data service at ${PUBLIC_DATA_API}. Start it and reload.`));
     return () => { alive = false; };
   }, [brief.market]);
 
@@ -353,22 +368,46 @@ export function Studio() {
     assumptions: result.assumptions, note: result.note,
   }), [result, chosen, brief.name, decidedAt, decidedBy, reasons, site, prio, edits, aerialId, aerialMeta, inspection]);
 
-  const canNext = [!!site && sub === 2, true, !!result, !!result, !!result, !!preferred && reasons.trim().length > 0, false][step];
-  const reach = (i: number) => i <= 1 || (!!result && (i < 6 || !!decidedAt));
+  const canNext = [!!site && sub === 3, true, !!result, !!result, !!result, !!preferred && reasons.trim().length > 0, true, true, true, false][step];
+  // Data centers run the whole flow; other property types (no layout engine yet) go from Define straight to Design.
+  const kind = brief.kind ?? 'data-center';
+  const kindLabel = KINDS.find((k) => k.id === kind)?.label ?? 'Data center';
+  const dc = kind === 'data-center';
+  const reach = (page: number) => (dc ? page <= 1 || (!!result && (page < 6 || !!decidedAt)) : page === 0 || page >= 7);
+  const rail = railOf(step);
+  const group = STEPS[rail].pages;
+  const tabIdx = group.length > 1 ? group.indexOf(step) : -1;
+  // where the tab lens slides from: the tab shown before this one in the same step (null when arriving from another step)
+  const lastTab = useRef<{ rail: number; idx: number } | null>(null);
+  useEffect(() => { lastTab.current = tabIdx >= 0 ? { rail, idx: tabIdx } : null; }, [rail, tabIdx]);
+  const subTabs = tabIdx >= 0 && (
+    <SubTabs label={STEPS[rail].key} items={group.map((pg) => TAB_LABEL[pg])} active={tabIdx}
+      from={lastTab.current?.rail === rail ? lastTab.current.idx : null} onPick={(i) => setStep(group[i])} />
+  );
+
+  // Design · Model, Protect, Deploy: one HAVEN facility workspace per Studio project, shared with Smart Blocks' code and store
+  const siteName = site ? siteLabel(site) : dc ? brief.name : `${kindLabel} · ${brief.market}`;
+  const facility = useMemo<Facility>(() => ({
+    id: `studio-${projectId.toLowerCase().replace(/[^a-z0-9-]+/g, '-')}`.slice(0, 150), name: siteName.slice(0, 160), city: brief.market, type: kindLabel,
+  }), [projectId, siteName, brief.market, kindLabel]);
+  const protection = useProtection(facility, step >= 7);
+  const [protectStart, setProtectStart] = useState<number | undefined>();
+  const [deployView, setDeployView] = useState<'current' | 'projects' | Facility>('current');
+  const openCommand = () => { setProtectStart(undefined); setDeployView('current'); setStep(9); };
 
   function next() {
     if (step === 0) setStep(1);
     else if (step === 1) void generate(brief, false).then((r) => { if (r) { setStep(2); void saveProject('generated', undefined, r); } });
     else if (step === 5) decide();
-    else setStep(step + 1);
+    else setStep(ORDER[ORDER.indexOf(step) + 1]);
   }
-  const nextLabel = ['Continue to generate', busy ? 'Generating…' : 'Generate layouts', 'Analyze concept', 'Compare concepts', 'Review decision', 'Save decision', ''][step];
+  const nextLabel = ['Continue to discover', busy ? 'Generating…' : 'Generate layouts', 'Compare concepts', 'Review decision', 'Analyze concept', 'Save decision', 'Open the 3D model', 'Set up protection', 'Go to deploy', ''][step];
 
   return (
     <div className="st">
       <header className="st-top">
         <Brand />
-        <div className="st-top-title"><b>Studio</b><span>{brief.name} · {brief.mw} MW IT{site ? ` · ${siteLabel(site)}` : ''}</span></div>
+        <div className="st-top-title"><b>Studio</b><span>{dc ? `${brief.name} · ${brief.mw} MW IT${site ? ` · ${siteLabel(site)}` : ''}` : `${kindLabel} · ${brief.market} · concept model`}</span></div>
         <nav className="st-top-nav">
           <Link href="/studio/agent">How the AI works</Link>
           <Link href="/studio/data">Data</Link>
@@ -380,18 +419,18 @@ export function Studio() {
       <div className="st-body">
         <aside className="st-rail">
           <small className="st-eyebrow">Your workflow</small>
-          <p className="st-rail-step">Step {step + 1} of {STEPS.length}</p>
+          <p className="st-rail-step">Step {rail + 1} of {STEPS.length}</p>
           <ol>
             {STEPS.map((s, i) => (
-              <li key={s.key} className={i === step ? 'on' : i < step ? 'done' : reach(i) ? '' : 'locked'} onClick={() => reach(i) && setStep(i)}>
-                <i>{i < step ? <Check size={13} /> : reach(i) ? i + 1 : <Lock size={11} />}</i>
-                <div><b>{s.key}</b><span>{i < step ? 'Completed' : s.hint}</span></div>
+              <li key={s.key} className={i === rail ? 'on' : !reach(s.pages[0]) ? 'locked' : i < rail ? 'done' : ''} onClick={() => reach(s.pages[0]) && i !== rail && setStep(s.pages[0])}>
+                <i>{i < rail ? <Check size={13} /> : reach(s.pages[0]) ? i + 1 : <Lock size={11} />}</i>
+                <div><b>{s.key}</b><span>{i < rail ? 'Completed' : s.hint}</span></div>
               </li>
             ))}
           </ol>
           <div className="st-rail-foot">
-            <b>{racks.toLocaleString()} racks · {halls} halls</b>
-            <span>{brief.redundancy} · {COOLING_LABEL[brief.cooling]}</span>
+            {dc ? <><b>{racks.toLocaleString()} racks · {halls} halls</b><span>{brief.redundancy} · {COOLING_LABEL[brief.cooling]}</span></>
+              : <><b>{kindLabel}</b><span>{brief.market} · concept model</span></>}
           </div>
         </aside>
 
@@ -403,17 +442,31 @@ export function Studio() {
               <small className="st-eyebrow">01 · Define</small>
               <h1>What are you building, and where?</h1>
               <div className="st-tabs">
-                {['Requirements', 'Site', 'Review brief'].map((t, i) => (
-                  <button key={t} className={sub === i ? 'on' : ''} onClick={() => (i < 2 || site) && setSub(i)} disabled={i === 2 && !site}><i>{i + 1}</i>{t}</button>
+                {['What to build', 'Requirements', 'Site', 'Review brief'].map((t, i) => (
+                  <button key={t} className={sub === i ? 'on' : ''} onClick={() => (i < 3 || site) && setSub(i)} disabled={(i > 0 && brief.kind !== 'data-center') || (i === 3 && !site)}><i>{i + 1}</i>{t}</button>
                 ))}
               </div>
 
               {sub === 0 && (
+                <KindPicker kind={brief.kind ?? 'data-center'} market={brief.market} vision={brief.vision ?? ''}
+                  onKind={(k) => set('kind', k)} onMarket={(m) => { set('market', m); setSiteId(null); }} onVision={(v) => set('vision', v)}
+                  onContinue={() => (dc ? setSub(1) : setStep(7))}>
+                  {store?.available && saved.length > 0 && (
+                    <details className="st-saved">
+                      <summary>Saved projects <span>{saved.length}</span><small>MongoDB Atlas</small></summary>
+                      <ul>{saved.map((p) => (
+                        <li key={p.id}><div><b>{p.name}</b><span>{p.mw_it} MW · {(p.site?.id && siteNames[p.site.id]) ?? p.site?.address ?? p.site?.name ?? (p.site?.id ? 'CoStar site' : 'no site')} · {p.status}{p.decided_by ? ` by ${p.decided_by}` : ''}</span></div>
+                          <button className="st-btn" onClick={() => void openProject(p.id)}>Open</button></li>
+                      ))}</ul>
+                    </details>
+                  )}
+                  {store && !store.available && <p className="st-small st-muted st-saved-note">Projects are not being saved to MongoDB: {store.reason}</p>}
+                </KindPicker>
+              )}
+
+              {sub === 1 && (
                 <div className="st-card st-form">
                   <Field label="Project name"><input value={brief.name} onChange={(e) => set('name', e.target.value)} maxLength={80} /></Field>
-                  <Field label="Market" hint="CoStar data covers these two markets.">
-                    <select value={brief.market} onChange={(e) => { set('market', e.target.value as Brief['market']); setSiteId(null); }}><option>Houston</option><option>Los Angeles</option></select>
-                  </Field>
                   <Field label="Target IT capacity" hint="Power available to the computers.">
                     <div className="st-unit"><input type="number" min={1} max={500} value={brief.mw} onChange={(e) => set('mw', Math.max(1, Math.min(500, +e.target.value || 1)))} /><em>MW</em></div>
                   </Field>
@@ -440,21 +493,11 @@ export function Studio() {
                   <Field label={`Work that can wait: ${brief.flex}%`} hint="Share of computing that can move to cheaper, cleaner hours.">
                     <input type="range" min={0} max={60} step={5} value={brief.flex} onChange={(e) => set('flex', +e.target.value)} />
                   </Field>
-                  <div className="st-form-foot"><button className="st-btn primary" onClick={() => setSub(1)}>Next: Site <ArrowRight size={14} /></button></div>
-                  {store?.available && saved.length > 0 && (
-                    <div className="st-saved">
-                      <h4>Saved projects · MongoDB Atlas</h4>
-                      <ul>{saved.map((p) => (
-                        <li key={p.id}><div><b>{p.name}</b><span>{p.mw_it} MW · {(p.site?.id && siteNames[p.site.id]) ?? p.site?.address ?? p.site?.name ?? (p.site?.id ? 'CoStar site' : 'no site')} · {p.status}{p.decided_by ? ` by ${p.decided_by}` : ''}</span></div>
-                          <button className="st-btn" onClick={() => void openProject(p.id)}>Open</button></li>
-                      ))}</ul>
-                    </div>
-                  )}
-                  {store && !store.available && <p className="st-small st-muted st-saved-note">Projects are not being saved to MongoDB: {store.reason}</p>}
+                  <div className="st-form-foot"><button className="st-btn primary" onClick={() => setSub(2)}>Next: Site <ArrowRight size={14} /></button></div>
                 </div>
               )}
 
-              {sub === 1 && (
+              {sub === 2 && (
                 <div className="st-site">
                   <div className="st-map">
                     <ExploreMap market={brief.market} sites={sites} selectedId={siteId} onSelect={(id) => void pickSite(id)} mode={mode} polygon={null}
@@ -505,14 +548,14 @@ export function Studio() {
                           <Field label="Land kept open"><div className="st-unit"><input type="number" value={brief.expansion} onChange={(e) => set('expansion', Math.max(0, Math.min(80, +e.target.value || 0)))} /><em>%</em></div></Field>
                         </div>
                         <p className="st-muted st-small">{num(brief.siteW * brief.siteD)} m² ({num((brief.siteW * brief.siteD) / 4046.86, 1)} acres). Pre-filled from the lot size as a rectangle; the true parcel shape is not in the data. <Tag label="Estimated" /></p>
-                        <div className="st-form-foot"><button className="st-btn" onClick={() => setSiteId(null)}>Change site</button><button className="st-btn" onClick={() => setImporting(true)}><FileUp size={13} /> Import your design</button>{parcelId && <button className="st-btn" onClick={() => setDossier('comps')}><Building2 size={13} /> CoStar dossier</button>}<button className="st-btn primary" onClick={() => setSub(2)}>Next: Review brief <ArrowRight size={14} /></button></div>
+                        <div className="st-form-foot"><button className="st-btn" onClick={() => setSiteId(null)}>Change site</button><button className="st-btn" onClick={() => setImporting(true)}><FileUp size={13} /> Import your design</button>{parcelId && <button className="st-btn" onClick={() => setDossier('comps')}><Building2 size={13} /> CoStar dossier</button>}<button className="st-btn primary" onClick={() => setSub(3)}>Next: Review brief <ArrowRight size={14} /></button></div>
                       </>
                     )}
                   </div>
                 </div>
               )}
 
-              {sub === 2 && site && (
+              {sub === 3 && site && (
                 <div className="st-grid2">
                   <div className="st-card"><h3>Project</h3>
                     <dl className="st-dl"><dt>Name</dt><dd>{brief.name}</dd><dt>Site</dt><dd>{siteLabel(site)}</dd><dt>Market</dt><dd>{brief.market}</dd><dt>Redundancy · cooling</dt><dd>{brief.redundancy} · {COOLING_LABEL[brief.cooling]}</dd></dl></div>
@@ -529,23 +572,11 @@ export function Studio() {
           )}
 
           {step === 1 && (
-            <section className="st-page st-narrow">
-              <small className="st-eyebrow">02 · Generate</small>
-              <h1>What matters most?</h1>
-              <p className="st-lede">PlotStar lays the same brief out three different ways. Your priorities decide how the three are ranked. They never relax a hard limit.</p>
-              <div className="st-card">
-                <div className="st-brief-line"><Stat label="IT capacity" value={`${brief.mw} MW`} sub={`${racks.toLocaleString()} racks`} /><Stat label="Halls" value={`${halls}`} sub={`${brief.redundancy} · ${brief.cooling}`} /><Stat label="Site" value={`${brief.siteW} × ${brief.siteD} m`} sub={site ? siteLabel(site) : 'No site chosen'} /><Stat label="Land kept open" value={`${brief.expansion}%`} /></div>
-              </div>
-              <div className="st-card">
-                <h3>Ranking priorities</h3>
-                {FACTORS.map((f) => (
-                  <div className="st-prio" key={f.key}>
-                    <f.icon size={16} /><div><b>{f.label}</b><span>{f.ask}</span></div>
-                    <input type="range" min={0} max={5} value={prio[f.key]} onChange={(e) => setPrio((p) => ({ ...p, [f.key]: +e.target.value }))} aria-label={`${f.label} priority`} />
-                    <em>{prio[f.key]}</em>
-                  </div>
-                ))}
-              </div>
+            <section className="st-page">
+              <small className="st-eyebrow">02 · Discover</small>
+              <h1>See the site from above</h1>
+              <p className="st-lede">{site ? `${siteLabel(site)} · ` : ''}Fly the Tello over the site and save what the camera sees. When you’re ready, generate three layouts.</p>
+              <DroneSurvey siteName={site ? siteLabel(site) : brief.name} />
             </section>
           )}
 
@@ -599,11 +630,12 @@ export function Studio() {
           )}
 
           {step === 3 && result && concept && (
-            <section className="st-page">
+            <section className="st-page st-glass-in">
               <small className="st-eyebrow">04 · Analyze</small>
               <div className="st-head-row"><h1>{concept.name}</h1>
                 {parcelId && <button className="st-btn" onClick={() => setDossier('comps')}><Building2 size={13} /> CoStar dossier</button>}
                 <div className="st-seg">{result.concepts.map((c) => <button key={c.id} className={c.id === concept.id ? 'on' : ''} onClick={() => setActiveId(c.id)}>{c.name}</button>)}</div></div>
+              {subTabs}
               <p className="st-lede">{concept.strategy}</p>
               <div className="st-card st-whatif">
                 <div><b>Change a decision</b><span>Every change re-runs the layout, cost, carbon and water together.</span></div>
@@ -626,9 +658,10 @@ export function Studio() {
           )}
 
           {step === 4 && result && (
-            <section className="st-page">
-              <small className="st-eyebrow">05 · Compare</small>
+            <section className="st-page st-glass-in">
+              <small className="st-eyebrow">04 · Analyze</small>
               <h1>Three ways to build the same brief</h1>
+              {subTabs}
               <p className="st-lede">{result.ranking.note}</p>
               {result.ranking.close && <div className="st-card st-warn st-flexnote"><b>No clear winner.</b> {result.ranking.method} Pick on the specific trade-offs, or change cooling, storeys or redundancy to see a bigger difference.</div>}
               <div className="st-compare">
@@ -652,10 +685,11 @@ export function Studio() {
           )}
 
           {step === 5 && result && (
-            <section className="st-page st-narrow">
-              <small className="st-eyebrow">06 · Decide</small>
+            <section className="st-page st-narrow st-glass-in">
+              <small className="st-eyebrow">04 · Analyze</small>
               <h1>Record your choice</h1>
-              <p className="st-lede">PlotStar ranks; you decide. Write down why, so the decision can be reviewed later.</p>
+              {subTabs}
+              <p className="st-lede">GeoStar ranks; you decide. Write down why, so the decision can be reviewed later.</p>
               <div className="st-card">
                 <h3>Preferred concept</h3>
                 <div className="st-choices">
@@ -684,7 +718,7 @@ export function Studio() {
 
           {step === 6 && result && chosen && report && (
             <section className="st-page st-narrow">
-              <small className="st-eyebrow">07 · Deliver</small>
+              <small className="st-eyebrow">05 · Deliver</small>
               <h1>{chosen.name}</h1>
               <p className="st-lede">{result.brief.halls} halls · {result.brief.racks.toLocaleString()} racks · {result.brief.mw_it} MW IT at {site ? siteLabel(site) : 'the chosen site'}.</p>
               <div className="st-card">
@@ -711,25 +745,98 @@ export function Studio() {
               </div>
             </section>
           )}
+
+          {step >= 7 && (result || !dc) && (
+            <section className="st-page st-design">
+              <small className="st-eyebrow">06 · Design</small>
+              <h1>Model, protect and deploy</h1>
+              {subTabs}
+              <div key={step} className="st-glass-in">
+                {step === 7 && (
+                  <>
+                    <p className="st-lede">{siteName} · A representative HAVEN model, ready to explore and protect.</p>
+                    <FacilityModel protection={protection} kind={kind} kindLabel={kindLabel} onProtect={() => setStep(8)} />
+                  </>
+                )}
+                {step > 7 && (
+                  // Protect and Deploy are Smart Blocks screens; this frame lends them their scoped styles.
+                  <div className="d2-shell sb st-twin-host st-sb-host">
+                    {protection.error && (
+                      <div className="hv-save-error" role="alert">
+                        <span>{protection.error} Changes have not been saved.</span>
+                        <button onClick={() => void protection.reload()}>Reload workspace</button>
+                      </div>
+                    )}
+                    {typeof deployView === 'object' && step === 9 ? (
+                      <ProjectCommandCenter key={deployView.id} facility={deployView} onBack={() => setDeployView('projects')} />
+                    ) : protection.loading ? (
+                      <div className="st-model-loading">Loading the facility’s protection workspace…</div>
+                    ) : step === 8 ? (
+                      <ProtectModule key={facility.id} state={protection.state} busy={protection.busy} act={protection.act}
+                        onDesign={() => setStep(7)} initialStep={protectStart} onDeployed={openCommand} onOpenCommand={openCommand} />
+                    ) : protection.state.deployed && deployView === 'current' ? (
+                      <ProtectModule key={`${facility.id}-live`} state={protection.state} busy={protection.busy} act={protection.act} live
+                        onDesign={() => setStep(7)} onBack={() => setDeployView('projects')} onEdit={() => { setProtectStart(0); setStep(8); }} />
+                    ) : (
+                      <DeployedProjects current={facility} currentDeployed={protection.state.deployed}
+                        onOpen={(f) => setDeployView(f.id === facility.id ? 'current' : f)} onFinishCurrent={() => setStep(8)} />
+                    )}
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
         </main>
       </div>
 
-      {result && <Copilot body={body(brief)} conceptId={concept?.id ?? null} selected={sel} stage={STEPS[step].key} market={brief.market}
+      {result && <Copilot body={body(brief)} conceptId={concept?.id ?? null} selected={sel} stage={PAGES[step]} market={brief.market}
         onApply={applyPatch} onSelectSite={(id) => { const s = sites.find((x) => x.id === id); if (s) void pickSite(id); }} busy={busy} />}
-      <Guide body={result ? body(brief) : null} conceptId={concept?.id ?? null} selected={sel} stage={STEPS[step].key} market={brief.market}
+      <Guide body={result ? body(brief) : null} conceptId={concept?.id ?? null} selected={sel} stage={PAGES[step]} market={brief.market}
         hasSite={!!site} onApply={applyPatch} />
       {dossier && <CostarDossier parcelId={parcelId} lotAcres={site?.lotAcres ?? null} mwIt={brief.mw} rackKw={brief.rackKw} initialTab={dossier}
         onUseLandValue={useLandValue} onNote={setInspection} onClose={() => setDossier(null)} />}
       {dealDesk && <DealDesk market={brief.market} mwIt={brief.mw} rackKw={brief.rackKw} onClose={() => setDealDesk(false)}
-        onUseSite={(id) => { setDealDesk(false); setStep(0); setSub(1); const s = sites.find((x) => x.id === id || x.parcelId === id); void pickSite(s?.id ?? id); }} />}
+        onUseSite={(id) => { setDealDesk(false); setStep(0); setSub(2); const s = sites.find((x) => x.id === id || x.parcelId === id); void pickSite(s?.id ?? id); }} />}
       {importing && <ImportDesign body={body(brief)} onClose={() => setImporting(false)}
         onResult={(r, _notes: NotePreview[]) => { setResult(r); setBase(r); setEdits({}); setPreferred(null); setDecidedAt(null);
           setSel(null); setActiveId(r.concepts.find((c) => c.rank === 1)!.id); setImporting(false); setStep(2); }} />}
       <footer className="st-foot">
-        <button className="st-btn" onClick={() => (step === 0 && sub > 0 ? setSub(sub - 1) : setStep(Math.max(0, step - 1)))} disabled={step === 0 && sub === 0}><ArrowLeft size={14} /> Back</button>
-        <span className="st-foot-note">{busy ? 'Working…' : step === 0 && !site ? 'Choose a site to continue.' : step === 0 && sub < 2 ? 'Review the brief to continue.' : step === 5 && !canNext ? 'Select a concept and give a reason.' : result?.note ?? ''}</span>
-        {step < 6 && <button className="st-btn primary big" onClick={next} disabled={!canNext || busy}>{step === 1 && <Sparkles size={14} />}{nextLabel}{step !== 1 && <ArrowRight size={14} />}</button>}
+        <button className="st-btn" onClick={() => (step === 0 && sub > 0 ? setSub(sub - 1) : setStep(!dc && step === 7 ? 0 : ORDER[Math.max(0, ORDER.indexOf(step) - 1)]))} disabled={step === 0 && sub === 0}><ArrowLeft size={14} /> Back</button>
+        <span className="st-foot-note">{busy ? 'Working…' : step === 0 && !dc ? `Layouts are for data centers. ${kindLabel} opens its concept model in Design.` : step === 0 && !site ? 'Choose a site to continue.' : step === 0 && sub < 3 ? 'Review the brief to continue.' : step === 5 && !canNext ? 'Select a concept and give a reason.' : result?.note ?? ''}</span>
+        {step < 9 && <button className="st-btn primary big" onClick={next} disabled={!canNext || busy}>{step === 1 && <Sparkles size={14} />}{nextLabel}{step !== 1 && <ArrowRight size={14} />}</button>}
       </footer>
+    </div>
+  );
+}
+
+/** Sub-tabs styled like Define's, with a liquid-glass lens that slides from the previous tab to the active one. */
+function SubTabs({ label, items, active, from, onPick }: { label: string; items: string[]; active: number; from: number | null; onPick: (i: number) => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const host = ref.current;
+    if (!host) return;
+    const place = (i: number, glide: boolean) => {
+      const b = host.querySelectorAll<HTMLButtonElement>('button')[i];
+      if (!b) return;
+      host.classList.toggle('is-gliding', glide);
+      host.style.setProperty('--gx', `${b.offsetLeft}px`);
+      host.style.setProperty('--gy', `${b.offsetTop}px`);
+      host.style.setProperty('--gw', `${b.offsetWidth}px`);
+      host.style.setProperty('--gh', `${b.offsetHeight}px`);
+    };
+    place(from ?? active, false);
+    let raf = requestAnimationFrame(() => { raf = requestAnimationFrame(() => place(active, true)); });
+    const ro = new ResizeObserver(() => place(active, false));
+    ro.observe(host);
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); };
+  }, [active, from]);
+  return (
+    <div className="st-tabs st-tabs-glass" ref={ref} role="tablist" aria-label={label}>
+      <span className="st-tabs-lens" aria-hidden="true" />
+      {items.map((t, i) => (
+        <button key={t} type="button" role="tab" aria-selected={i === active} className={i === active ? 'on' : ''}
+          onClick={() => i !== active && onPick(i)}><i>{i + 1}</i>{t}</button>
+      ))}
     </div>
   );
 }
@@ -862,14 +969,19 @@ function Analysis({ c, r, base }: { c: Concept; r: StudioResult; base: Concept |
           {c.resources.bess_mwh > 0 && <Stat label="Battery storage" value={`${c.resources.bess_mwh} MWh`} sub={`${c.resources.bess_minutes} minutes at full load`} tag="Estimated" />}
         </div>
       </div>
-      <div className="st-card">
-        <h3>Checks</h3>
+      <details className="st-card st-fold">
+        <summary>
+          <h3>Checks</h3>
+          {c.checks.every((k) => k.ok)
+            ? <span className="st-fold-meta ok"><CircleCheck size={13} /> All {c.checks.length} pass</span>
+            : <span className="st-fold-meta bad"><CircleAlert size={13} /> {c.checks.filter((k) => !k.ok).length} of {c.checks.length} need attention</span>}
+        </summary>
         <ul className="st-checks wide">{c.checks.map((k) => <li key={k.name} className={k.ok ? 'ok' : 'bad'}>{k.ok ? <CircleCheck size={14} /> : <CircleAlert size={14} />}<div><b>{k.name}</b><span>{k.detail}</span></div></li>)}</ul>
         <details className="st-details"><summary>Assumptions behind these numbers ({r.assumptions.length})</summary>
           <table className="st-table"><tbody>{r.assumptions.map((a) => <tr key={a.key}><td>{a.basis}</td><td className="n">{num(a.value, 2)} {a.unit}</td><td><Tag label={a.label} /></td></tr>)}</tbody></table>
           <p className="st-small st-muted">{r.operating.price_source}. {r.operating.carbon_source}. {r.operating.notes.join(' ')}</p>
         </details>
-      </div>
+      </details>
     </>
   );
 }
@@ -890,8 +1002,8 @@ function CompareTable({ r }: { r: StudioResult }) {
     ['Site left open', (c) => c.resources.open_land_share, (n) => pct(n), false],
   ];
   return (
-    <div className="st-card">
-      <h3>Side by side</h3>
+    <details className="st-card st-fold">
+      <summary><h3>Side by side</h3><span className="st-fold-meta">{rows.length} measures · {cs.length} concepts</span></summary>
       <table className="st-table st-cmp">
         <thead><tr><th />{cs.map((c) => <th key={c.id}>{c.name}</th>)}</tr></thead>
         <tbody>
@@ -904,6 +1016,6 @@ function CompareTable({ r }: { r: StudioResult }) {
         </tbody>
       </table>
       <p className="st-small st-muted">Best value in each row is highlighted. All figures are estimates from the stated assumptions.</p>
-    </div>
+    </details>
   );
 }

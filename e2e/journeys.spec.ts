@@ -231,7 +231,7 @@ test('judge journey in the browser: create, score, model, save, simulate, export
   await page.screenshot({ path: 'output/qa/protect-desktop.png', fullPage: true });
   await page.getByRole('button', { name: 'Reset simulation', exact: true }).click();
   await expect(page.locator('.incident-card .status-pill')).toHaveText('resolved');
-  await page.getByRole('button', { name: 'Ask PlotStar', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Ask GeoStar', exact: true }).first().click();
   await page.getByRole('button', { name: 'What if I add two more floors?', exact: true }).click();
   await expect(page.locator('.chat-message.assistant').last()).toContainText('Adding 2 floors');
   await page.getByRole('button', { name: 'Close assistant', exact: true }).click();

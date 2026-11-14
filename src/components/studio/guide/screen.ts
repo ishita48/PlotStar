@@ -1,4 +1,4 @@
-// What the PlotStar Guide can see and touch on the page. Read-only scanning of the DOM: visible controls get a stable
+// What the GeoStar Guide can see and touch on the page. Read-only scanning of the DOM: visible controls get a stable
 // target id the voice agent can name ("step:analyze", "code:DH-01", "btn:generate-layouts"). Nothing here sends the
 // page anywhere; the agent receives only the short labels this module returns.
 

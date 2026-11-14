@@ -1,4 +1,4 @@
-/* Explore workspace (map-central). Uses the PlotStar palette from globals.css (--forest, --lime, --cream...). */
+/* Explore workspace (map-central). Uses the GeoStar palette from globals.css (--forest, --lime, --cream...). */
 .xp { height: 100vh; display: flex; flex-direction: column; background: var(--cream); color: var(--ink); overflow: hidden; }
 .xp-top { height: 64px; flex: none; display: flex; align-items: center; gap: 28px; padding: 0 22px; border-bottom: 1px solid var(--line); background: #fbfbf6; }
 .xp-top .brand { color: var(--forest); }

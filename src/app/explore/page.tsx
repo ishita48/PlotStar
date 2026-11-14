@@ -4,7 +4,7 @@ import './explore.css';
 import './workspace.css';
 
 export const metadata: Metadata = {
-  title: 'Site selection · PlotStar',
+  title: 'Site selection · GeoStar',
   description: 'Find buildable data center sites on real CoStar properties.',
 };
 

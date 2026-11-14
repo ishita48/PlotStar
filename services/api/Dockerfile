@@ -1,4 +1,4 @@
-# PlotStar data API. Build from services/api:  docker build -t plotstar-api .
+# GeoStar data API. Build from services/api:  docker build -t plotstar-api .
 # The CoStar kit and SQLite store are NOT baked in (licensed data): mount them and pass keys as env vars.
 #   docker run -p 8000:8000 -e COSTAR_KIT_DIR=/kit -e PLOTSTAR_DB=/data/plotstar.db \
 #     -e AWS_REGION=us-east-1 -e BEDROCK_MODEL_ID=<model id> -v <kit>:/kit:ro -v <data>:/data plotstar-api

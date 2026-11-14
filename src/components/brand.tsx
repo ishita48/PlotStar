@@ -15,10 +15,10 @@ export function Star({ className = '' }: { className?: string }) {
 }
 export function Brand({ light = false }: { light?: boolean }) {
   return (
-    <Link href="/" className={`brand ${light ? 'brand-light' : ''}`} aria-label="PlotStar home">
+    <Link href="/" className={`brand ${light ? 'brand-light' : ''}`} aria-label="GeoStar home">
       <Star />
       <span>
-        plotstar<span className="brand-dot">.</span>
+        geostar<span className="brand-dot">.</span>
       </span>
     </Link>
   );

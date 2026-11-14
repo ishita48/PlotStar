@@ -78,7 +78,7 @@ export function Flow() {
       setBaseRun(full); setRun(full);
       setStep(1);
     } catch (e) {
-      setError((e as Error).message.includes('fetch') ? `Can't reach the PlotStar data service at ${PUBLIC_DATA_API}. Start it and try again.` : (e as Error).message);
+      setError((e as Error).message.includes('fetch') ? `Can't reach the GeoStar data service at ${PUBLIC_DATA_API}. Start it and try again.` : (e as Error).message);
     } finally { setBusy(false); }
   }, [market, thresholds, overrides, minAcres, optimizeReq]);
 
@@ -166,7 +166,7 @@ export function Flow() {
       {step === 0 && (
         <main className="fl-narrow">
           <h1>What do you want to build?</h1>
-          <p className="fl-lede">PlotStar checks every real CoStar property in the city, rules out the ones that would harm neighbours or flood, and recommends where to build and how to run it.</p>
+          <p className="fl-lede">GeoStar checks every real CoStar property in the city, rules out the ones that would harm neighbours or flood, and recommends where to build and how to run it.</p>
           <label className="fl-q"><b>City</b>
             <select value={market} onChange={(e) => setMarket(e.target.value as typeof market)}><option>Houston</option><option>Los Angeles</option></select>
           </label>
@@ -283,7 +283,7 @@ export function Flow() {
       {step === 4 && baseRun && (
         <main className="fl-narrow wide">
           <h1>What could change this decision?</h1>
-          <p className="fl-lede">Switch a condition on. PlotStar recalculates every property and tells you if the recommendation moves.</p>
+          <p className="fl-lede">Switch a condition on. GeoStar recalculates every property and tells you if the recommendation moves.</p>
           <div className="fl-toggles">
             <label className={firm70 ? 'on' : ''}><input type="checkbox" checked={firm70} onChange={(e) => setFirm70(e.target.checked)} /><div><b>The utility can only supply 70% of the power</b><span>At the recommended site. The rest must be covered by easing off in grid-stress hours.</span></div></label>
             <label className={noFlex ? 'on' : ''}><input type="checkbox" checked={noFlex} onChange={(e) => setNoFlex(e.target.checked)} /><div><b>None of the work can wait</b><span>The facility must run at full power all the time.</span></div></label>

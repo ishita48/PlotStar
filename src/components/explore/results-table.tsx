@@ -74,7 +74,7 @@ export function ResultsTable({
     const blob = new Blob([toCsv(rows)], { type: 'text/csv' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `plotstar-sites-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `geostar-sites-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
   }

@@ -1,4 +1,4 @@
-/* PlotStar ESP32 telemetry example. Planning/demo use only; does not operate safety equipment.
+/* GeoStar ESP32 telemetry example. Planning/demo use only; does not operate safety equipment.
    Libraries: ArduinoJson 7, OneWire, DallasTemperature. ESP32 Arduino core.
    DS18B20 data: GPIO 4 with 4.7k pull-up to 3.3V. Analog moisture: GPIO 34 (ADC1).
    Configure sensors in Protect and bind BOTH sensor IDs to DEVICE_ID.

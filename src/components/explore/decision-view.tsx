@@ -80,7 +80,7 @@ export function DecisionView({ run, sites, mw, busy, changedFrom, hideExtras = f
   const b = run.baseline, inf = run.inflexible, d = run.delta;
   const site = sites.find((s) => s.id === o.site_id);
   const why = drivers(run);
-  const cols: [string, Combo | null | undefined][] = [['Cost-first planning', b], ['PlotStar (joint optimization)', o]];
+  const cols: [string, Combo | null | undefined][] = [['Cost-first planning', b], ['GeoStar (joint optimization)', o]];
   if (inf !== undefined) cols.push(['Without flexibility', inf]);
   const row = (label: string, f: (c: Combo) => string, tag: string) => (
     <tr><td>{label} <span className={`ws-tag ${tag.toLowerCase()}`}>{tag}</span></td>{cols.map(([k, c]) => <td key={k} className="ws-num">{c ? f(c) : 'not feasible'}</td>)}</tr>
@@ -127,7 +127,7 @@ export function DecisionView({ run, sites, mw, busy, changedFrom, hideExtras = f
       </section>
 
       <section>
-        <h2>Cost-first planning vs PlotStar</h2>
+        <h2>Cost-first planning vs GeoStar</h2>
         <table className="ws-compare">
           <thead><tr><th></th>{cols.map(([k]) => <th key={k}>{k}</th>)}</tr></thead>
           <tbody>

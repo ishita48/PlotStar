@@ -77,7 +77,7 @@ def screen_many(market: str, parcels: list[dict[str, Any]], t: Thresholds, offli
 
 def assemble(market: str, parcels: list[dict[str, Any]], t: Thresholds, offline: bool = False,
              overrides: dict[str, float] | None = None) -> list[dict[str, Any]]:
-    """Screen parcels and build site records (web-app `Site` shape + PlotStar extensions)."""
+    """Screen parcels and build site records (web-app `Site` shape + GeoStar extensions)."""
     if not parcels:
         return []
     screens = screen_many(market, parcels, t, offline)

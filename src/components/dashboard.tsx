@@ -124,7 +124,7 @@ export function Dashboard() {
           <div className="profile">
             <span>PS</span>
             <div>
-              PlotStar studio<small>Local development workspace</small>
+              GeoStar studio<small>Local development workspace</small>
             </div>
           </div>
         </div>

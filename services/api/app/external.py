@@ -18,7 +18,7 @@ import httpx
 
 from .db import session
 
-USER_AGENT = "PlotStar-hackathon/0.1"
+USER_AGENT = "GeoStar-hackathon/0.1"
 FEMA_URL = "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/28/query"
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 

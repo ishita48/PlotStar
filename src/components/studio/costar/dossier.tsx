@@ -41,7 +41,7 @@ function useApi<T>(path: string | null, postPath?: string): Api<T> {
         if (!r.ok) throw new Error(typeof d?.detail === 'string' ? d.detail : `HTTP ${r.status}`);
         setSt({ data: d as T, error: null, missing: false, loading: false });
       })
-      .catch((e) => setSt({ data: null, error: (e as Error).message.includes('fetch') ? `Can't reach the PlotStar API at ${PUBLIC_DATA_API}.` : (e as Error).message, missing: false, loading: false }));
+      .catch((e) => setSt({ data: null, error: (e as Error).message.includes('fetch') ? `Can't reach the GeoStar API at ${PUBLIC_DATA_API}.` : (e as Error).message, missing: false, loading: false }));
   }, [path, postPath]);
   useEffect(() => { run(); }, [run]);
   return { ...st, reload: run };

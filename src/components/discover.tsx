@@ -290,7 +290,7 @@ export function Discover({
           <div className="detail-section">
             <div className="ai-insight">
               <Sparkles size={16} />
-              <span>PLOTSTAR PERSPECTIVE</span>
+              <span>GEOSTAR PERSPECTIVE</span>
             </div>
             <p>{siteRationale(site, p.type, p.weights)}</p>
           </div>

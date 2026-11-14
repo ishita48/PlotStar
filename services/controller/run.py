@@ -1,4 +1,4 @@
-"""Workload controller (PRD section 12/13): runs a fixed amount of CPU work and reports to the PlotStar API.
+"""Workload controller (PRD section 12/13): runs a fixed amount of CPU work and reports to the GeoStar API.
 
     python run.py --machine plotstar --token <TELEMETRY_API_KEY> [--api http://localhost:8000] [--seconds 90]
 

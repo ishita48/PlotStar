@@ -264,7 +264,7 @@ def community(parcel_id: str | None = None, lat: float | None = None, lon: float
         nearest_apartment_community_m=apts[0]["distance_m"] if apts else None,
         engine_gate_home_m=round(gate_d) if gate_d is not None else None,
         engine_gate_home_kind=gate_home.get("kind") if gate_home else None,
-        engine_gate_note=("The site screen's residential gate uses the nearest record in PlotStar's homes table (CoStar apartment "
+        engine_gate_note=("The site screen's residential gate uses the nearest record in GeoStar's homes table (CoStar apartment "
                           "communities and all CoStar home listings, including non-public ones; OpenStreetMap homes are added "
                           "only for dropped pins). This panel uses public listings and active apartment listings only."),
         bands=_band_summary(homes, apts),

@@ -1,5 +1,5 @@
 'use client';
-// Live grid: two machines run the same fixed job. Baseline runs flat; PlotStar follows the optimizer's hourly plan
+// Live grid: two machines run the same fixed job. Baseline runs flat; GeoStar follows the optimizer's hourly plan
 // and curtails to the plan's depth during a grid event. One chart, one table, one event, one verdict.
 import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, RotateCcw } from 'lucide-react';
@@ -104,7 +104,7 @@ export function Meters({ priceDate }: { priceDate?: string | null }) {
       <div className="lg-head">
         <div>
           <b>Live test: the same fixed job on two machines</b>
-          <span>Baseline runs flat. PlotStar follows the optimizer&apos;s hourly plan{tick.plan ? ` for ${tick.plan.site}` : ''} and cuts {depthPct}% of facility load during a grid event{tick.plan && !tick.plan.d ? ' (the plan itself needs no curtailment; the event shows the capability)' : ' (the depth the plan relies on)'}. ERCOT {priceDate ?? ''} replayed every {tick.replay.day_s} s.</span>
+          <span>Baseline runs flat. GeoStar follows the optimizer&apos;s hourly plan{tick.plan ? ` for ${tick.plan.site}` : ''} and cuts {depthPct}% of facility load during a grid event{tick.plan && !tick.plan.d ? ' (the plan itself needs no curtailment; the event shows the capability)' : ' (the depth the plan relies on)'}. ERCOT {priceDate ?? ''} replayed every {tick.replay.day_s} s.</span>
         </div>
         <div className="lg-grid-now">
           <span><small>Replay hour</small><b>{String(hh).padStart(2, '0')}:00</b></span>
@@ -125,7 +125,7 @@ export function Meters({ priceDate }: { priceDate?: string | null }) {
             const x = tick.machines[m], t = tick.totals[m];
             return (
               <tr key={m} className={m}>
-                <td><i className="lg-swatch" />{m === 'baseline' ? 'Baseline (flat)' : 'PlotStar (plan)'}</td>
+                <td><i className="lg-swatch" />{m === 'baseline' ? 'Baseline (flat)' : 'GeoStar (plan)'}</td>
                 <td className="ws-num"><b>{x.watts == null ? '—' : x.watts.toFixed(0)} W</b></td>
                 <td>{x.state}</td>
                 <td className="r ws-num">{x.jobs_done ?? '—'}</td>
@@ -137,7 +137,7 @@ export function Meters({ priceDate }: { priceDate?: string | null }) {
             );
           })}
           <tr className="delta">
-            <td>PlotStar vs baseline</td><td></td><td></td>
+            <td>GeoStar vs baseline</td><td></td><td></td>
             <td className="r ws-num">{(tick.machines.plotstar.jobs_done ?? 0) - (tick.machines.baseline.jobs_done ?? 0)}</td>
             <td className="r ws-num">{fmtNum(tp.wh - tb.wh, 2)} Wh</td>
             <td className="r ws-num">{fmtNum(tp.g_co2 - tb.g_co2, 2)} g</td>
@@ -156,7 +156,7 @@ export function Meters({ priceDate }: { priceDate?: string | null }) {
           <div className={`lg-verdict ${passport.verified ? 'ok' : 'bad'}`}>
             <b>{passport.verified ? 'Plan verified' : 'Plan not met'}</b>
             <span>
-              Required a {Math.round(passport.requested_depth * 100)}% cut; PlotStar cut {Math.round((passport.reduction_measured.plotstar ?? 0) * 100)}% ({passport.pre_watts.plotstar} → {passport.watts_during.plotstar} W) in {passport.response_time_s ?? '—'} s, held {passport.duration_s} s. Baseline changed {Math.round((passport.reduction_measured.baseline ?? 0) * 100)}%. Readings: {passport.source.plotstar}.
+              Required a {Math.round(passport.requested_depth * 100)}% cut; GeoStar cut {Math.round((passport.reduction_measured.plotstar ?? 0) * 100)}% ({passport.pre_watts.plotstar} → {passport.watts_during.plotstar} W) in {passport.response_time_s ?? '—'} s, held {passport.duration_s} s. Baseline changed {Math.round((passport.reduction_measured.baseline ?? 0) * 100)}%. Readings: {passport.source.plotstar}.
             </span>
           </div>
         )}

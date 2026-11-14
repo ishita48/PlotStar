@@ -11,8 +11,8 @@ export async function GET(_: Request, ctx: { params: Promise<{ id: string }> }) 
     const doc = await PDFDocument.create(),
       font = await doc.embedFont(StandardFonts.Helvetica),
       bold = await doc.embedFont(StandardFonts.HelveticaBold);
-    doc.setTitle(`PlotStar - ${p.name}`);
-    doc.setAuthor('PlotStar');
+    doc.setTitle(`GeoStar - ${p.name}`);
+    doc.setAuthor('GeoStar');
     const ink = rgb(0.13, 0.25, 0.19),
       muted = rgb(0.39, 0.44, 0.38),
       green = rgb(0.67, 0.77, 0.47);
@@ -29,7 +29,7 @@ export async function GET(_: Request, ctx: { params: Promise<{ id: string }> }) 
     function newPage() {
       if (y !== 0) page = doc.addPage([595.28, 841.89]);
       page.drawRectangle({ x: 0, y: 790, width: 595.28, height: 52, color: ink });
-      page.drawText('PLOTSTAR / INVESTMENT & PLANNING', {
+      page.drawText('GEOSTAR / INVESTMENT & PLANNING', {
         x: 42,
         y: 811,
         font: bold,
@@ -132,7 +132,7 @@ export async function GET(_: Request, ctx: { params: Promise<{ id: string }> }) 
         color: green,
         thickness: 0.6,
       });
-      pg.drawText(`PLOTSTAR / CONCEPTUAL PLANNING     ${i + 1} / ${pages.length}`, {
+      pg.drawText(`GEOSTAR / CONCEPTUAL PLANNING     ${i + 1} / ${pages.length}`, {
         x: 42,
         y: 28,
         size: 8,
@@ -144,7 +144,7 @@ export async function GET(_: Request, ctx: { params: Promise<{ id: string }> }) 
     return new Response(new Uint8Array(bytes), {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="plotstar-${p.id}-report.pdf"`,
+        'Content-Disposition': `attachment; filename="geostar-${p.id}-report.pdf"`,
         'Cache-Control': 'no-store',
       },
     });

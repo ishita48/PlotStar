@@ -1,4 +1,4 @@
-"""Create (or update) PlotStar's real Atlas Triggers through the App Services admin API. Idempotent.
+"""Create (or update) GeoStar's real Atlas Triggers through the App Services admin API. Idempotent.
 
 Run:  services/api/.venv/Scripts/python services/api/scripts/atlas_triggers.py
 Needs ATLAS_PUBLIC_KEY / ATLAS_PRIVATE_KEY in .env (a project API key) and the project id below.

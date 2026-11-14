@@ -1,8 +1,8 @@
-"""PlotStar Guide endpoints.
+"""GeoStar Guide endpoints.
 
 GET /guide/session   a signed ElevenLabs conversation URL for the voice agent (creates or syncs the agent first)
 GET /guide/status    whether the voice agent is configured and in sync
-GET /guide/agents    the agents and services running behind PlotStar, for the guide to read out
+GET /guide/agents    the agents and services running behind GeoStar, for the guide to read out
 """
 from __future__ import annotations
 

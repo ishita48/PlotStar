@@ -1,4 +1,4 @@
-# PlotStar evaluation report
+# GeoStar evaluation report
 
 Generated 2026-11-14T09:24:01+00:00 · 24 scenarios (Houston, real CoStar sites, cached ERCOT day).
 

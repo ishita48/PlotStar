@@ -1,4 +1,4 @@
-"""Launch the PlotStar CoStar MCP server from any working directory (used by .mcp.json)."""
+"""Launch the GeoStar CoStar MCP server from any working directory (used by .mcp.json)."""
 import os
 import sys
 

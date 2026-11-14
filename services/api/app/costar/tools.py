@@ -1,4 +1,4 @@
-"""PlotStar CoStar intelligence tools: one implementation behind the MCP server, the LangGraph copilot and the HTTP API.
+"""GeoStar CoStar intelligence tools: one implementation behind the MCP server, the LangGraph copilot and the HTTP API.
 
 Every tool returns the same envelope:
     {ok: bool, tool, data: {...} | None, sources: [str], label: str | None, error: str | None, ms}
@@ -216,7 +216,7 @@ def _gates(p: dict[str, Any]) -> list[dict[str, Any]]:
 
 def underwrite_acquisition(parcel_id: str, mw_it: float = 20.0, rack_kw: float = 20.0, price_change_pct: float = 0.0,
                            acquisition_value: float | None = None, max_comp_age_years: float | None = None):
-    """Acquisition evidence (comps) → PlotStar's deterministic development model (capex, energy, NPV range, payback)."""
+    """Acquisition evidence (comps) → GeoStar's deterministic development model (capex, energy, NPV range, payback)."""
     p = _parcel(parcel_id)
     if not (0.5 < mw_it <= 500) or not (3 <= rack_kw <= 200):
         raise ValueError("mw_it must be in (0.5, 500] and rack_kw in [3, 200]")
@@ -442,7 +442,7 @@ def generate_investment_memo(parcel_id: str, mw_it: float = 20.0, rack_kw: float
         "acquisition": uw["acquisition"], "development": {"concept": uw["concept"], **m}, "irr_note": uw["irr_note"],
         "occupancy": section("occupancy"), "community": _summary(section("community")), "market": _summary(section("market")),
         "redevelopment": _summary(section("redevelopment")), "diligence": gaps["gaps"],
-        "disclaimer": "Conceptual screening from the CoStar hackathon extract and PlotStar's planning model. Not an appraisal, "
+        "disclaimer": "Conceptual screening from the CoStar hackathon extract and GeoStar's planning model. Not an appraisal, "
                       "not engineering, not investment advice.",
     }
     return memo, "Recommendation by fixed rules from sourced and estimated inputs"

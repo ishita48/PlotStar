@@ -1,14 +1,14 @@
-"""PlotStar CoStar Intelligence MCP server.
+"""GeoStar CoStar Intelligence MCP server.
 
 Exposes the CoStar intelligence tools (app/costar/tools.py) to any MCP client: Claude Code, Claude Desktop, or an
-agent. It is PlotStar's own server over the CoStar hackathon extract, not an official CoStar product; it reads the
+agent. It is GeoStar's own server over the CoStar hackathon extract, not an official CoStar product; it reads the
 licensed kit loaded locally and never sends kit data anywhere except back to the calling client.
 
     stdio (local clients):   python -m app.mcp_server
     HTTP (streamable):       python -m app.mcp_server --http --port 8020   (requires PLOTSTAR_MCP_TOKEN; binds 127.0.0.1)
 
 Every tool is read-only except save_to_deal_room, which needs confirm=true. Every call is written to the audit log
-(GET /mcp/audit on the PlotStar API shows the timeline), with inputs, status, timing and source counts.
+(GET /mcp/audit on the GeoStar API shows the timeline), with inputs, status, timing and source counts.
 """
 from __future__ import annotations
 
@@ -24,11 +24,11 @@ from .costar import tools as T
 
 server = MCPServer(
     name="plotstar-costar",
-    title="PlotStar CoStar Intelligence",
+    title="GeoStar CoStar Intelligence",
     version="1.0.0",
     instructions=(
         "Tools over the CoStar hackathon extract (Houston and Los Angeles commercial properties, sale comps, tenancy, "
-        "residential listings, Matterport references) plus PlotStar's deterministic data center development model. "
+        "residential listings, Matterport references) plus GeoStar's deterministic data center development model. "
         "Start with search_costar_properties to get parcel ids (format costar:<propertyId>). Every result carries "
         "`sources` (CoStar record references) and a `label` (Sourced / Estimated / Screening). Treat 'unknown' as unknown: "
         "no tenant record does not mean vacant, and no comps means no value. Ask the user before save_to_deal_room."),
@@ -65,7 +65,7 @@ def find_sales_comps(parcel_id: str, exclude: list[str] | None = None, max_age_y
     return _r("find_sales_comps", parcel_id=parcel_id, exclude=exclude, max_age_years=max_age_years, radius_km=radius_km, basis=basis)
 
 
-@server.tool(annotations=RO, description="Acquisition underwriting: comp-based (or CoStar asking) acquisition value fed into PlotStar's "
+@server.tool(annotations=RO, description="Acquisition underwriting: comp-based (or CoStar asking) acquisition value fed into GeoStar's "
                                          "development model for capex, NPV P10/P50/P90, payback and months to power. "
                                          "price_change_pct tests a higher or lower purchase price.")
 def underwrite_acquisition(parcel_id: str, mw_it: float = 20.0, rack_kw: float = 20.0, price_change_pct: float = 0.0,
