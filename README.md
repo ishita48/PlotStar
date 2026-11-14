@@ -140,3 +140,26 @@ tests/                    Calculation, API, SSE, hardware, browser and mobile te
 ```
 
 Local mutation routes enforce same-origin browser requests and Zod input bounds; telemetry uses a constant-time bearer-token comparison and explicit device bindings. These measures do not replace multi-user identity and access control. `npm audit` is clean at verification time; the pinned Prisma 6 toolchain uses a patched `deepmerge-ts` override, checked through schema setup and builds.
+
+## Real property data: CoStar backend (`services/api`)
+
+The CoStar track kit (Houston + Los Angeles) is served by a Python FastAPI service next to the web app.
+It replaces illustrative candidates with real CoStar properties; every value traces to its source file and line.
+
+```powershell
+# one-time: extract the CoStar kit OUTSIDE the repo and set COSTAR_KIT_DIR in .env
+cd services/api
+python -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+.venv\Scripts\python -m app.costar.loader      # builds data/cache/plotstar.db (~3 s)
+.venv\Scripts\python -m pytest -q
+.venv\Scripts\python -m uvicorn app.main:app --reload --port 8000   # http://localhost:8000/docs
+```
+
+Endpoints: `GET /sites` (filters: market, min_acres, heavy_power), `GET /sites/{id}`,
+`GET /audit/parcel/{id}/{field}` (evidence chain), `GET /data/summary`, `GET /matterport/models/{id}`
+(server-side proxy; the token never reaches the browser). Kit findings and schema:
+[docs/costar_data_dictionary.md](docs/costar_data_dictionary.md).
+
+Every number carries a label: Measured, Sourced, Estimated, Simulated or Utility-confirmed. Missing data is
+Unknown, never guessed. The CoStar kit, `.env` and SQLite caches are gitignored.
