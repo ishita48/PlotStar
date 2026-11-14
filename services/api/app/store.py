@@ -81,6 +81,13 @@ def save(project_id: str, doc: dict[str, Any]) -> dict[str, Any] | None:
     col.update_one({"_id": project_id},
                    {"$set": {**doc, "site": site, "updated_at": now}, "$setOnInsert": {"created_at": now},
                     "$push": {"history": {"$each": [event], "$slice": -50}}}, upsert=True)
+    # audit trail + similarity embedding live in atlas.py; both are best-effort and never block the save
+    try:
+        from . import atlas
+        atlas.audit(project_id, f"project.{doc.get('status', 'saved')}", doc)
+        atlas.embed_project(project_id, {**doc, "site": site})
+    except Exception:
+        pass
     return get(project_id)
 
 

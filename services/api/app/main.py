@@ -46,3 +46,16 @@ for r in (screen.router, sites.router, data.router, projects.router, integration
           copilot.router, guide.router):
     app.include_router(r)
 app.include_router(blueprint.router)  # import your own design (DXF, blueprint images)
+from .routers import costar_building  # noqa: E402
+app.include_router(costar_building.router)  # CoStar building facts + Matterport scope
+from .routers import atlas as atlas_router  # noqa: E402
+app.include_router(atlas_router.router)  # MongoDB Atlas: schema, search, vectors, geo, analytics, change streams
+
+from .routers import costar_land  # noqa: E402
+app.include_router(costar_land.router)
+
+from .routers import intel  # noqa: E402
+app.include_router(intel.router)  # CoStar intelligence tools, MCP audit timeline, deal room, Deal-to-Design
+
+from .routers import costar_site  # noqa: E402
+app.include_router(costar_site.router)  # CoStar control, occupancy, redevelopment screen, community exposure

@@ -129,6 +129,11 @@ def record(machine: str, watts: float | None, progress: float | None, state: str
     with session() as c:
         c.execute("INSERT INTO telemetry (ts, machine, watts, progress, state, source, meter) VALUES (?,?,?,?,?,?,?)",
                   (_now(), machine, watts, progress, state, source, meter))
+    try:  # mirror into the Atlas time-series collection, off-thread, best-effort
+        from . import atlas
+        atlas.telemetry_point(machine, watts, progress, state, source, meter)
+    except Exception:
+        pass
 
 
 def latest(machine: str) -> dict[str, Any] | None:

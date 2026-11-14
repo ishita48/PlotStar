@@ -338,6 +338,7 @@ export function Studio() {
         <div className="st-top-title"><b>Studio</b><span>{brief.name} · {brief.mw} MW IT{site ? ` · ${siteLabel(site)}` : ''}</span></div>
         <nav className="st-top-nav">
           <Link href="/studio/agent">How the AI works</Link>
+          <Link href="/studio/data">Data</Link>
           <Link href="/explore">Live operations</Link>
           <Link href="/">Home</Link>
         </nav>
