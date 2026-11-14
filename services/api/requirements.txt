@@ -14,3 +14,4 @@ langchain-anthropic
 deepagents
 anthropic
 pymongo>=4.8
+mcp==2.3.0

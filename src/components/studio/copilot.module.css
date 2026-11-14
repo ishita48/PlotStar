@@ -98,3 +98,10 @@
 .icon.icon { color: var(--st-muted); }
 .icon.icon:hover { color: var(--st-ink); }
 .link.link { color: var(--st-accent-2); }
+
+/* CoStar evidence tables */
+.mini { width: 100%; border-collapse: collapse; font-size: 11.5px; font-variant-numeric: tabular-nums; margin-top: 4px; }
+.mini th { text-align: left; font-family: var(--st-mono); font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--st-muted); font-weight: 500; padding: 0 6px 4px 0; }
+.mini td { padding: 4px 6px 4px 0; border-top: 1px solid var(--st-line-2); vertical-align: top; }
+.mini td small { color: var(--st-muted); font-size: 10px; }
+.muted td { color: var(--st-muted); }

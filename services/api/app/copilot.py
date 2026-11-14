@@ -15,6 +15,7 @@ outside AI provider is unconfirmed); otherwise CoStar records are returned verba
 """
 from __future__ import annotations
 
+import inspect
 import json
 import os
 import re
@@ -445,6 +446,157 @@ RUN: dict[str, Callable[..., dict[str, Any]]] = {
     "CostarProperty": t_costar_property, "CostarSearch": t_costar_search,
 }
 
+
+# --------------------------------------------------------------------------------------------------- CoStar intelligence
+# The same tools as the MCP server (app/costar/tools.py), adapted for the graph: schemas come from the functions'
+# signatures, results are CoStar data (kept in the per-run vault, out of prompts and traces), and every result gets a
+# deterministic headline so the answer can quote it without a model touching the numbers.
+def _intel_models() -> dict[str, type[BaseModel]]:
+    import typing
+    from pydantic import create_model
+    from .costar import tools as T
+    out: dict[str, type[BaseModel]] = {}
+    for name in sorted(T.READ_ONLY):
+        fn = T.TOOLS[name]
+        hints = typing.get_type_hints(fn)
+        fields = {p: (hints.get(p, Any), (... if v.default is inspect.Parameter.empty else v.default))
+                  for p, v in inspect.signature(fn).parameters.items() if v.kind not in (v.VAR_KEYWORD, v.VAR_POSITIONAL)}
+        out[name] = create_model(name, __doc__=(fn.__doc__ or name.replace("_", " ")).strip().split("\n\n")[0], **fields)
+    out["deal_to_design"] = create_model(
+        "deal_to_design", __doc__="Run the Deal-to-Design pipeline: search CoStar properties for the criteria, analyse each "
+        "candidate in parallel (comps, underwriting, occupancy, community), rank them by a stated rule and write a memo.",
+        market=(Literal["Houston", "Los Angeles"], "Houston"), mw_it=(float, 20.0), rack_kw=(float, 20.0),
+        budget=(float | None, None), min_acres=(float | None, None), candidates=(int, 4), max_comp_age_years=(float | None, None))
+    return out
+
+
+def _m(n: Any) -> str:
+    return _usd(n) if isinstance(n, (int, float)) else "unknown"
+
+
+def intel_headline(tool: str, d: dict[str, Any] | None) -> str:
+    """One deterministic sentence per tool, quoting only computed values."""
+    if not d:
+        return "No result."
+    if tool == "find_sales_comps":
+        if d.get("status") != "ok" or not d.get("estimate"):
+            return "Not enough usable comparable sales for an indicative value: " + "; ".join((d.get("reasons") or [])[:2])
+        e, v = d["estimate"], d.get("value") or {}
+        if v.get("value") is None and (d.get("underwriting") or {}).get("acquisition_value") is not None:
+            v = {"value": d["underwriting"]["acquisition_value"]}
+        top = sorted([c for c in d.get("comps", []) if c.get("used")], key=lambda c: -(c.get("similarity") or 0))[:3]
+        return (f"{d['n_used']} usable comps within {d.get('radius_km')} km give a median {e['unit']} of {e['median']:,.0f} "
+                f"(P25 {e['p25']:,.0f} to P75 {e['p75']:,.0f}), an indicative value of {_m(v.get('value'))}. Most similar: "
+                + "; ".join(f"{c.get('name') or c.get('address')} sold {str(c.get('sold_date'))[:10]} for {_m(c.get('price'))} "
+                            f"({c.get('price_status')}), similarity {c.get('similarity'):.0f}" for c in top) + ".")
+    if tool == "underwrite_acquisition":
+        a, m = d["acquisition"], d["money"]
+        return (f"Acquisition {_m(a.get('value'))} ({a.get('label')}{', +' + str(a['price_change_pct']) + '% scenario' if a.get('price_change_pct') else ''}). "
+                f"{d['concept']}: build cost {_m(m.get('capex'))}, NPV {_m(m.get('npv'))} (P10 {_m(m.get('npv_p10'))} to P90 "
+                f"{_m(m.get('npv_p90'))}), {m.get('months_to_power')} months to power. IRR is not computed by the model.")
+    if tool == "search_costar_properties":
+        ps = d.get("properties", [])
+        return f"{d.get('total', 0):,} CoStar properties match. Top: " + "; ".join(
+            f"{p.get('name') or p.get('address')} ({p.get('lot_acres') or '?'} acres, {p.get('property_type')})" for p in ps[:4]) + "."
+    if tool == "find_adjacent_properties":
+        return (f"{len(d.get('neighbours', []))} CoStar properties within range; all together about {d.get('combined_lot_acres_if_all')} acres. "
+                "Distances are between recorded points; no parcel boundaries or ownership are in the data.")
+    if tool == "compare_property_portfolio":
+        rows = sorted([r for r in d.get("properties", []) if r.get("rank")], key=lambda r: r["rank"])
+        return "Ranking (" + d.get("ranking_rule", "") + "): " + "; ".join(
+            f"{r['rank']}. {r.get('name') or r['parcel_id']}: acquisition {_m(r.get('acquisition'))}, NPV {_m(r.get('npv'))}"
+            + (f", fails {', '.join(r['gates_failed'])}" if r.get("gates_failed") else "") for r in rows[:5]) + "."
+    if tool == "identify_data_gaps":
+        c = d.get("counts", {})
+        return f"{c.get('high', 0)} high and {c.get('medium', 0)} medium diligence gaps: " + "; ".join(g["gap"] for g in d.get("gaps", [])[:3])
+    if tool == "generate_investment_memo":
+        return f"{d.get('title')}: {d.get('recommendation')}, because {d.get('because')}. ({d.get('rule')})"
+    if tool == "deal_to_design":
+        rows = [r for r in d.get("shortlist", []) if r.get("rank")]
+        memo = d.get("memo") or {}
+        return (f"Analysed {len(d.get('shortlist', []))} CoStar candidates in parallel. "
+                + "; ".join(f"{r['rank']}. {r.get('name') or r['parcel_id']} (NPV {_m(r.get('npv'))}, acquisition {_m(r.get('acquisition'))})" for r in rows[:4])
+                + (f". Leader: {memo.get('recommendation')}, because {memo.get('because')}." if memo.get("recommendation") else "."))
+    if tool == "analyze_occupancy":
+        st, ctl = d.get("status") or {}, d.get("control") or {}
+        cur, av = ctl.get("current") or {}, st.get("availability") or {}
+        ec = ctl.get("earliest_full_control") or {}
+        parts = [f"Occupancy evidence: {', '.join(x.replace('_', ' ') for x in st.get('states', [])) or 'unknown'}."]
+        if cur.get("tenancies"):
+            share = cur.get("occupied_share")
+            parts.append(f"{cur['tenancies']} current tenancies" + (f", {share * 100:.1f}% of the building by area" if isinstance(share, (int, float)) else "") + ".")
+        if av.get("available_sf"):
+            parts.append(f"{av['available_sf']:,.0f} sf listed for lease" + (f" at ${av['asking_rent_per_sf_year']:g}/sf/yr" if av.get("asking_rent_per_sf_year") else "") + ".")
+        basis = str(ec.get("basis") or "lease expiries are not all recorded").rstrip(".")
+        parts.append(f"Full control: {ec['date']} ({basis})." if ec.get("date") else f"Full control date unknown: {basis}.")
+        flags = [f["flag"] for f in ctl.get("diligence_flags", [])][:3]
+        if flags:
+            parts.append("Diligence: " + "; ".join(flags) + ".")
+        parts.append("No tenant record does not mean vacant.")
+        return " ".join(parts)
+    if tool == "analyze_residential_impact":
+        within_1km = [b for b in d.get("bands", []) if str(b.get("band")) in ("0-250 m", "250-500 m", "500-1000 m")]
+        b1 = {"band": "within 1 km", "homes_listed": sum(b.get("homes_listed") or 0 for b in within_1km),
+              "apartment_units": sum(b.get("apartment_units") or 0 for b in within_1km)} if within_1km else None
+        rec = ((d.get("noise") or {}).get("receptors") or [None])[0]
+        return (f"Nearest listed home {d.get('nearest_home_listing_m') or 'unknown'} m; nearest apartment community "
+                f"{d.get('nearest_apartment_community_m') or 'unknown'} m."
+                + (f" Band {b1['band']}: {b1.get('homes_listed', 0)} home listings and {b1.get('apartment_units', 0):,} apartment units." if b1 else "")
+                + (f" Estimated generator noise at the nearest receptor ({rec['distance_m']} m): {rec['dba']} dBA." if rec else "")
+                + " Listings and units are a sample, not population.")
+    if tool == "evaluate_conversion":
+        miss = d.get("missing") or []
+        bad = [k for k in d.get("checks", []) if isinstance(k, dict) and k.get("status") not in ("pass", "ok", True)]
+        return (f"Conversion screen for {d.get('mw_it')} MW at {d.get('rack_kw')} kW per rack: {d.get('status')}. "
+                f"{d.get('racks_needed')} racks needed; about {d.get('racks_that_fit_by_area')} fit by floor area."
+                + (" Concerns: " + "; ".join(str(k.get("item") or k.get("name") or k.get("check")) for k in bad[:3]) + "." if bad else "")
+                + (f" Missing: {', '.join(str(m.get('item') if isinstance(m, dict) else m) for m in miss[:4])}." if miss else "")
+                + " Conceptual screening, not engineering feasibility.")
+    if tool == "get_matterport_model":
+        mp = d.get("matterport") or []
+        if not mp:
+            return "CoStar records no Matterport scan for this property."
+        return (f"{len(mp)} Matterport scan(s) recorded by CoStar: " + "; ".join(
+            f"{m.get('name') or m.get('model_id')} covers {m.get('scope')} ({m.get('reason')})" for m in mp[:3])
+            + " These show the existing building, not PlotStar's proposed design.")
+    if tool == "find_off_market_candidates":
+        cs = d.get("candidates", [])
+        return (f"{d.get('screened', len(cs))} properties screened. Top: " + "; ".join(
+            f"{c['parcel_id']} passes {c.get('passes')} of {c.get('known')} checks ({c.get('market_status') or 'not marketed'})" for c in cs[:4])
+            + ". Screening only; nothing here implies a property is for sale.")
+    for k in ("headline", "summary", "verdict"):
+        if isinstance(d.get(k), str):
+            return d[k]
+    return f"{tool.replace('_', ' ').capitalize()}: results are in the evidence card."
+
+
+def _intel_runner(name: str) -> Callable[..., dict[str, Any]]:
+    def run(cx: Ctx, **args: Any) -> dict[str, Any]:
+        if name == "deal_to_design":
+            from . import deal_agent
+            t0 = time.time()
+            data = deal_agent.run(args)
+            env = {"ok": True, "data": data, "sources": [], "label": "Estimated (conceptual)", "error": None}
+            env["ms"] = round((time.time() - t0) * 1000)
+        else:
+            from .costar import tools as T
+            if "parcel_id" in T.TOOLS[name].__code__.co_varnames and not args.get("parcel_id") and cx.parcel_id:
+                args = {**args, "parcel_id": cx.parcel_id}
+            env = T.run(name, via="copilot", **args)
+        if not env["ok"]:
+            return dict(ok=False, costar=True, tool=name, headline=f"{name.replace('_', ' ')} failed: {env['error']}")
+        return dict(ok=True, costar=True, intel=True, tool=name, data=env["data"], sources=env["sources"][:60],
+                    label=env["label"], headline=intel_headline(name, env["data"]))
+    return run
+
+
+try:
+    INTEL = _intel_models()
+except Exception:  # the intelligence layer is optional; the copilot keeps working without it
+    INTEL = {}
+TOOLS.update(INTEL)
+RUN.update({n: _intel_runner(n) for n in INTEL})
+
 # --------------------------------------------------------------------------------------------------- rule planner
 _WORD_NUM = {"double": 2.0, "twice": 2.0, "triple": 3.0, "half": 0.5, "halve": 0.5}
 
@@ -503,6 +655,55 @@ def rule_plan(q: str, cx: Ctx) -> list[dict[str, Any]]:
         if mw and "min_acres" not in a:
             a["min_acres"] = round(float(mw.group(1)) / A.value("mw_per_acre"), 1)  # same MW-per-acre assumption as the engine
         calls.append({"name": "CostarSearch", "args": a})
+    pid = cx.parcel_id
+    intel = [
+        (r"comparab|\bcomps?\b|transactions?|priced|valu(e|ation)|sold for", "find_sales_comps"),
+        (r"acquisition|purchase price|underwrit|price (rises|increases|goes up)|investment case", "underwrite_acquisition"),
+        (r"tenant|occupan|vacan|lease|available space", "analyze_occupancy"),
+        (r"candidates? for (conversion|redevelopment)|conversion candidates|redevelopment candidates|off.market|adaptive reuse", "find_off_market_candidates"),
+        (r"residential|homes?|apartments?|neighbo|community", "analyze_residential_impact"),
+        (r"submarket|market (stats|context|compar)|houston and|los angeles", "analyze_submarket"),
+        (r"assembl|adjacent|next door|neighbouring parcels", "find_adjacent_properties"),
+        (r"matterport|\bscans?\b|walk ?through|virtual tour", "get_matterport_model"),
+        (r"(could|can) (this|the) (building|property)|convert (this|it)|be converted|conversion (check|screen)", "evaluate_conversion"),
+        (r"diligence|data gaps|missing (data|evidence)", "identify_data_gaps"),
+        (r"memo|recommend|worth pursuing|investment committee", "generate_investment_memo"),
+        (r"dossier|everything about", "get_property_intelligence"),
+    ]
+    if INTEL and re.search(r"find the best|shortlist|deal to design|under a \$|budget", s):
+        a = {"market": "Los Angeles" if "los angeles" in s else "Houston"}
+        m = re.search(r"(\d+(?:\.\d+)?)\s*mw", s)
+        if m:
+            a["mw_it"] = float(m.group(1))
+        b = re.search(r"\$\s*(\d+(?:\.\d+)?)\s*(m|million|b|billion)", s)
+        if b:
+            a["budget"] = float(b.group(1)) * (1e9 if b.group(2).startswith("b") else 1e6)
+        return [{"name": "deal_to_design", "args": a}]
+    picked: list[dict[str, Any]] = []
+    calls_before, calls = calls, picked  # CoStar intelligence answers replace the generic search when one matches
+    for rx, tool in intel:
+        if tool in INTEL and re.search(rx, s) and not wi:
+            if tool == "find_off_market_candidates":
+                calls.append({"name": tool, "args": {"market": "Los Angeles" if "los angeles" in s else "Houston",
+                                                     "category": "industrial_conversion" if "conversion" in s else "data_center_redevelopment"}})
+            elif tool == "analyze_submarket" and not pid:
+                calls.append({"name": tool, "args": {"compare": "markets"} if "los angeles" in s and "houston" in s else {"market": "Houston"}})
+            elif pid:
+                args: dict[str, Any] = {"parcel_id": pid}
+                pm = re.search(r"(\d+(?:\.\d+)?)\s*%", s)
+                if tool == "underwrite_acquisition":
+                    args.update(mw_it=float(b.get("mw_it", 20)), rack_kw=float(b.get("rack_kw", 20)))
+                    if pm:
+                        args["price_change_pct"] = float(pm.group(1)) * (-1 if re.search(r"drop|fall|lower|decreas", s) else 1)
+                if tool == "evaluate_conversion":
+                    mm = re.search(r"(\d+(?:\.\d+)?)\s*mw", s)
+                    args["mw_it"] = float(mm.group(1)) if mm else 10.0
+                calls.append({"name": tool, "args": args})
+            if len(calls) >= 2:
+                break
+    if picked:
+        return picked
+    calls = calls_before
     if re.search(r"compar|which (concept|layout|option)|cheaper|best|rank", s) and not wi:
         calls.append({"name": "CompareConcepts", "args": {}})
     if re.search(r"risk|go wrong|concern|issue|fail|unknown", s):
@@ -526,7 +727,15 @@ _SYSTEM_PLAN = (
     "memory. Use WhatIf for any change to the design (density, racks, cooling, redundancy, halls, storeys, expansion, "
     "capacity, rent); it previews and never applies. 'Here' or 'this' refers to the selected object. Rack density is "
     "one value for the whole building in this engine, so a per-hall change is modelled as a building-wide change. "
-    "Call several tools at once when the question needs them. If the request is unrelated to the project, call no tool.")
+    "Call several tools at once when the question needs them. If the request is unrelated to the project, call no tool. "
+    "For real-estate questions use the CoStar intelligence tools: find_sales_comps (comparables, 'why is it priced', 'most "
+    "relevant transactions'), underwrite_acquisition (acquisition value into NPV; price_change_pct for 'if the price rises 15%'), "
+    "analyze_occupancy (tenants, availability, leases), find_off_market_candidates (conversion candidates), "
+    "analyze_residential_impact (homes and apartments nearby), analyze_submarket (submarkets, markets), "
+    "compare_property_portfolio, find_adjacent_properties (assemblage), evaluate_conversion (fit an existing building), "
+    "get_matterport_model, identify_data_gaps, generate_investment_memo, get_property_intelligence (full dossier), "
+    "search_costar_properties, and deal_to_design for 'find the best property for N MW under a budget'. parcel_id defaults to "
+    "the selected site.")
 
 _SYSTEM_ANSWER = (
     "You are PlotStar's copilot. Answer the user in at most 5 short plain sentences, using only the FACTS JSON. Copy "
@@ -630,7 +839,7 @@ def n_act(state: State) -> dict:
     with ThreadPoolExecutor(max_workers=4) as ex:
         results = list(ex.map(one, state["calls"]))
     for i, r in enumerate(results):
-        if r["output"].get("costar"):
+        if r["output"].get("costar") and r["output"].get("ok"):  # failures carry only an error message, no kit data
             cx.vault[i] = r["output"]
             r["output"] = dict(ok=r["output"].get("ok", False), costar=True, vault=i, headline="[CoStar record held outside the trace]")
     return dict(results=results, trace=[dict(node="act", ms=round((time.time() - t0) * 1000),

@@ -23,7 +23,8 @@ interface CostarRecord {
 }
 interface ToolRun {
   name: string; ok: boolean; ms: number; args: Record<string, unknown>;
-  output: { headline?: string; record?: CostarRecord; records?: CostarRecord[]; total?: number; items?: { kind: string; severity: string; text: string }[]; object?: string };
+  output: { headline?: string; record?: CostarRecord; records?: CostarRecord[]; total?: number; items?: { kind: string; severity: string; text: string }[]; object?: string;
+    intel?: boolean; tool?: string; label?: string; sources?: string[]; data?: Record<string, unknown> };
 }
 interface Answer {
   answer: string; written_by: string; planned_by: string; tools: ToolRun[]; flags: string[]; ms: number;
@@ -119,6 +120,7 @@ function Reply({ a, applied, busy, onApply, onSelectSite }: { a: Answer; applied
   const card = a.tools.find((t) => t.name === 'CostarProperty' && t.ok)?.output.record;
   const search = a.tools.find((t) => t.name === 'CostarSearch' && t.ok)?.output;
   const risks = a.tools.find((t) => t.name === 'ReviewRisks' && t.ok)?.output.items;
+  const intel = a.tools.filter((t) => t.ok && t.output.intel);
   return (
     <div className={s.reply}>
       <p className={s.text}>{a.answer}</p>
@@ -161,6 +163,7 @@ function Reply({ a, applied, busy, onApply, onSelectSite }: { a: Answer; applied
           <small className={s.src}><span className="st-tag st-tag-sourced">Sourced</span> CoStar Data Extract</small>
         </div>
       )}
+      {intel.map((t) => <IntelCard key={t.name} t={t} />)}
       {risks && (
         <ul className={s.risks}>{risks.map((r) => <li key={r.text} className={s[`sev_${r.severity}`]}><b>{r.kind}</b> {r.text}</li>)}</ul>
       )}
@@ -192,3 +195,45 @@ function CostarCard({ r }: { r: CostarRecord }) {
   );
 }
 
+
+
+// ---------------------------------------------------------------- CoStar intelligence evidence (same tools as the MCP server)
+type Comp = { comp_id: string; name?: string; address?: string; sold_date?: string; price?: number; price_status?: string; per_sf?: number;
+  land_per_acre?: number; distance_km?: number; similarity?: number; stale?: boolean; used?: boolean; is_subject?: boolean };
+type Short = { rank?: number; parcel_id: string; name?: string; acquisition?: number | null; acquisition_label?: string; npv?: number;
+  npv_p10?: number; npv_p90?: number; gates_failed?: string[]; feasible?: boolean; error?: string };
+const usd = (n: unknown) => (typeof n === 'number' ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 1 }).format(n) : 'Unknown');
+const TITLE: Record<string, string> = {
+  find_sales_comps: 'Sales comparables', underwrite_acquisition: 'Acquisition underwriting', analyze_occupancy: 'Occupancy evidence',
+  analyze_residential_impact: 'Residential exposure', analyze_submarket: 'Submarket', find_off_market_candidates: 'Redevelopment candidates',
+  compare_property_portfolio: 'Property comparison', find_adjacent_properties: 'Assemblage screen', evaluate_conversion: 'Conversion screen',
+  get_matterport_model: 'Matterport scans', identify_data_gaps: 'Diligence gaps', generate_investment_memo: 'Investment memo',
+  get_property_intelligence: 'Property dossier', search_costar_properties: 'CoStar search', deal_to_design: 'Deal-to-Design shortlist',
+};
+
+function IntelCard({ t }: { t: ToolRun }) {
+  const d = (t.output.data ?? {}) as Record<string, unknown>;
+  const comps = t.name === 'find_sales_comps' ? ((d.comps as Comp[] | undefined) ?? []).filter((c) => !c.is_subject).slice(0, 6) : [];
+  const short = t.name === 'deal_to_design' ? ((d.shortlist as Short[] | undefined) ?? []).slice(0, 6) : [];
+  const unit = ((d.estimate as { unit?: string } | null)?.unit) ?? '$/SF';
+  return (
+    <div className={s.costar}>
+      <div className={s.consHead}><b>{TITLE[t.name] ?? t.name}</b><span className="st-tag st-tag-sourced">{t.output.label ?? 'CoStar'}</span></div>
+      {comps.length > 0 && (
+        <table className={s.mini}><thead><tr><th>Sale</th><th>Date</th><th>Price</th><th>{unit}</th><th>Sim.</th></tr></thead>
+          <tbody>{comps.map((c) => (
+            <tr key={c.comp_id} className={c.stale || !c.used ? s.muted : ''}>
+              <td>{c.name || c.address}{c.stale ? ' · stale' : ''}</td><td>{(c.sold_date ?? '').slice(0, 10)}</td>
+              <td>{usd(c.price)}<small> {c.price_status}</small></td><td>{c.per_sf != null ? c.per_sf.toFixed(0) : c.land_per_acre != null ? usd(c.land_per_acre) : '—'}</td>
+              <td>{c.similarity != null ? c.similarity.toFixed(0) : '—'}</td></tr>))}</tbody></table>
+      )}
+      {short.length > 0 && (
+        <table className={s.mini}><thead><tr><th>#</th><th>Property</th><th>Acquisition</th><th>NPV P50</th><th>Gates</th></tr></thead>
+          <tbody>{short.map((r) => (
+            <tr key={r.parcel_id} className={r.gates_failed?.length ? s.muted : ''}><td>{r.rank ?? '—'}</td><td>{r.name ?? r.parcel_id}</td>
+              <td>{usd(r.acquisition)}</td><td>{usd(r.npv)}</td><td>{r.error ? 'Error' : r.gates_failed?.length ? `Fails ${r.gates_failed.join(', ')}` : 'Pass'}</td></tr>))}</tbody></table>
+      )}
+      <small className={s.src}>{(t.output.sources?.length ?? 0) > 0 ? `${t.output.sources!.length} CoStar record references · ` : ''}{t.ms} ms · same tool as the PlotStar CoStar MCP server</small>
+    </div>
+  );
+}
