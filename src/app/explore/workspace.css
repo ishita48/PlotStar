@@ -88,7 +88,7 @@
 .ws-marker.pick { outline: 2px solid #1f2a24; outline-offset: 1px; }
 
 /* result strip */
-.ws-result { flex: none; display: grid; grid-template-columns: 1.1fr 1.1fr 0.8fr 0.8fr 0.8fr auto; gap: 0; border-bottom: 1px solid var(--ws-line); background: var(--ws-panel); }
+.ws-result { flex: none; display: grid; grid-template-columns: 1.1fr 1fr 1fr 0.7fr 0.7fr 0.8fr auto; gap: 0; border-bottom: 1px solid var(--ws-line); background: var(--ws-panel); }
 .ws-result > div { padding: 8px 12px; border-right: 1px solid var(--ws-line-2); display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .ws-result > div:last-child { border-right: 0; justify-content: center; }
 .ws-result small { font-size: 10px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ws-muted); }
@@ -250,3 +250,7 @@
 .lg-verdict b { font-size: 12.5px; }
 @media (max-width: 1500px) { .ws-body { grid-template-columns: 236px minmax(0, 1fr) 360px; } .ws-left { padding: 12px; } }
 .ws-left { min-width: 0; overflow-x: hidden; }
+
+.ws-result > div.flip b { color: var(--ws-accent); }
+.ws-flip { padding: 8px 12px; border-bottom: 1px solid var(--ws-line); background: #eef4ee; color: var(--ws-accent); font-size: 12.5px; font-weight: 500; }
+.ws-whatif { grid-template-columns: 1fr 1fr 1.4fr; }

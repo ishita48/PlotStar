@@ -60,10 +60,13 @@ export function DayChart({ run, plan, baseline }: { run: OptimizeResult; plan: C
 export function PlanPanel({ run, siteId, mw, busy, onWhatIf }: { run: OptimizeResult | null; siteId: string; mw: number; busy: boolean; onWhatIf: (c: Record<string, number>) => void }) {
   const [priceX, setPriceX] = useState(run?.request?.price_multiplier ?? 1);
   const [carbonP, setCarbonP] = useState(run?.request?.carbon_price_per_t ?? 50);
+  const firmNow = () => Math.round((run?.request?.firm_capacity?.[siteId] ?? bestPlanFor(run, siteId)?.firm_capacity_share ?? 1) * 100);
+  const [firmPct, setFirmPct] = useState(firmNow());
   useEffect(() => {
     setPriceX(run?.request?.price_multiplier ?? 1);
     setCarbonP(run?.request?.carbon_price_per_t ?? 50);
-  }, [run?.run_id]); // eslint-disable-line react-hooks/exhaustive-deps
+    setFirmPct(firmNow());
+  }, [run?.run_id, siteId]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!run) return <div className="ws-block"><h3>Operating plan</h3><p className="ws-note">Optimizer has not run for this search yet.</p></div>;
   const plan = bestPlanFor(run, siteId);
   const base = run.baseline;
@@ -109,14 +112,19 @@ export function PlanPanel({ run, siteId, mw, busy, onWhatIf }: { run: OptimizeRe
         <label>Carbon price ($/t CO₂)
           <input type="number" min={0} max={300} step={10} value={carbonP} onChange={(e) => setCarbonP(+e.target.value)} onBlur={() => onWhatIf({ carbon_price_per_t: carbonP })} />
         </label>
+        <label>Utility firm capacity here (% of request)
+          <input type="number" min={20} max={100} step={5} value={firmPct} onChange={(e) => setFirmPct(+e.target.value)} onBlur={() => onWhatIf({ firm_capacity: { ...(run.request?.firm_capacity ?? {}), [siteId]: firmPct / 100 } } as unknown as Record<string, number>)} />
+        </label>
       </div>
+      <p className="ws-note">Public data cannot establish spare grid capacity. Enter what the utility offers for this site (scenario, Simulated). A shortfall can only be covered by curtailing flexible load, which is how operating flexibility changes which site is feasible.</p>
       <p className="ws-note">{busy ? 'Re-optimizing…' : 'Changing a value re-runs the optimizer for the whole search (about 1 s).'} Moving work between hours changes cost, carbon and peak, not energy.</p>
     </div>
   );
 }
 
 export function ResultStrip({ run }: { run: OptimizeResult }) {
-  const o = run.optimized, b = run.baseline, d = run.delta;
+  const o = run.optimized, b = run.baseline, d = run.delta, inf = run.inflexible;
+  const flexChangesSite = !!o && inf !== undefined && (!inf || inf.site_id !== o.site_id);
   const [why, setWhy] = useState<{ answer: string; model: string } | null>(null);
   const [asking, setAsking] = useState(false);
   useEffect(() => setWhy(null), [run.run_id]);
@@ -135,12 +143,16 @@ export function ResultStrip({ run }: { run: OptimizeResult }) {
     <>
       <div className="ws-result">
         <div><small>Recommended</small><b>{o ? o.site_name : 'No feasible site'}</b><span>{o ? `${COOL[o.cooling]} cooled · ${o.f > 0 ? `${Math.round(o.d * 100)}% curtailment in stress hours` : 'no curtailment'}` : 'loosen a constraint'}</span></div>
+        <div className={flexChangesSite ? 'flip' : ''}><small>Without flexibility</small><b>{inf === undefined ? '—' : inf ? inf.site_name : 'No feasible site'}</b><span>{inf ? `${fmtMoney(inf.cost)} 10-yr · ${inf.site_id === o?.site_id ? 'same site' : 'different site'}` : inf === null ? 'shortfall needs curtailment' : 'flexible share is 0'}</span></div>
         <div><small>Cost-first (same gates)</small><b>{b ? b.site_name : 'none'}</b><span>{b ? `${COOL[b.cooling]} cooled · flat schedule · lowest capex` : 'no site has full firm capacity'}</span></div>
         <div className="delta"><small>Δ CO₂ / yr</small><b className={d && d.co2_est_t_year < 0 ? 'neg' : ''}>{d ? `${d.co2_est_t_year >= 0 ? '−' : '+'}${fmtNum(Math.abs(d.co2_est_t_year))} t` : '—'}</b><span>Estimated</span></div>
         <div className="delta"><small>Δ 10-yr cost</small><b className={d && d.cost < 0 ? 'neg' : ''}>{d ? `${d.cost >= 0 ? '−' : '+'}${fmtMoney(Math.abs(d.cost))}` : '—'}</b><span>Estimated</span></div>
         <div className="delta"><small>Δ load at grid peak</small><b className={d && d.peak_mw < 0 ? 'neg' : ''}>{d ? `${d.peak_mw >= 0 ? '−' : '+'}${fmtNum(Math.abs(d.peak_mw), 1)} MW` : '—'}</b><span>{run.combinations.length} plans · {run.rejected.length} gated out · {run.elapsed_s}s</span></div>
         <div><button className="ws-btn sm" onClick={() => (why ? setWhy(null) : void explain())} disabled={asking || !o}>{asking ? 'Explaining…' : why ? 'Hide explanation' : 'Explain decision'}</button></div>
       </div>
+      {flexChangesSite && o && (
+        <div className="ws-flip">Flexibility changes the site. With {Math.round((run.request?.flexible_share ?? 0) * 100)}% flexible load the recommendation is {o.site_name} ({fmtMoney(o.cost)} over 10 years); operated inflexibly it is {inf ? `${inf.site_name} (${fmtMoney(inf.cost)}, ${fmtMoney(inf.cost - o.cost)} more)` : 'no site, because every option needs curtailment'}.</div>
+      )}
       {why && (
         <div className="ws-explain">
           {why.answer}

@@ -8,6 +8,7 @@ GET  /grid/day               the cached ERCOT day (prices Sourced, carbon Estima
 """
 from __future__ import annotations
 
+import dataclasses
 import time
 from typing import Any, Literal
 
@@ -38,6 +39,7 @@ class OptimizeIn(BaseModel):
     capital_budget: float | None = Field(None, gt=0)
     assumptions: dict[str, float] = Field(default_factory=dict)
     firm_capacity: dict[str, float] = Field(default_factory=dict, description="parcel_id -> share of requested grid MW")
+    also_inflexible: bool = Field(True, description="also solve with flexible_share = 0 to show whether flexibility changes the site")
     offline: bool = False
 
 
@@ -63,6 +65,10 @@ def _run(q: OptimizeIn, parent_run_id: str | None = None) -> dict[str, Any]:
                         delay_months=q.delay_months, capital_budget=q.capital_budget, overrides=q.assumptions,
                         firm_capacity_overrides=q.firm_capacity)
     result = O.optimize(sites, project, grid)
+    if q.also_inflexible and q.flexible_share > 0:
+        r0 = O.optimize(sites, dataclasses.replace(project, flexible_share=0.0), grid)
+        result["inflexible"] = r0["optimized"]
+        result["inflexible_feasible_plans"] = len(r0["combinations"])
     result["parent_run_id"] = parent_run_id
     result["elapsed_s"] = round(time.time() - t0, 2)
     result["grid"].update({k: gd[k] for k in ("price_label", "carbon_label", "price_date", "carbon_date", "hub")})

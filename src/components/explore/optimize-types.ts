@@ -26,6 +26,8 @@ export interface OptimizeResult {
   elapsed_s: number;
   baseline: Combo | null;
   optimized: Combo | null;
+  inflexible?: Combo | null;
+  inflexible_feasible_plans?: number;
   delta: { cost: number; npv: number; co2_est_t_year: number; peak_mw: number; same_site: boolean } | null;
   combinations: Combo[];
   infeasible: { site_id: string; name: string; cooling: string; f: number; reason: string }[];
@@ -43,5 +45,5 @@ export interface OptimizeResult {
     source: string;
   };
   sites: { id: string; name: string; status: string }[];
-  request?: { price_multiplier?: number; carbon_price_per_t?: number; flexible_share?: number; mw_it?: number };
+  request?: { price_multiplier?: number; carbon_price_per_t?: number; flexible_share?: number; mw_it?: number; firm_capacity?: Record<string, number> };
 }
