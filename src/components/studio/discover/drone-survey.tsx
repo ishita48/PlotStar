@@ -1,7 +1,7 @@
 'use client';
 // Studio · Discover: fly the Tello over the site, watch its camera live and save frames. Studio look, Smart Blocks drone.
 import {
-  ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BatteryMedium, Camera, ChevronsDown, ChevronsUp, Drone, LoaderCircle,
+  ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BatteryMedium, Sparkles, Camera, ChevronsDown, ChevronsUp, Drone, LoaderCircle,
   MoveVertical, OctagonX, PlaneLanding, PlaneTakeoff, RotateCcw, RotateCw, ScanLine, Thermometer,
 } from 'lucide-react';
 import { captureSrc, LABEL, SWEEP_STOPS, useDrone, type Action, type DroneStatus, type Phase } from './use-drone';
@@ -13,7 +13,7 @@ const PILL: Record<Phase, { text: string; tone: string }> = {
 };
 const clock = (t: number) => new Date(t * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
 
-export function DroneSurvey({ siteName }: { siteName: string }) {
+export function DroneSurvey({ siteName, onContinue, busy = false }: { siteName: string; onContinue?: () => void; busy?: boolean }) {
   const d = useDrone();
   const { status, phase, connected, hasVideo, flying, pending, sweep } = d;
   const locked = !connected || pending !== null || sweep !== null;
@@ -45,7 +45,7 @@ export function DroneSurvey({ siteName }: { siteName: string }) {
               <img key={d.streamKey} src={`/api/drone/video?s=${d.streamKey}`} alt={`Live camera view from the Tello over ${siteName}`}
                 onLoad={() => d.setFrameSeen(true)} onError={() => { d.setFrameSeen(false); d.retryStream(); }} />
             )}
-            {!(hasVideo && d.frameSeen) && <StageEmpty phase={phase} status={status} />}
+            {!(hasVideo && d.frameSeen) && <StageEmpty phase={phase} status={status} onContinue={onContinue} busy={busy} />}
             {hasVideo && d.frameSeen && (
               <>
                 <span className={`st-dr-badge ${phase === 'test' ? 'is-test' : ''}`}><i /> {phase === 'test' ? 'Test pattern · not a camera' : 'Live'}</span>
@@ -101,6 +101,7 @@ export function DroneSurvey({ siteName }: { siteName: string }) {
             <p className="st-muted st-small">Captures are saved on the demo laptop in <code>captures/</code>. A 360° survey takes one frame every 45° while the drone turns in place.</p>
           </div>
           <div className="st-dr-actions">
+            {onContinue && <button type="button" className="st-btn" onClick={onContinue} disabled={busy} title="Skip the survey and generate the three layouts">{busy ? 'Generating…' : 'Next · Generate layouts'} <ArrowRight size={13} /></button>}
             <button type="button" className="st-btn" disabled={!hasVideo || pending !== null || sweep !== null} onClick={() => void d.capture()}><Camera size={13} /> Capture frame</button>
             {sweep === null
               ? <button type="button" className="st-btn primary" disabled={!hasVideo || !flying || pending !== null} onClick={() => void d.runSweep()}
@@ -128,7 +129,7 @@ export function DroneSurvey({ siteName }: { siteName: string }) {
   );
 }
 
-function StageEmpty({ phase, status }: { phase: Phase; status: DroneStatus | null }) {
+function StageEmpty({ phase, status, onContinue, busy }: { phase: Phase; status: DroneStatus | null; onContinue?: () => void; busy?: boolean }) {
   const copy: Record<Phase, { title: string; body: string }> = {
     checking: { title: 'Checking for the drone', body: 'One moment.' },
     'bridge-offline': { title: 'Drone bridge offline', body: 'Start bridge/server.py on this laptop. Setup is under Connection below.' },
@@ -144,6 +145,12 @@ function StageEmpty({ phase, status }: { phase: Phase; status: DroneStatus | nul
       {spinning ? <LoaderCircle className="st-dr-spin" size={24} /> : <Drone size={28} strokeWidth={1.4} />}
       <b>{c.title}</b>
       <p>{c.body}</p>
+      {onContinue && phase !== 'checking' && phase !== 'live' && phase !== 'test' && (
+        <button type="button" className="st-btn primary st-dr-next" onClick={onContinue} disabled={busy}
+          title="The survey is optional. Generate the three layouts without it.">
+          <Sparkles size={14} /> {busy ? 'Generating…' : 'Continue without the drone'} <ArrowRight size={14} />
+        </button>
+      )}
     </div>
   );
 }

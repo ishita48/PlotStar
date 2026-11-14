@@ -308,3 +308,6 @@
 .st-view-existing { overflow: auto; padding: 12px; background: var(--st-bg); }
 .st-top-nav button { display: inline-flex; align-items: center; gap: 6px; font-family: var(--st-mono); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--st-ink-2); padding: 7px 12px; border: 1px solid var(--st-line); border-radius: 6px; background: #fff; cursor: pointer; }
 .st-top-nav button:hover { border-color: var(--st-accent); color: var(--st-accent); }
+
+.st-top-nav .st-reset { color: var(--st-bad, #a04b34); border-color: #e8d2cb; }
+.st-top-nav .st-reset:hover { background: #fbe9e6; }

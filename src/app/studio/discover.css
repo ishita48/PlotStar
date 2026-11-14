@@ -89,3 +89,8 @@
   .st-dr { grid-template-columns: 1fr; }
   .st-dr-tele { grid-template-columns: repeat(2, 1fr); }
 }
+
+.st-dr-next { margin-top: 12px; }
+.st-sites-wait { display: flex; align-items: center; gap: 8px; padding: 14px 0; }
+.st-spin { animation: st-spin 1s linear infinite; }
+@keyframes st-spin { to { transform: rotate(360deg); } }

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import {
-  ArrowLeft, ArrowRight, Box as BoxIcon, Check, CircleAlert, CircleCheck, Coins, Columns2, Download, Droplets, Leaf, Lock,
+  ArrowLeft, ArrowRight, Box as BoxIcon, LoaderCircle, Check, CircleAlert, CircleCheck, Coins, Columns2, Download, Droplets, Leaf, Lock,
   Briefcase, Building2, FileText, FileUp, MapPin, Move, RotateCcw, RotateCw, Sparkles, Square, Star, Trash2, Users,
 } from 'lucide-react';
 import { Brand } from '../brand';
@@ -74,6 +74,8 @@ const API_TO_BRIEF = { rack_kw: 'rackKw', mw_it: 'mw', cooling: 'cooling', redun
 /** CoStar building names are often generic ("Bldg 2", "G"), so lead with the street address. */
 const siteLabel = (s: ExploreSite) => (s.area && (s.source as string | undefined) !== 'user' ? s.area : s.name);
 const isUser = (s: ExploreSite) => (s.source as string | undefined) === 'user';
+// a site resolved by id (reload, saved project) rather than from the market search
+const isFallback = (s: ExploreSite) => !!(s as { fallback?: boolean }).fallback;
 
 async function api<T>(path: string, body?: unknown, method = 'POST'): Promise<T> {
   const r = await fetch(`${PUBLIC_DATA_API}${path}`, body === undefined ? undefined
@@ -95,11 +97,23 @@ function Stat({ label, value, sub, tag }: { label: string; value: string; sub?: 
   return <div className="st-stat"><small>{label}{tag && <Tag label={tag} />}</small><b>{value}</b>{sub && <span>{sub}</span>}</div>;
 }
 
+const SESSION_KEY = 'geostar.studio.v1';
+const UNREACHABLE = "Can't reach the GeoStar data service";
+type Session = { step: number; sub: number; brief: Brief; siteId: string | null; prio: Record<Factor, number> };
+function readSession(): Session | null {
+  try { const raw = sessionStorage.getItem(SESSION_KEY); return raw ? (JSON.parse(raw) as Session) : null; } catch { return null; }
+}
+
 export function Studio() {
+  // A reload keeps the brief, the chosen site and the step; the layouts regenerate from them. The session is read
+  // after mount (not during render) so the server and client render the same first frame.
+  const [session, setSession] = useState<Session | null>(null);
+  const [hydrated, setHydrated] = useState(false);
   const [step, setStep] = useState(0);
   const [sub, setSub] = useState(0);
   const [brief, setBrief] = useState<Brief>(DEFAULT);
   const [sites, setSites] = useState<ExploreSite[]>([]);
+  const [sitesLoading, setSitesLoading] = useState(true);
   const [siteId, setSiteId] = useState<string | null>(null);
   const [mode, setMode] = useState<MapMode>('browse');
   const [prio, setPrio] = useState<Record<Factor, number>>({ money: 2, people: 2, planet: 2, resources: 2 });
@@ -142,11 +156,78 @@ export function Studio() {
   // CoStar candidates for the market, already screened by the hard gates
   useEffect(() => {
     let alive = true;
-    api<{ sites: Omit<ExploreSite, 'letter'>[] }>('/search', { market: brief.market, thresholds: { min_home_distance_m: 300 }, assumptions: {}, filters: { min_acres: 5 }, limit: 150 })
-      .then((d) => alive && setSites((own) => [...own.filter(isUser), ...d.sites.map((s, i) => ({ ...s, letter: String(i + 1) }) as ExploreSite)]))
-      .catch(() => alive && setError(`Can't reach the GeoStar data service at ${PUBLIC_DATA_API}. Start it and reload.`));
+    setSitesLoading(true);
+    const load = async (attempt: number): Promise<void> => {
+      try {
+        const d = await api<{ sites: Omit<ExploreSite, 'letter'>[] }>('/search', { market: brief.market, thresholds: { min_home_distance_m: 300 }, assumptions: {}, filters: { min_acres: 5 }, limit: 150 });
+        if (!alive) return;
+        setSites((own) => [...own.filter((s) => isUser(s) || (isFallback(s) && !d.sites.some((x) => x.id === s.id))), ...d.sites.map((s, i) => ({ ...s, letter: String(i + 1) }) as ExploreSite)]);
+        setSitesLoading(false); setError((e) => (e?.startsWith(UNREACHABLE) ? null : e));
+      } catch {
+        if (!alive) return;
+        if (attempt < 3) { await new Promise((r) => setTimeout(r, 1500 * attempt)); if (alive) return load(attempt + 1); }
+        setSitesLoading(false); setError(`${UNREACHABLE} at ${PUBLIC_DATA_API}. Start it and reload.`);
+      }
+    };
+    void load(1);
     return () => { alive = false; };
   }, [brief.market]);
+
+  // The chosen site must exist even when the market search is slow, failed, or does not list it (reload, saved
+  // project): resolve it by CoStar id from the local kit and screen it, so the address and the aerial show.
+  useEffect(() => {
+    if (!siteId || !siteId.startsWith('costar:') || sites.some((s) => s.id === siteId)) return;
+    let alive = true;
+    (async () => {
+      try {
+        const r = await fetch(siteDetailUrl(siteId));
+        const d = r.ok ? await r.json() : null;
+        const p = d?.parcel;
+        if (!alive || !p || typeof p.lat !== 'number') return;
+        const acres = typeof p.lot_acres === 'number' ? p.lot_acres : Math.max(5, brief.mw);
+        const ev = await api<{ screen: ExploreSite['screen'] }>('/sites/evaluate', { lat: p.lat, lon: p.lon, acres, market: brief.market, thresholds: { min_home_distance_m: 300 }, name: p.name ?? siteId }).catch(() => null);
+        if (!alive) return;
+        const s = { id: siteId, parcelId: siteId, name: p.name ?? siteId, area: [p.address, p.city].filter(Boolean).join(', '), lat: p.lat, lng: p.lon, lotAcres: acres,
+          source: 'costar', letter: '•', screen: ev?.screen, fallback: true } as unknown as ExploreSite;
+        setSites((all) => (all.some((x) => x.id === siteId) ? all : [...all, s]));
+      } catch { /* the search list may still bring it */ }
+    })();
+    return () => { alive = false; };
+  }, [siteId, sites, brief.market, brief.mw]);
+
+  // start over: forget the saved place and reload to a clean studio
+  const resetStudio = () => {
+    try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignore */ }
+    window.location.assign('/studio');
+  };
+
+  // restore the saved place once, on mount
+  useEffect(() => {
+    const ss = readSession();
+    if (ss) {
+      setSession(ss);
+      setStep(Math.min(ss.step, 1)); // deeper steps need a result, regenerated below
+      setSub(ss.sub ?? 0);
+      if (ss.brief) setBrief({ ...DEFAULT, ...ss.brief });
+      if (ss.siteId) setSiteId(ss.siteId);
+      if (ss.prio) setPrio(ss.prio);
+    }
+    setHydrated(true);
+  }, []);
+
+  // remember where you are, so a reload comes back to the same brief, site and step
+  useEffect(() => {
+    if (!hydrated) return;
+    try { sessionStorage.setItem(SESSION_KEY, JSON.stringify({ step, sub, brief, siteId, prio } satisfies Session)); } catch { /* private mode */ }
+  }, [hydrated, step, sub, brief, siteId, prio]);
+
+  // after a reload past Define with a site chosen, regenerate the layouts and return to that step
+  const restored = useRef(false);
+  useEffect(() => {
+    if (restored.current || !session || !site || sitesLoading) return;
+    restored.current = true;
+    if (session.step >= 2) void generate(brief, false).then((r) => { if (r) setStep(session.step); });
+  }, [session, site, sitesLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Matterport scans of the existing building, when CoStar recorded any for this property
   const parcelId = site?.parcelId ?? null; // 'costar:<id>'; null for a dropped pin
@@ -395,9 +476,11 @@ export function Studio() {
   const [deployView, setDeployView] = useState<'current' | 'projects' | Facility>('current');
   const openCommand = () => { setProtectStart(undefined); setDeployView('current'); setStep(9); };
 
+  // generate the three layouts and open Explore; used from Discover, or from Define to skip the drone survey
+  const generateAndExplore = () => void generate(brief, false).then((r) => { if (r) { setStep(2); void saveProject('generated', undefined, r); } });
   function next() {
     if (step === 0) setStep(1);
-    else if (step === 1) void generate(brief, false).then((r) => { if (r) { setStep(2); void saveProject('generated', undefined, r); } });
+    else if (step === 1) generateAndExplore();
     else if (step === 5) decide();
     else setStep(ORDER[ORDER.indexOf(step) + 1]);
   }
@@ -414,6 +497,7 @@ export function Studio() {
           <button type="button" onClick={() => setDealDesk(true)}><Briefcase size={12} /> Deal desk</button>
           <Link href="/explore">Live operations</Link>
           <Link href="/">Home</Link>
+          <button type="button" className="st-reset" onClick={resetStudio} title="Clear the brief, site and layouts and start again"><RotateCcw size={12} /> Reset</button>
         </nav>
       </header>
       <div className="st-body">
@@ -511,11 +595,14 @@ export function Studio() {
                       <>
                         <h3>Choose a site</h3>
                         <p className="st-muted">Each numbered marker is a real property from the CoStar data extract, already checked against homes, flood zones, water stress and distance to high-voltage power. Or drop your own pin.</p>
+                        {sitesLoading ? <p className="st-muted st-small st-sites-wait"><LoaderCircle size={14} className="st-spin" /> Loading {brief.market} sites and screening them against homes, flood, water and power…</p>
+                          : sites.length === 0 ? <p className="st-muted st-small st-sites-wait">No sites loaded. {error ? 'Start the data service and reload, or drop your own pin.' : 'Drop your own pin on the map.'}</p>
+                          : (
                         <ul className="st-site-list">
                           {sites.filter((s) => s.screen?.status !== 'Fail').slice(0, 8).map((s) => (
                             <li key={s.id} onClick={() => void pickSite(s.id)}><i>{s.letter}</i><div><b>{siteLabel(s)}</b><span>{s.name} · {num(s.lotAcres, 1)} acres · {verdict(s).label}</span></div></li>
                           ))}
-                        </ul>
+                        </ul>)}
                       </>
                     ) : (
                       <>
@@ -576,7 +663,7 @@ export function Studio() {
               <small className="st-eyebrow">02 · Discover</small>
               <h1>See the site from above</h1>
               <p className="st-lede">{site ? `${siteLabel(site)} · ` : ''}Fly the Tello over the site and save what the camera sees. When you’re ready, generate three layouts.</p>
-              <DroneSurvey siteName={site ? siteLabel(site) : brief.name} />
+              <DroneSurvey siteName={site ? siteLabel(site) : brief.name} onContinue={generateAndExplore} busy={busy} />
             </section>
           )}
 
@@ -803,6 +890,8 @@ export function Studio() {
       <footer className="st-foot">
         <button className="st-btn" onClick={() => (step === 0 && sub > 0 ? setSub(sub - 1) : setStep(!dc && step === 7 ? 0 : ORDER[Math.max(0, ORDER.indexOf(step) - 1)]))} disabled={step === 0 && sub === 0}><ArrowLeft size={14} /> Back</button>
         <span className="st-foot-note">{busy ? 'Working…' : step === 0 && !dc ? `Layouts are for data centers. ${kindLabel} opens its concept model in Design.` : step === 0 && !site ? 'Choose a site to continue.' : step === 0 && sub < 3 ? 'Review the brief to continue.' : step === 5 && !canNext ? 'Select a concept and give a reason.' : result?.note ?? ''}</span>
+        {step === 0 && dc && <button className="st-btn big" onClick={generateAndExplore} disabled={!canNext || busy}
+          title="Skip the drone survey and generate the three layouts now">{busy ? 'Generating…' : 'Skip discover'} <Sparkles size={14} /></button>}
         {step < 9 && <button className="st-btn primary big" onClick={next} disabled={!canNext || busy}>{step === 1 && <Sparkles size={14} />}{nextLabel}{step !== 1 && <ArrowRight size={14} />}</button>}
       </footer>
     </div>
