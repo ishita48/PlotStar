@@ -7313,3 +7313,65 @@ tbody tr:hover td {
     scroll-behavior: auto !important;
   }
 }
+
+/* ---------- PlotStar real-data elements (CoStar / screening / Vexcel / Matterport) ---------- */
+.data-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  vertical-align: middle;
+  border: 1px solid currentColor;
+}
+.data-label-measured { color: #2f7d4f; }
+.data-label-sourced { color: #2d6a9f; }
+.data-label-estimated { color: #9a6b12; }
+.data-label-simulated { color: #7b4fa8; }
+.data-label-utilityconfirmed { color: #1d7a72; }
+.data-label-unknown { color: #8a8f88; }
+.gate-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.gate-pass { background: #e4f2d6; color: #2f6b2c; }
+.gate-fail { background: #fbe1dc; color: #a33a26; }
+.gate-review { background: #fbf0d6; color: #8a6210; }
+.gate-row { border-top: 1px solid var(--line); padding: 10px 0; }
+.gate-row:first-of-type { border-top: 0; }
+.gate-row-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.gate-row-head b { font-size: 13px; }
+.gate-row p { margin: 6px 0 4px; font-size: 12px; line-height: 1.5; color: var(--ink); }
+.gate-row small { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 10.5px; color: var(--muted); }
+.gate-note { margin: 8px 0 0; font-size: 11.5px; color: #a33a26; }
+.power-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.power-grid > div { border: 1px solid var(--line); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 4px; }
+.power-grid small { font-size: 10.5px; color: var(--muted); }
+.power-grid b { font-size: 16px; font-weight: 500; }
+.method-line { margin: 8px 0 0; font-size: 11px; line-height: 1.5; color: var(--muted); display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.provenance-line { display: block; padding: 0 24px; }
+.utility-confirm { margin-top: 10px; border-radius: 10px; background: #fbf6e6; padding: 10px; display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; }
+.utility-confirm b { font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: #8a6210; }
+.aerial-img, .costar-photo { display: block; width: 100%; border-radius: 10px; object-fit: cover; }
+.aerial-img { aspect-ratio: 1 / 1; border: 1px solid var(--line); }
+.costar-photo { aspect-ratio: 16 / 9; border-radius: 0; }
+.matterport-frame { width: 100%; aspect-ratio: 4 / 3; border: 1px solid var(--line); border-radius: 10px; }
+.matterport-thumb { position: relative; display: block; width: 100%; padding: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--forest); cursor: pointer; aspect-ratio: 16 / 9; }
+.matterport-thumb img { width: 100%; height: 100%; object-fit: cover; opacity: 0.85; }
+.matterport-thumb span { position: absolute; inset: auto 10px 10px auto; border-radius: 999px; background: var(--forest); color: var(--lime); padding: 6px 12px; font-size: 12px; }
+.real-3d-wrap { position: relative; width: 100%; height: 100%; min-height: 520px; background: #dfe5da; }
+.real-3d-note { position: absolute; left: 12px; bottom: 12px; z-index: 2; max-width: 70%; border-radius: 8px; background: rgba(246, 247, 240, 0.92); padding: 6px 10px; font-size: 11px; color: var(--ink); }
+.real-3d-status { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 13px; }
+.site-marker.site-marker-fail { background: #fbe1dc !important; color: #a33a26 !important; border-color: #e7a597 !important; }
+.map-legend i.fail { background: #e06a52 !important; }

@@ -34,6 +34,7 @@ PROPERTY_FILE = "data/commercial-property.jsonl"
 LISTING_FILE = "data/commercial-listing-summary.jsonl"
 SALE_FILE = "data/commercial-sale-comp.jsonl"
 MATTERPORT_CSV = "commercial-properties.csv"
+RESIDENTIAL_FILE = "data/residential-listings.jsonl"
 ENUMS_FILE = "schemas/enums.json"
 
 SCHEMA = """
@@ -111,6 +112,17 @@ CREATE TABLE parcels (
 );
 CREATE INDEX idx_parcels_market ON parcels(market);
 CREATE INDEX idx_parcels_candidate ON parcels(dc_candidate, market);
+
+DROP TABLE IF EXISTS homes;
+CREATE TABLE homes (                               -- residential locations for the proximity gate
+    kind         TEXT NOT NULL,                    -- 'apartment community' | 'home listing'
+    ref_id       INTEGER NOT NULL,
+    name         TEXT,
+    lat          REAL NOT NULL,
+    lon          REAL NOT NULL,
+    source_file  TEXT NOT NULL,
+    source_row   INTEGER NOT NULL
+);
 
 CREATE TABLE matterport_models (
     costar_property_id  INTEGER NOT NULL,
@@ -333,6 +345,23 @@ def build(kit: Path = COSTAR_KIT_DIR, conn: sqlite3.Connection | None = None) ->
             "dc_candidate": int(ptype in CANDIDATE_TYPES),
         })
 
+    # Residential locations: CoStar multifamily communities + MLS home listings (both carry coordinates).
+    homes = [
+        ("apartment community", p["costar_property_id"], p["name"], p["lat"], p["lon"], PROPERTY_FILE, p["source_row"])
+        for p in parcels
+        if p["property_type"] == "Multifamily" and p["lat"] is not None and p["lon"] is not None
+    ]
+    n_res = 0
+    res_path = kit / RESIDENTIAL_FILE
+    if res_path.exists():
+        for row, rec in _iter_jsonl(res_path):
+            n_res += 1
+            a = (rec.get("property") or {}).get("address") or {}
+            if a.get("latitude") is not None and a.get("longitude") is not None:
+                homes.append(("home listing", rec["id"], a.get("fullStreetAddress"), a["latitude"], a["longitude"],
+                              RESIDENTIAL_FILE, row))
+    conn.executemany("INSERT INTO homes VALUES (?,?,?,?,?,?,?)", homes)
+
     cols = list(parcels[0].keys())
     conn.executemany(
         f"INSERT INTO parcels ({','.join(cols)}) VALUES ({','.join(':' + c for c in cols)})", parcels
@@ -344,7 +373,10 @@ def build(kit: Path = COSTAR_KIT_DIR, conn: sqlite3.Connection | None = None) ->
         ("commercial-listing-summary", LISTING_FILE, n_listings),
         ("commercial-sale-comp", SALE_FILE, n_sales),
         ("matterport-starter-csv", MATTERPORT_CSV, n_mp),
+        ("residential-listings", RESIDENTIAL_FILE, n_res),
     ):
+        if not (kit / rel).exists():
+            continue
         size, mtime = _file_meta(kit / rel)
         conn.execute("INSERT INTO ingest_runs VALUES (?,?,?,?,?,?)", (dataset, rel, n, size, mtime, loaded_at))
     conn.commit()
@@ -357,6 +389,7 @@ def build(kit: Path = COSTAR_KIT_DIR, conn: sqlite3.Connection | None = None) ->
         "candidates": sum(p["dc_candidate"] for p in parcels),
         "with_asking_price": sum(1 for p in parcels if p["asking_price_low"]),
         "with_sale_price": sum(1 for p in parcels if p["last_sale_price"]),
+        "home_locations": len(homes),
         "seconds": round(time.time() - t0, 1),
     }
     if own:

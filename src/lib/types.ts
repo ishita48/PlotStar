@@ -31,6 +31,57 @@ export interface Site {
     population: number;
   };
   provenance: string;
+  // --- Real-data extensions (present when source === 'costar'; see services/api /sites/candidates) ---
+  source?: 'costar' | 'illustrative';
+  parcelId?: string;
+  costarPropertyId?: number;
+  lotAcres?: number;
+  buildingSf?: number | null;
+  availability?: string;
+  photoUrl?: string | null;
+  landCostBasis?: string;
+  labels?: Record<string, DataLabel>;
+  screen?: SiteScreen;
+}
+export type DataLabel = 'Measured' | 'Sourced' | 'Estimated' | 'Simulated' | 'Utility-confirmed' | 'Unknown';
+export interface GateResult {
+  gate: string;
+  status: 'Pass' | 'Fail' | 'Needs review';
+  value: string | number | null;
+  limit: string | number | null;
+  unit: string;
+  label: DataLabel;
+  reason: string;
+  source: string;
+  retrieved_at: string | null;
+}
+export interface SiteScreen {
+  parcel_id: string;
+  status: 'Pass' | 'Fail' | 'Needs review';
+  gates: GateResult[];
+  power: {
+    residential_within_1mi?: number;
+    residential_within_1mi_note?: string;
+    water_stress_cat?: number | null;
+    water_cooling_ok: boolean | null;
+    building_service_mw: number | null;
+    building_service_method: string | null;
+    building_service_label: DataLabel;
+    has_heavy_power: number | null;
+    nearest_substation: {
+      name: string | null;
+      operator: string | null;
+      max_kv: number | null;
+      osm_id: string;
+      distance_km: number;
+      lat: number;
+      lon: number;
+    } | null;
+    substation_source: string | null;
+    substation_retrieved_at: string | null;
+    requires_utility_confirmation: string[];
+  };
+  evidence_gaps: string[];
 }
 export interface Design {
   id: string;

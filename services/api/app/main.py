@@ -6,15 +6,17 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import config
+from . import config, external
 from .db import db_ready
-from .routers import data, integrations, projects, sites
+from .routers import data, integrations, projects, screen, sites, vexcel
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     projects.init()
     integrations.init()
+    external.init()
+    screen.init()
     yield
 
 
@@ -32,5 +34,6 @@ def health() -> dict:
     return {"status": "ok", "product": config.PRODUCT_NAME, "parcel_store_ready": db_ready()}
 
 
-for r in (sites.router, data.router, projects.router, integrations.router):
+# screen.router first so /sites/candidates is not captured by /sites/{parcel_id}
+for r in (screen.router, sites.router, data.router, projects.router, integrations.router, vexcel.router):
     app.include_router(r)

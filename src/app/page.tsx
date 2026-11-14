@@ -28,7 +28,7 @@ export default function Home() {
           <a href="#intelligence">Our approach</a>
         </div>
         <Button asChild variant="secondary">
-          <Link href="/projects">
+          <Link href="/explore">
             Open workspace <ArrowUpRight size={16} />
           </Link>
         </Button>
@@ -52,11 +52,11 @@ export default function Home() {
           </p>
           <div className="hero-actions">
             <Button asChild>
-              <Link href="/projects?new=1">
-                Start building <ArrowUpRight size={18} />
+              <Link href="/explore">
+                Find a site <ArrowUpRight size={18} />
               </Link>
             </Button>
-            <Link href="/projects/demo-1" className="text-link">
+            <Link href="/projects/demo-2" className="text-link">
               Explore the demo <ArrowRight size={17} />
             </Link>
           </div>

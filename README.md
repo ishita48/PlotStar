@@ -141,6 +141,26 @@ tests/                    Calculation, API, SSE, hardware, browser and mobile te
 
 Local mutation routes enforce same-origin browser requests and Zod input bounds; telemetry uses a constant-time bearer-token comparison and explicit device bindings. These measures do not replace multi-user identity and access control. `npm audit` is clean at verification time; the pinned Prisma 6 toolchain uses a patched `deepmerge-ts` override, checked through schema setup and builds.
 
+## Explore: find a real data center site (`/explore`)
+
+Open http://127.0.0.1:3000/explore with both servers running. The workflow mirrors a CoStar search, for buildable
+data-center sites instead of leases:
+
+| CoStar | PlotStar Explore |
+|---|---|
+| Draw a polygon | **Draw area** on the map; results update to the parcels inside it |
+| Filter by rent, size, type | Filter by MW, lot size, flood, heavy power, water cooling; adjust the homes distance limit |
+| View matching properties | Every CoStar industrial/flex/land property, marked **Good fit / Check first / Not suitable** |
+| Manually add a property | **Check a spot**: click anywhere and the same checks run on that point |
+| Generate a report | Site panel: verdict, Money / People / Planet, "if you build N MW here", sources |
+| Save search + alerts | **Save search**; the bell re-runs it and lists new sites, price and risk changes |
+| 3D | **3D**: Vexcel photorealistic city mesh (where covered) or Vexcel aerial, with a conceptual campus sized to the MW target; Matterport tour inside the building |
+
+Checks are pass/fail, never averaged: homes (CoStar apartment communities + MLS listings), FEMA flood zone, WRI
+Aqueduct water stress, distance to a >= 138 kV OSM substation. Numbers carry a label (Sourced / Estimated / Unknown)
+and the Sources toggle shows the file, line and retrieval time behind each one. Grid capacity always "requires
+utility confirmation".
+
 ## Real property data: CoStar backend (`services/api`)
 
 The CoStar track kit (Houston + Los Angeles) is served by a Python FastAPI service next to the web app.
@@ -156,9 +176,11 @@ python -m venv .venv
 .venv\Scripts\python -m uvicorn app.main:app --reload --port 8000   # http://localhost:8000/docs
 ```
 
-Endpoints: `GET /sites` (filters: market, min_acres, heavy_power), `GET /sites/{id}`,
+Endpoints: `POST /search` (polygon + filters), `POST /sites/evaluate` (any point), `POST /impact` (MW + cooling ->
+energy / water / carbon / capex), `GET /assumptions`, `/searches` (saved searches + alerts), `GET /sites`, `GET /sites/{id}`,
 `GET /audit/parcel/{id}/{field}` (evidence chain), `GET /data/summary`, `GET /matterport/models/{id}`
-(server-side proxy; the token never reaches the browser). Kit findings and schema:
+(server-side proxy; the token never reaches the browser), `GET /vexcel/ortho/{id}.jpg` and `GET /vexcel/3d/root`
+(Vexcel key stays server-side; 3D Tiles are pruned to the cells around the site). Kit findings and schema:
 [docs/costar_data_dictionary.md](docs/costar_data_dictionary.md).
 
 Every number carries a label: Measured, Sourced, Estimated, Simulated or Utility-confirmed. Missing data is
