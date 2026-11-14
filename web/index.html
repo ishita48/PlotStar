@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SiteStar — Data Center Site Intelligence</title>
+  <meta name="description" content="SiteStar tells a data center developer where to build, when power can arrive, and how to run the facility, as one connected decision instead of three separate studies.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M16 2l3.6 9.4L29 13l-7.2 6.4L24 29l-8-5-8 5 2.2-9.6L3 13l9.4-1.6z' fill='%23f5b942'/></svg>">
+</head>
+<body>
+
+  <header class="nav">
+    <div class="container nav-inner">
+      <a href="#top" class="brand" aria-label="SiteStar home">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2l3.6 9.4L29 13l-7.2 6.4L24 29l-8-5-8 5 2.2-9.6L3 13l9.4-1.6z"/></svg>
+        SiteStar
+      </a>
+      <nav class="nav-links" aria-label="Main">
+        <a href="#problem">Problem</a>
+        <a href="#how">How it works</a>
+        <a href="#modules">Modules</a>
+        <a href="#live">Live demo</a>
+        <a href="#limits">Honest limits</a>
+      </nav>
+      <a href="#live" class="btn btn-small">Live demo</a>
+    </div>
+  </header>
+
+  <main id="top">
+
+    <!-- HERO -->
+    <section class="hero">
+      <div class="hero-grid" aria-hidden="true"></div>
+      <div class="container hero-inner">
+        <p class="eyebrow">Data center infrastructure intelligence</p>
+        <h1>Build where power makes sense.<br><span class="accent">Operate where value is highest.</span></h1>
+        <p class="lede">SiteStar tells a data center developer where to build, when power can arrive, and how to run the facility, as one connected decision instead of three separate studies.</p>
+        <div class="hero-cta">
+          <a href="#live" class="btn">See the live demo</a>
+          <a href="#how" class="btn btn-ghost">How it works</a>
+        </div>
+
+        <ol class="proofs" aria-label="What we prove">
+          <li class="proof">
+            <span class="proof-num">Proof 1</span>
+            <strong>Real property data</strong>
+            <span>Commercial parcels from CoStar, screened, with a source and a reason for every rejection.</span>
+          </li>
+          <li class="proof">
+            <span class="proof-num">Proof 2</span>
+            <strong>Optimizer vs cost-first</strong>
+            <span>One computed decision, shown side by side with the cheapest feasible plan.</span>
+          </li>
+          <li class="proof">
+            <span class="proof-num">Proof 3</span>
+            <strong>Measured hardware response</strong>
+            <span>Press the grid-emergency button, watch measured watts fall, and see the job still finish.</span>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- PROBLEM -->
+    <section id="problem" class="section">
+      <div class="container">
+        <p class="eyebrow">The problem</p>
+        <h2>A cheap parcel can become a billion-dollar mistake.</h2>
+        <p class="section-lede">Real estate teams, energy consultants, engineers and analysts study the same project with different data and different assumptions. The same five problems keep coming back.</p>
+        <div class="risk-grid">
+          <article class="risk">
+            <span class="risk-icon" aria-hidden="true">A</span>
+            <h3>Land is not power</h3>
+            <p>Land is bought before electricity is secured. Capital sits idle, grid upgrades get expensive and energization dates slip.</p>
+          </article>
+          <article class="risk">
+            <span class="risk-icon" aria-hidden="true">B</span>
+            <h3>Cost-first ignores lifecycle</h3>
+            <p>The cheapest acquisition is rarely the best investment once interconnection, cooling, tariffs and delay are counted.</p>
+          </article>
+          <article class="risk">
+            <span class="risk-icon" aria-hidden="true">C</span>
+            <h3>Fragmented diligence</h3>
+            <p>Separate teams, datasets and assumptions slow decisions down and hide the tradeoffs between them.</p>
+          </article>
+          <article class="risk">
+            <span class="risk-icon" aria-hidden="true">D</span>
+            <h3>Grid stress</h3>
+            <p>Large loads raise peaks. AI training and batch work could ease off when the grid is strained, but planning models ignore it.</p>
+          </article>
+          <article class="risk">
+            <span class="risk-icon" aria-hidden="true">E</span>
+            <h3>Community cost</h3>
+            <p>Water, noise, nearby homes and diesel backup are treated as afterthoughts instead of hard limits.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- BIG IDEA -->
+    <section id="idea" class="section section-alt">
+      <div class="container idea">
+        <div class="idea-text">
+          <p class="eyebrow">The big idea</p>
+          <h2>Put operations into the site decision, <span class="accent">before</span> capital is committed.</h2>
+          <p>Most teams pick land, then chase power, then plan operations. Each step limits the next. SiteStar evaluates all three in one optimizer, so the site you pick is affordable to build, possible to power and efficient to run.</p>
+          <p class="note"><strong>What's new, honestly stated.</strong> Carbon-aware scheduling, property analytics and grid flexibility each already exist. Our contribution is combining them in the site-acquisition decision, with a visible cost-first baseline to beat.</p>
+        </div>
+        <svg class="venn" viewBox="0 0 320 300" role="img" aria-labelledby="venn-title">
+          <title id="venn-title">Land, Power and Operations overlap, with SiteStar at the center</title>
+          <circle cx="160" cy="105" r="80" class="v v1"/>
+          <circle cx="110" cy="190" r="80" class="v v2"/>
+          <circle cx="210" cy="190" r="80" class="v v3"/>
+          <text x="160" y="62" class="v-label">Land</text>
+          <text x="72" y="228" class="v-label">Power</text>
+          <text x="248" y="228" class="v-label">Operations</text>
+          <path class="v-star" transform="translate(146 146) scale(0.9)" d="M16 2l3.6 9.4L29 13l-7.2 6.4L24 29l-8-5-8 5 2.2-9.6L3 13l9.4-1.6z"/>
+        </svg>
+      </div>
+    </section>
+
+    <!-- HOW IT WORKS -->
+    <section id="how" class="section">
+      <div class="container">
+        <p class="eyebrow">How it works</p>
+        <h2>Three questions, answered together.</h2>
+        <div class="steps">
+          <article class="step">
+            <span class="step-q">Where to build</span>
+            <p>Search real commercial parcels, then apply pass/fail gates for nearby homes, water stress, flood exposure and zoning.</p>
+          </article>
+          <article class="step">
+            <span class="step-q">When power can arrive</span>
+            <p>Estimate grid feasibility and time to power, then model CAPEX, OPEX, NPV, payback and the cost of every month of delay.</p>
+          </article>
+          <article class="step">
+            <span class="step-q">How to run it</span>
+            <p>Choose cooling, flexibility level and an hourly workload schedule that respects deadlines, prices and grid conditions.</p>
+          </article>
+        </div>
+
+        <h3 class="sub">The analyst's workflow</h3>
+        <ol class="flow">
+          <li><strong>Create</strong><span>Capacity, region, land budget, target date, workload mix</span></li>
+          <li><strong>Discover</strong><span>Agent returns a shortlist of real parcels with sources</span></li>
+          <li><strong>Screen</strong><span>Each parcel is Pass, Fail or Needs review, with reasons</span></li>
+          <li><strong>Optimize</strong><span>Site, cooling, flexibility and schedule solved jointly</span></li>
+          <li><strong>Investigate</strong><span>Change price, water or delay and see why the answer moved</span></li>
+          <li><strong>Export</strong><span>Recommendation with financials, risks and evidence trail</span></li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- MODULES -->
+    <section id="modules" class="section section-alt">
+      <div class="container">
+        <p class="eyebrow">Core modules</p>
+        <h2>Five modules, one decision.</h2>
+        <div class="module-grid">
+          <article class="module">
+            <span class="module-num">01</span>
+            <h3>Site Intelligence</h3>
+            <p>Real CoStar parcels, Vexcel aerial imagery and hard screens for homes, water, flood and cooling compatibility.</p>
+          </article>
+          <article class="module">
+            <span class="module-num">02</span>
+            <h3>PowerReady</h3>
+            <p>Preliminary grid feasibility, time-to-power scenarios and a transparent investment model: CAPEX, OPEX, NPV, payback, cost of delay.</p>
+            <p class="fine">Actual grid capacity and connection dates require utility confirmation.</p>
+          </article>
+          <article class="module">
+            <span class="module-num">03</span>
+            <h3>Flex-to-Connect</h3>
+            <p>An optimizer that picks site, cooling, flexibility and hourly schedule together, then compares the result with a cost-first plan on the same feasible parcels.</p>
+          </article>
+          <article class="module">
+            <span class="module-num">04</span>
+            <h3>AI Intelligence</h3>
+            <p>An agent on Claude that researches, calls the optimizer, runs what-ifs and drafts reports. It explains the numbers; it never invents them.</p>
+          </article>
+          <article class="module module-wide">
+            <span class="module-num">05</span>
+            <h3>Live Digital Twin</h3>
+            <p>Real machines run the same workload under baseline and optimized schedules with measured watts. An ESP32 miniature grid replays a real ERCOT day, and a Tello EDU drone gives a live aerial view of the model site.</p>
+            <a href="#live" class="link">Watch it live →</a>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- PRINCIPLES -->
+    <section class="section">
+      <div class="container">
+        <p class="eyebrow">Principles</p>
+        <h2>Rules the product won't break.</h2>
+        <div class="principles">
+          <article><h3>Hard gates, not blended scores</h3><p>A site over the water limit or too close to homes is rejected, even if it is the cheapest. A good financial score can't buy it back.</p></article>
+          <article><h3>The optimizer decides, the AI explains</h3><p>The language model calls tools and writes the explanation. It never generates site scores, prices, capacity or results.</p></article>
+          <article><h3>Beat a realistic baseline</h3><p>We compare against the cheapest site that passes the same gates, not against an obviously bad one.</p></article>
+          <article><h3>Report what the data shows</h3><p>If real parcels rank differently than our storyline, we show the real ranking. Attributes are never edited.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <!-- LIVE DEMO -->
+    <section id="live" class="section section-alt">
+      <div class="container">
+        <p class="eyebrow">Live digital twin</p>
+        <h2>Watch the operating strategy respond.</h2>
+        <p class="section-lede">Both feeds come through a small bridge on the demo laptop. Readings from our own hardware are labeled Measured. Test data is labeled Simulated.</p>
+
+        <!-- Live Grid -->
+        <div class="grid-live">
+          <div class="panel grid-panel">
+            <div class="panel-head">
+              <h3>Live Grid</h3>
+              <span id="grid-label" class="tag">Waiting</span>
+            </div>
+            <div class="machines">
+              <div class="machine" data-machine="baseline">
+                <p class="machine-name">Baseline <span class="muted">· flat schedule</span></p>
+                <p class="watts"><span data-f="watts">—</span><small> W</small></p>
+                <svg class="spark spark-base" viewBox="0 0 120 32" preserveAspectRatio="none" aria-hidden="true"><polyline data-f="spark" points=""/></svg>
+                <div class="bar" aria-hidden="true"><span data-f="bar"></span></div>
+                <p class="machine-meta" data-f="meta">No telemetry yet</p>
+              </div>
+              <div class="machine" data-machine="optimized">
+                <p class="machine-name">SiteStar <span class="muted">· optimized schedule</span></p>
+                <p class="watts accent"><span data-f="watts">—</span><small> W</small></p>
+                <svg class="spark spark-opt" viewBox="0 0 120 32" preserveAspectRatio="none" aria-hidden="true"><polyline data-f="spark" points=""/></svg>
+                <div class="bar" aria-hidden="true"><span data-f="bar"></span></div>
+                <p class="machine-meta" data-f="meta">No telemetry yet</p>
+              </div>
+            </div>
+          </div>
+
+          <aside class="panel emergency-panel">
+            <h3>Grid event</h3>
+            <p id="grid-state" class="grid-state">Normal operation</p>
+            <button id="grid-emergency" class="ctl ctl-danger ctl-big" disabled>Trigger grid emergency</button>
+            <p class="fine">Non-critical work is deferred while critical services continue. The physical ESP32 button does the same thing.</p>
+            <p class="fine">Moving work to another hour changes cost, carbon and peak. It does not by itself reduce total energy.</p>
+          </aside>
+        </div>
+
+        <!-- Drone -->
+        <h3 class="sub">Aerial site view</h3>
+        <div class="live">
+          <div class="feed">
+            <img id="feed-img" alt="Live camera feed from the Tello EDU drone" hidden>
+            <div id="feed-offline" class="feed-offline">
+              <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M8 14h4M36 14h4M10 14a4 4 0 1 0 0 .01M38 14a4 4 0 1 0 0 .01M14 18l6 6M34 18l-6 6M18 22h12v8H18z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <p class="feed-offline-title">Drone feed offline</p>
+              <p id="feed-offline-msg">Looking for the bridge…</p>
+            </div>
+            <div class="feed-badge">
+              <span id="status-dot" class="dot"></span>
+              <span id="status-text">Offline</span>
+            </div>
+          </div>
+
+          <aside class="panel">
+            <h3>Telemetry</h3>
+            <dl class="telemetry">
+              <div><dt>Battery</dt><dd id="t-battery">—</dd></div>
+              <div><dt>Height</dt><dd id="t-height">—</dd></div>
+              <div><dt>Temp</dt><dd id="t-temp">—</dd></div>
+              <div><dt>Flight</dt><dd id="t-flight">—</dd></div>
+            </dl>
+
+            <h3>Controls</h3>
+            <div class="controls" id="controls">
+              <div class="ctl-row">
+                <button class="ctl ctl-primary" data-action="takeoff">Take off</button>
+                <button class="ctl ctl-primary" data-action="land">Land</button>
+              </div>
+              <div class="ctl-pad">
+                <button class="ctl" data-action="up" title="Up 30 cm">▲ Up</button>
+                <button class="ctl" data-action="forward" title="Forward 30 cm">Fwd</button>
+                <button class="ctl" data-action="down" title="Down 30 cm">▼ Down</button>
+                <button class="ctl" data-action="left" title="Left 30 cm">Left</button>
+                <button class="ctl" data-action="back" title="Back 30 cm">Back</button>
+                <button class="ctl" data-action="right" title="Right 30 cm">Right</button>
+                <button class="ctl" data-action="ccw" title="Rotate left 45°">⟲ 45°</button>
+                <span></span>
+                <button class="ctl" data-action="cw" title="Rotate right 45°">⟳ 45°</button>
+              </div>
+              <button class="ctl ctl-danger" data-action="emergency" title="Stops all motors immediately: the drone will drop">Emergency stop</button>
+            </div>
+            <p id="cmd-msg" class="cmd-msg" role="status" aria-live="polite"></p>
+          </aside>
+        </div>
+
+        <details class="howto">
+          <summary>How to run the live feeds</summary>
+          <ol>
+            <li>Install the bridge: <code>pip install -r bridge/requirements.txt</code></li>
+            <li>No hardware yet? <code>python bridge/server.py --mock</code> simulates both feeds.</li>
+            <li>Drone, simple setup: join the drone's <code>TELLO-XXXXXX</code> Wi-Fi, then <code>python bridge/server.py</code>.</li>
+            <li>Drone and internet at the same time: run <code>python bridge/tello_wifi.py &lt;router-ssid&gt;</code> once, then <code>python bridge/server.py --tello-ip &lt;drone-ip&gt;</code>.</li>
+            <li>Workload machines push watts to <code>POST /api/grid/telemetry</code> and read <code>GET /api/grid</code> to learn about grid events.</li>
+          </ol>
+        </details>
+      </div>
+    </section>
+
+    <!-- HONEST LIMITS -->
+    <section id="limits" class="section">
+      <div class="container">
+        <p class="eyebrow">Honest limits</p>
+        <h2>Every number says where it came from.</h2>
+        <p class="section-lede">Each figure in SiteStar carries one of five labels, and clicking it shows the source, timestamp and formula behind it.</p>
+        <dl class="labels">
+          <div><dt><span class="tag tag-measured">Measured</span></dt><dd>Read from our own sensors: device watts, workload duration, completion, response time.</dd></div>
+          <div><dt><span class="tag tag-sourced">Sourced</span></dt><dd>From a named dataset with a timestamp: CoStar price, ERCOT price, WRI water stress.</dd></div>
+          <div><dt><span class="tag tag-estimated">Estimated</span></dt><dd>Derived by a documented method: distance to homes, CO₂, modeled cost.</dd></div>
+          <div><dt><span class="tag tag-simulated">Simulated</span></dt><dd>Scenario or replay: miniature grid, diesel indicator, results scaled to 100 MW.</dd></div>
+          <div><dt><span class="tag tag-utility">Utility-confirmed</span></dt><dd>From a utility study. We expect this to be empty during the hackathon.</dd></div>
+        </dl>
+        <ul class="caveats">
+          <li>A nearby substation is not available grid capacity.</li>
+          <li>ERCOT wholesale prices are not a customer's contracted rate.</li>
+          <li>Annual emissions factors are not hourly carbon measurements.</li>
+          <li>Hardware shows how a workload responds. It does not prove a 100 MW site's interconnection or lower household bills.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- MISSION -->
+    <section class="section section-alt mission">
+      <div class="container">
+        <p class="eyebrow">Mission</p>
+        <p class="mission-text">A real property. A defensible investment model. An optimized operating strategy. A physical proof of execution.</p>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <span class="brand brand-small">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2l3.6 9.4L29 13l-7.2 6.4L24 29l-8-5-8 5 2.2-9.6L3 13l9.4-1.6z"/></svg>
+        SiteStar
+      </span>
+      <span class="muted">Built at HackPrinceton Fall 2026 · Land, power and operations, optimized together.</span>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
