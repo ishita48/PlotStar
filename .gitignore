@@ -35,3 +35,9 @@ Thumbs.db
 
 # Tello bridge: saved camera frames stay on the demo laptop
 captures/
+
+# Xcode (mobile/)
+xcuserdata/
+*.xcuserstate
+mobile/build/
+DerivedData/

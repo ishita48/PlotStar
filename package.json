@@ -11,7 +11,10 @@
     "setup": "node scripts/init-db.mjs && prisma generate && prisma db push && tsx prisma/seed.ts",
     "test": "tsx --test tests/*.test.ts",
     "test:e2e": "playwright test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "mobile:gateway": "node scripts/mobile-gateway.mjs",
+    "mobile:pair": "node scripts/mobile-gateway.mjs --pair",
+    "mobile:service": "sh scripts/mobile-service.sh"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
