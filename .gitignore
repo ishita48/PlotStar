@@ -32,3 +32,4 @@ venv/
 *.log
 .DS_Store
 Thumbs.db
+services/api/agent_workspace/notes/*

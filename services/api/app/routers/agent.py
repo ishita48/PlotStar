@@ -30,15 +30,17 @@ class ChatMsg(BaseModel):
 
 
 class ChatIn(BaseModel):
-    messages: list[ChatMsg] = Field(..., min_length=1, max_length=20)
+    messages: list[ChatMsg] = Field(default_factory=list, max_length=20)
     run_id: str | None = None
+    thread_id: str | None = Field(None, max_length=64)
+    resume: str | None = Field(None, pattern="^(approve|reject)$")
 
 
 @router.post("/agent/chat")
 def chat(q: ChatIn) -> StreamingResponse:
     """Research agent, streamed as server-sent events: plan, tool, result, answer, error."""
     def gen():
-        for ev in agent.stream_chat([m.model_dump() for m in q.messages], q.run_id):
+        for ev in agent.stream_chat([m.model_dump() for m in q.messages], q.run_id, q.thread_id, q.resume):
             yield "data: " + json.dumps(ev) + "\n\n"
 
     return StreamingResponse(gen(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})

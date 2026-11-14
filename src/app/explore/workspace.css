@@ -406,3 +406,6 @@
 .ag-input { display: flex; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--ws-line); }
 .ag-input input { flex: 1; height: 38px; border: 1px solid var(--ws-line); border-radius: 8px; padding: 0 12px; font-size: 14px; }
 .ag-input .ws-btn { height: 38px; }
+
+.ag-approve { display: flex; flex-direction: column; gap: 6px; border: 1px solid #ecdcb3; background: #fbf4e3; border-radius: 8px; padding: 10px 12px; font-size: 13px; }
+.ag-approve b { color: #7a5410; } .ag-approve div { display: flex; gap: 6px; } .ag-approve em { font-style: normal; font-weight: 600; }

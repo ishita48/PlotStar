@@ -239,9 +239,27 @@ def _sandbox_backend() -> Any:
     return _SANDBOX["backend"]
 
 
+WORKSPACE = config.REPO_ROOT / "services" / "api" / "agent_workspace"
+_AGENT: dict[str, Any] = {}
+
+
+def tool_trigger_grid_event(duration_s: float = 20) -> dict[str, Any]:
+    """Start a grid event on the live test rig at the depth the current plan relies on."""
+    from . import livegrid as L
+
+    plan = L.STATE.plan
+    depth = float(plan["d"]) if plan and plan.get("d") else 0.3
+    e = L.start_emergency(max(3.0, min(float(duration_s), 120.0)), depth, "software")
+    return {"started": e.active, "facility_depth": depth, "duration_s": duration_s, "site": plan and plan.get("site")}
+
+
 def build_agent(llm: Any) -> Any:
+    """Deep agent: planning, two sub-agents, memory + skills on a filesystem backend, a LangGraph checkpointer
+    for threads, and human approval (interrupt) before it may trigger a grid event."""
     from deepagents import create_deep_agent
+    from deepagents.backends import FilesystemBackend
     from langchain_core.tools import tool
+    from langgraph.checkpoint.memory import InMemorySaver
 
     @tool
     def get_run(run_id: str) -> str:
@@ -283,6 +301,11 @@ def build_agent(llm: Any) -> Any:
         """Climate, solar yield, households within a mile and retail power price at a point."""
         return json.dumps(tool_local_conditions(lat, lon))
 
+    @tool
+    def trigger_grid_event(duration_s: float = 20) -> str:
+        """Start a grid event on the live test machines (they cut load to the plan's depth). Needs human approval."""
+        return json.dumps(tool_trigger_grid_event(duration_s))
+
     research = [search_sites, site_detail, local_conditions]
     scenario = [get_run, run_what_if, run_optimizer, grid_day]
     subagents = [
@@ -293,20 +316,41 @@ def build_agent(llm: Any) -> Any:
          "system_prompt": "You run scenarios with the real optimizer. Always call a tool for a what-if. Report the recommended "
                           "site, 10-year cost, CO2 and whether the recommendation changed. Return a compact summary.", "tools": scenario},
     ]
-    backend, prompt = _sandbox_backend(), CHAT_SYSTEM
-    if backend is not None:
-        prompt += (" You also have a LangSmith sandbox: for analysis the tools do not cover (ranking, statistics, custom "
-                   "comparisons across sites), save tool output with write_file and run Python with execute. Say when a "
-                   "figure came from your own sandbox calculation.")
-        return create_deep_agent(model=llm, tools=research + scenario, system_prompt=prompt, subagents=subagents, backend=backend)
-    return create_deep_agent(model=llm, tools=research + scenario, system_prompt=prompt, subagents=subagents)
+    sandbox = _sandbox_backend()
+    prompt = CHAT_SYSTEM + (" You can start a grid event on the live test rig with trigger_grid_event when the user asks to "
+                            "test or demonstrate the plan; a person must approve it first.")
+    kwargs: dict[str, Any] = dict(model=llm, tools=research + scenario + [trigger_grid_event], subagents=subagents,
+                                  checkpointer=InMemorySaver(), interrupt_on={"trigger_grid_event": True})
+    if sandbox is not None:
+        prompt += (" You also have a LangSmith sandbox: for analysis the tools do not cover, save tool output with "
+                   "write_file and run Python with execute. Say when a figure came from your own sandbox calculation.")
+        kwargs["backend"] = sandbox
+    else:
+        kwargs.update(backend=FilesystemBackend(root_dir=str(WORKSPACE), virtual_mode=True),
+                      memory=["/memory/AGENTS.md"], skills=["/skills/"])
+    return create_deep_agent(system_prompt=prompt, **kwargs)
 
 
-OUR_TOOLS = {"get_run", "run_what_if", "run_optimizer", "grid_day", "search_sites", "site_detail", "local_conditions", "task", "write_todos"}
+def _agent(llm: Any) -> Any:
+    if "graph" not in _AGENT:      # one compiled graph per process so the checkpointer keeps every thread
+        _AGENT["graph"] = build_agent(llm)
+    return _AGENT["graph"]
 
 
-def stream_chat(messages: list[dict[str, str]], run_id: str | None):
-    """Yield events: plan, tool, result, answer, error. Falls back to the deterministic explainer without a model."""
+OUR_TOOLS = {"get_run", "run_what_if", "run_optimizer", "grid_day", "search_sites", "site_detail", "local_conditions",
+             "trigger_grid_event", "task", "write_todos", "write_file", "read_file", "ls"}
+QUIET = {"write_todos"}
+
+
+def stream_chat(messages: list[dict[str, str]], run_id: str | None, thread_id: str | None = None,
+                resume: str | None = None):
+    """Yield events: plan, tool, result, approval, answer, error.
+
+    thread_id keeps the conversation in the LangGraph checkpointer, so only the new message is sent each turn.
+    resume ('approve' | 'reject') continues a run paused for human approval.
+    """
+    import uuid
+
     llm, kind = _llm()
     if llm is None:
         if run_id:
@@ -318,13 +362,29 @@ def stream_chat(messages: list[dict[str, str]], run_id: str | None):
             yield {"type": "answer", "text": "No language model is configured and there is no optimizer run to explain yet.", "model": "deterministic"}
         return
     try:
-        agent = build_agent(llm)
-        msgs = list(messages)
-        if run_id and msgs:
-            msgs[-1] = {"role": "user", "content": f"(Current optimizer run_id: {run_id}.) {msgs[-1]['content']}"}
+        from langgraph.types import Command
+
+        agent = _agent(llm)
+        cfg = {"configurable": {"thread_id": thread_id or uuid.uuid4().hex}, "recursion_limit": 60}
+        if resume:
+            decision = {"type": "approve"} if resume == "approve" else {"type": "reject", "message": "The user declined. Do not retry; say it was not run."}
+            payload: Any = Command(resume={"decisions": [decision]})
+        else:
+            text = messages[-1]["content"]
+            if run_id:
+                text = f"(Current optimizer run_id: {run_id}.) {text}"
+            # with a thread the checkpointer already holds earlier turns; without one, replay what the client sent
+            payload = {"messages": [{"role": "user", "content": text}] if thread_id else [*messages[:-1], {"role": "user", "content": text}]}
         final = ""
-        for update in agent.stream({"messages": msgs}, stream_mode="updates", config={"recursion_limit": 60}):
-            for _node, delta in (update or {}).items():
+        for update in agent.stream(payload, stream_mode="updates", config=cfg):
+            for node, delta in (update or {}).items():
+                if node == "__interrupt__":
+                    actions = []
+                    for intr in delta or []:
+                        for a in (getattr(intr, "value", None) or {}).get("action_requests", []):
+                            actions.append({"name": a.get("name"), "args": a.get("args")})
+                    yield {"type": "approval", "actions": actions}
+                    return
                 if not isinstance(delta, dict):
                     continue
                 if delta.get("todos"):
@@ -333,11 +393,11 @@ def stream_chat(messages: list[dict[str, str]], run_id: str | None):
                     kind_m = m.__class__.__name__
                     if kind_m == "AIMessage":
                         for tc in getattr(m, "tool_calls", None) or []:
-                            if tc.get("name") in OUR_TOOLS and tc.get("name") != "write_todos":
+                            if tc.get("name") in OUR_TOOLS - QUIET:
                                 yield {"type": "tool", "name": tc["name"], "args": tc.get("args")}
                         if _text(m.content) and not getattr(m, "tool_calls", None):
                             final = _text(m.content)
-                    elif kind_m == "ToolMessage" and getattr(m, "name", "") in OUR_TOOLS - {"write_todos"}:
+                    elif kind_m == "ToolMessage" and getattr(m, "name", "") in OUR_TOOLS - QUIET:
                         yield {"type": "result", "name": m.name, "chars": len(_text(m.content))}
         yield {"type": "answer", "text": final or "The agent finished without an answer.", "model": kind}
     except Exception as e:
