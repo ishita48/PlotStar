@@ -29,6 +29,8 @@ export const GATE_TITLE: Record<string, string> = {
   'Flood exposure': 'Flood safe',
   'Water stress': 'Enough water',
   'Grid proximity': 'Near big power',
+  'Sensitive places': 'Away from schools and churches',
+  'Land in use': 'Land is free',
 };
 
 export function verdict(s: Pick<Site, 'screen'>): { label: string; tone: Tone; reason: string } {

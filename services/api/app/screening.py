@@ -30,6 +30,18 @@ class Thresholds:
     flood_fail_on_sfha: bool = True        # FEMA Special Flood Hazard Area (1% annual chance) fails
     max_water_stress_cat: int = 2          # WRI bws_cat: 0 Low, 1 Low-Med, 2 Med-High, 3 High, 4 Extremely high
     max_water_cooling_cat: int = 1         # water cooling only where stress is Low-Medium or better
+    min_sensitive_distance_m: float = 200.0  # schools, places of worship, hospitals, childcare; team assumption
+
+
+HOME_BUILDINGS = {"residential", "apartments", "house", "detached", "semidetached_house", "terrace", "dormitory", "bungalow"}
+SQM_PER_ACRE = 4046.86
+
+
+def _describe(tags: dict[str, Any]) -> str:
+    kind = (tags.get("amenity") or tags.get("leisure") or
+            (f"{tags['landuse']} land" if tags.get("landuse") else None) or
+            ("a building" if tags.get("building") in (None, "yes") else f"a {tags['building']} building")).replace("_", " ")
+    return f"{tags['name']} ({kind})" if tags.get("name") else kind
 
 
 @dataclass
@@ -110,10 +122,17 @@ def load_homes(market_bbox: tuple[float, float, float, float] | None) -> list[di
 
 
 def screen_parcel(parcel: dict[str, Any], homes: list[dict[str, Any]], subs: dict[str, Any] | None,
-                  t: Thresholds, *, offline: bool = False) -> Screen:
+                  t: Thresholds, *, offline: bool = False, sensitive: dict[str, Any] | None = None,
+                  land: dict[str, Any] | None = None, acres: float | None = None) -> Screen:
+    """`sensitive` is the market's schools, places of worship, hospitals and childcare (OpenStreetMap).
+    `land` is what is mapped at and around a user-chosen point; CoStar parcels are known lots and do not need it."""
     lat, lon = parcel["lat"], parcel["lon"]
     gates: list[Gate] = []
     gaps: list[str] = []
+    if land:  # CoStar listings are a sample of homes; around a free-chosen point, add every home mapped in OpenStreetMap
+        homes = homes + [{"lat": b["lat"], "lon": b["lon"], "kind": "home mapped in OpenStreetMap", "name": b.get("name"),
+                          "ref_id": b["osm_id"], "osm": True}
+                         for b in land["payload"]["buildings"] if b.get("building") in HOME_BUILDINGS]
 
     # 1. Residential proximity (hard gate) + count within one mile (noise exposure context)
     home, d_home = nearest(lat, lon, homes)
@@ -127,7 +146,51 @@ def screen_parcel(parcel: dict[str, Any], homes: list[dict[str, Any]], subs: dic
             "Residential proximity", "Pass" if ok else "Fail", round(d_home), t.min_home_distance_m, "m", "Estimated",
             f"Nearest {home['kind']} ({home['name'] or home['ref_id']}) is {round(d_home)} m away; "
             f"limit {t.min_home_distance_m:.0f} m (team assumption). Point-to-point distance; no parcel polygons.",
+            external.OSM_SOURCE if home.get("osm") else
             f"CoStar Data Extract ({home['source_file']} line {home['source_row']})"))
+
+    # 1b. Schools, places of worship, hospitals, childcare (hard gate)
+    if sensitive is None:
+        gates.append(Gate("Sensitive places", "Needs review", None, t.min_sensitive_distance_m, "m", "Unknown",
+                          "Schools, places of worship and hospitals were not retrieved for this market.", "OpenStreetMap"))
+        gaps.append("Sensitive places (schools, worship, hospitals) not retrieved")
+    else:
+        places = sensitive["payload"]["places"]
+        place, d_place = nearest(lat, lon, places)
+        if place is None:
+            gates.append(Gate("Sensitive places", "Needs review", None, t.min_sensitive_distance_m, "m", "Unknown",
+                              "No schools, places of worship or hospitals are mapped in this market.", sensitive["source"]))
+        else:
+            near = sum(1 for p in places if haversine_m(lat, lon, p["lat"], p["lon"]) <= 500)
+            gates.append(Gate(
+                "Sensitive places", "Pass" if d_place >= t.min_sensitive_distance_m else "Fail", round(d_place),
+                t.min_sensitive_distance_m, "m", "Estimated",
+                f"Nearest school, place of worship, hospital or childcare is {place['name'] or 'unnamed'} ({place['kind']}), "
+                f"{round(d_place)} m away; limit {t.min_sensitive_distance_m:.0f} m (team assumption). "
+                f"{near} such place{'s' if near != 1 else ''} within 500 m. Distance to the mapped centre of the place.",
+                sensitive["source"], sensitive["retrieved_at"]))
+
+    # 1c. A free-chosen point has no lot: is the land already built on? (hard gate)
+    if land is not None:
+        acres_ = acres or 10.0
+        site_r = math.sqrt(acres_ * SQM_PER_ACRE / math.pi)
+        inside = [b for b in land["payload"]["buildings"] if haversine_m(lat, lon, b["lat"], b["lon"]) <= site_r]
+        on = next((h for h in land["payload"]["here"] if h.get("building") or h.get("amenity") or h.get("leisure")
+                   or h.get("landuse") in ("residential", "cemetery", "retail", "commercial")), None)
+        named = sorted({_describe(b) for b in inside if b.get("name") or b.get("amenity")})[:3]
+        if on:
+            status, reason = "Fail", f"The point is on {_describe(on)}."
+        elif len(inside) > 3:
+            status, reason = "Fail", f"{len(inside)} existing buildings stand inside the site area"
+            reason += f", including {', '.join(named)}." if named else "."
+        elif inside:
+            status, reason = "Needs review", f"{len(inside)} existing building{'s' if len(inside) > 1 else ''} inside the site area."
+        else:
+            status, reason = "Pass", "No mapped buildings inside the site area."
+        gates.append(Gate(
+            "Land in use", status, len(inside), 0, "buildings", "Sourced",
+            f"{reason} Site area is an assumed {acres_:.0f} acres around the point, not a surveyed lot. "
+            "OpenStreetMap footprints can be incomplete.", land["source"], land["retrieved_at"]))
 
     # 2. Flood exposure (hard gate)
     fema = external.fema_flood_zone(lat, lon, offline=offline)
@@ -205,7 +268,8 @@ def screen_parcel(parcel: dict[str, Any], homes: list[dict[str, Any]], subs: dic
     if mw is None:
         gaps.append("Building electric service (amps) not recorded in CoStar")
 
-    hard = [g for g in gates if g.gate in ("Residential proximity", "Flood exposure", "Water stress")]
+    hard = [g for g in gates if g.gate in ("Residential proximity", "Sensitive places", "Land in use", "Flood exposure",
+                                           "Water stress")]
     status = ("Fail" if any(g.status == "Fail" for g in hard)
               else "Needs review" if any(g.status != "Pass" for g in gates) else "Pass")
     return Screen(parcel["parcel_id"], status, gates, power, gaps)

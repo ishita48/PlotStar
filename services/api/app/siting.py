@@ -71,7 +71,8 @@ def acquisition(p: dict[str, Any], market: str, median: float | None, n_priced: 
 def screen_many(market: str, parcels: list[dict[str, Any]], t: Thresholds, offline: bool) -> list[Screen]:
     homes = load_homes(external.MARKET_BBOX.get(market))
     subs = external.osm_substations(market, offline=offline)
-    return [screen_parcel(p, homes, subs, t, offline=offline) for p in parcels]
+    sens = external.osm_sensitive(market, offline=offline)
+    return [screen_parcel(p, homes, subs, t, offline=offline, sensitive=sens) for p in parcels]
 
 
 def assemble(market: str, parcels: list[dict[str, Any]], t: Thresholds, offline: bool = False,

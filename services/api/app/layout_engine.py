@@ -9,7 +9,9 @@ This is early-stage planning evidence. It is not engineering design and certifie
 """
 from __future__ import annotations
 
+import copy
 import math
+import random
 from typing import Any
 
 from . import assumptions as A
@@ -53,6 +55,24 @@ STUDIO_ASSUMPTIONS = [
     Assumption("bess_mwh_per_m2", 0.1, "MWh / m2", f"{_T}: containerised battery storage with access aisles.", verify=True),
     Assumption("bess_cost_per_mwh", 350_000, "USD / MWh", f"{_T} for installed battery storage.", verify=True),
     Assumption("solar_cost_per_kwp", 1400.0, "USD / kWp", f"{_T} for an installed solar canopy.", verify=True),
+    Assumption("multistorey_cost_premium", 0.12, "share per extra storey", f"{_T}: heavier structure, lifts and risers.", verify=True),
+    Assumption("tank_cost_per_m2", 1800.0, "USD / m2", f"{_T} for an added water tank.", verify=True),
+    Assumption("paving_cost_per_m2", 120.0, "USD / m2", f"{_T} for parking and hardstand.", verify=True),
+    Assumption("landscape_cost_per_m2", 60.0, "USD / m2", f"{_T} for a planted tree buffer.", verify=True),
+    Assumption("gatehouse_cost_per_m2", 2500.0, "USD / m2", f"{_T} for a gatehouse.", verify=True),
+    Assumption("noise_wall_cost_per_m", 1500.0, "USD / m", f"{_T} for a 6 m acoustic wall.", verify=True),
+    Assumption("noise_wall_loss_dba", 8.0, "dBA", f"{_T}: reduction counted when a noise wall stands within 20 m of the "
+               "generator yard. A real figure needs an acoustic study.", verify=True),
+    Assumption("construction_months", 18.0, "months", f"{_T}: design and build to first hall."),
+    Assumption("interconnect_base_months", 12.0, "months", "Team scenario: study and build of a grid connection next to a "
+               "substation; the utility sets the real date.", label="Simulated", verify=True),
+    Assumption("interconnect_months_per_km", 4.0, "months / km", "Team scenario: extra time per km of new line.",
+               label="Simulated", verify=True),
+    Assumption("occupancy_first_year", 0.5, "share", f"{_T}: leased share in the first year of operation."),
+    Assumption("occupancy_stabilized", 0.9, "share", f"{_T}: leased share after the first year."),
+    Assumption("analysis_years", 15.0, "years", f"{_T}: horizon for net present value; no terminal value is added."),
+    Assumption("carbon_price_per_t", 50.0, "USD / t CO2", f"{_T}: weight given to carbon when choosing which hours "
+               "flexible work runs in. It is not a cost charged to the project."),
     Assumption("max_site_coverage", 0.6, "share", f"{_T}: building plus yard may cover at most this share of the site."),
 ]
 for _a in STUDIO_ASSUMPTIONS:
@@ -64,7 +84,12 @@ STRINGS = {"N": 1.0, "N+1": 1.5, "2N": 2.0}
 RED_COST = {"N": "redundancy_cost_n", "N+1": "redundancy_cost_n1", "2N": "redundancy_cost_2n"}
 FLOOR_H = 6.0
 # outdoor items a user may add in the studio: display name and height
-ADDED = {"yard_bess": ("Battery storage", 3.0), "yard_solar": ("Solar canopy", 4.5), "yard_water": ("Water storage", 8.0)}
+ADDED = {"yard_bess": ("Battery storage", 3.0), "yard_solar": ("Solar canopy", 4.5), "yard_water": ("Water storage", 8.0),
+         "yard_parking": ("Parking", 0.1), "yard_wall": ("Noise wall", 6.0), "yard_trees": ("Tree buffer", 7.0),
+         "yard_guard": ("Gatehouse", 3.5)}
+SHARED = {"LD-01", "NOC-01", "OF-01", "MMR-A", "MMR-B", "SEC-01"}
+# ranges sampled for the NPV spread (low, high around 1.0; delay in months). Team scenario values, labeled Simulated.
+UNCERTAINTY = {"build_cost": (0.9, 1.25), "revenue": (0.8, 1.15), "energy_price": (0.7, 1.8), "delay_months": (0.0, 18.0)}
 
 
 def default_halls(mw: float) -> int:
@@ -100,6 +125,10 @@ class _Ctx:
         self.racks = int(math.ceil(self.mw * 1000.0 / self.rack_kw))
         self.per_hall = [self.racks // self.halls + (1 if i < self.racks % self.halls else 0) for i in range(self.halls)]
         self.hall_mw = self.mw / self.halls
+        self.total_halls, self.all_halls, self.max_racks, self.offset = self.halls, list(self.per_hall), max(self.per_hall), 0
+        self.levels = max(1, min(int(b.get("storeys") or 1), 3, self.halls))
+        self.halls = math.ceil(self.total_halls / self.levels)  # hall bays on one storey
+        self.per_hall = self.all_halls[:self.halls]
         self.rw, self.rd, self.pitch, self.clr, self.spine = (v("rack_width_m"), v("rack_depth_m"), v("row_pitch_m"),
                                                               v("hall_clearance_m"), v("corridor_width_m"))
         s = STRINGS[self.red]
@@ -123,26 +152,34 @@ class _Ctx:
         self.gens = n if self.red == "N" else n + 1 if self.red == "N+1" else 2 * n
         self.gens_needed = n
 
+    def level(self, lvl: int) -> "_Ctx":
+        """Context for one storey: its share of the halls, padded with empty bays so every storey has the same plan."""
+        k = copy.copy(self)
+        mine = self.all_halls[lvl * self.halls:(lvl + 1) * self.halls]
+        k.per_hall, k.offset = mine + [0] * (self.halls - len(mine)), lvl * self.halls
+        return k
+
     def hall(self, length: float) -> tuple[int, int, float] | None:
         rpr = int((length - 2 * self.clr) // self.rw)
         if rpr < 8:
             return None
-        rows = math.ceil(max(self.per_hall) / rpr)
+        rows = math.ceil(self.max_racks / rpr)
         return rpr, rows, rows * self.pitch + 2 * self.clr
 
     def hall_room(self, i: int, x: float, y: float, w: float, d: float, rpr: int, rows: int) -> dict:
-        placed, rws = self.per_hall[i], []
+        placed, rws = self.per_hall[i], []  # i is the bay on this storey
         left = placed
         for j in range(rows):
             n = min(rpr, left)
             left -= n
             rws.append(dict(x=x + self.clr, y=y + self.clr + j * self.pitch, w=rpr * self.rw, d=self.rd, n=n, cap=rpr))
+        i += self.offset
         return dict(code=f"DH-{i + 1:02d}", name=f"Data hall {i + 1}", type="data_hall", x=x, y=y, w=w, d=d,
                     racks=placed, positions=rows * rpr, mw=round(placed * self.rack_kw / 1000.0, 2), rows=rws)
 
     def tag(self, rooms: list[dict], i: int) -> list[dict]:
         for r in rooms:
-            r["code"], r["hall"] = f"{r['code']}-{i + 1}", i + 1
+            r["code"], r["hall"] = f"{r['code']}-{i + 1 + self.offset}", i + 1 + self.offset
         return rooms
 
 
@@ -162,8 +199,8 @@ def _long_halls(c: _Ctx, length: float) -> dict | None:
         y = sb + i * dh
         rooms += c.tag(_split(0, y, tw, dh, c.elec_parts, "y"), i)
         rooms.append(c.hall_room(i, tw + c.spine, y, length, dh, rpr, rows))
-        rooms.append(dict(code=f"ME-{i + 1}", name="Mechanical plant", type="mechanical", x=tw + c.spine + length, y=y,
-                          w=mc, d=dh, need_m2=c.mech_area, hall=i + 1))
+        rooms.append(dict(code=f"ME-{i + 1 + c.offset}", name="Mechanical plant", type="mechanical", x=tw + c.spine + length, y=y,
+                          w=mc, d=dh, need_m2=c.mech_area, hall=i + 1 + c.offset))
     rooms.append(dict(code="SP-01", name="Service spine", type="corridor", x=tw, y=sb, w=c.spine, d=c.halls * dh))
     return dict(w=w, d=sb + c.halls * dh, rooms=rooms)
 
@@ -183,8 +220,8 @@ def _service_bands(c: _Ctx, length: float) -> dict | None:
     rooms = _split(hw, 0, sw, d, c.shared_parts, "y")
     for i in range(c.halls):
         x = i * length
-        rooms.append(dict(code=f"ME-{i + 1}", name="Mechanical plant", type="mechanical", x=x, y=0, w=length, d=mb,
-                          need_m2=c.mech_area, hall=i + 1))
+        rooms.append(dict(code=f"ME-{i + 1 + c.offset}", name="Mechanical plant", type="mechanical", x=x, y=0, w=length, d=mb,
+                          need_m2=c.mech_area, hall=i + 1 + c.offset))
         rooms.append(c.hall_room(i, x, mb + c.spine, length, dh, rpr, rows))
         rooms += c.tag(_split(x, mb + 2 * c.spine + dh, length, eb, c.elec_parts, "x"), i)
     rooms.append(dict(code="SP-01", name="Mechanical corridor", type="corridor", x=0, y=mb, w=hw, d=c.spine))
@@ -243,6 +280,7 @@ def _best(c: _Ctx, fn, env_w: float, env_d: float) -> tuple[dict, bool]:
     while length <= max(env_w, env_d) + 0.01:
         g = fn(c, length)
         if g:
+            g["length"] = length
             area = g["w"] * g["d"]
             if g["w"] <= env_w + 1e-6 and g["d"] <= env_d + 1e-6:
                 if fit is None or area < fit[0]:
@@ -294,25 +332,92 @@ def _route(a: tuple[float, float], b: tuple[float, float]) -> tuple[list[list[fl
     return pts, abs(a[0] - b[0]) + abs(a[1] - b[1])
 
 
-def _flex_avg(series: list[float], order: list[float], share: float, mult: float) -> float:
-    """Average of `series` when `share` of the energy runs in the cheapest hours (ranked by `order`)."""
-    flat = sum(series) / len(series)
+def _flex_day(price: list[float], carbon: list[float], share: float, mult: float, cprice: float) -> tuple[float, ...]:
+    """One day. Flexible work runs in the hours with the lowest price plus carbon cost, so it cannot trade a small
+    saving for a large rise in emissions. Returns (flat price, flexed price, flat carbon, flexed carbon)."""
+    n = len(price)
+    p_flat, c_flat = sum(price) / n, sum(carbon) / n
     if share <= 0:
-        return flat
-    k = max(1, math.ceil(len(series) / max(mult, 1.0)))
-    idx = sorted(range(len(order)), key=lambda i: order[i])[:k]
-    return (1 - share) * flat + share * sum(series[i] for i in idx) / k
+        return p_flat, p_flat, c_flat, c_flat
+    k = max(1, math.ceil(n / max(mult, 1.0)))
+    idx = sorted(range(n), key=lambda i: price[i] + cprice * carbon[i] / 1000.0)[:k]
+    return (p_flat, (1 - share) * p_flat + share * sum(price[i] for i in idx) / k,
+            c_flat, (1 - share) * c_flat + share * sum(carbon[i] for i in idx) / k)
 
 
 def _gate(site: dict, name: str) -> dict | None:
     return next((g for g in (site.get("gates") or []) if g.get("gate") == name), None)
 
 
+def _gap(a: dict, b: dict) -> float:
+    """Shortest distance between two rectangles (0 when they touch or overlap)."""
+    dx = max(a["x"] - (b["x"] + b["w"]), b["x"] - (a["x"] + a["w"]), 0.0)
+    dy = max(a["y"] - (b["y"] + b["d"]), b["y"] - (a["y"] + a["d"]), 0.0)
+    return math.hypot(dx, dy)
+
+
+def _storeys(c: _Ctx, fn, length: float, rotate: bool) -> list[dict]:
+    """The same plan on every storey. Upper storeys keep the hall bays; their shared rooms become riser and storage space."""
+    rooms: list[dict] = []
+    for lvl in range(c.levels):
+        lr = fn(c.level(lvl), length)["rooms"]
+        if lvl:
+            sh = [r for r in lr if r["code"] in SHARED]
+            x0, y0 = min(r["x"] for r in sh), min(r["y"] for r in sh)
+            x1, y1 = max(r["x"] + r["w"] for r in sh), max(r["y"] + r["d"] for r in sh)
+            lr = [r for r in lr if r["code"] not in SHARED]
+            for r in lr:
+                if r.get("hall") is None and r["type"] != "data_hall":
+                    r["code"] += f"-L{lvl + 1}"
+            lr.append(dict(code=f"RS-L{lvl + 1}", name="Risers and storage", type="support", x=x0, y=y0, w=x1 - x0, d=y1 - y0))
+        empty = {int(r["code"][-2:]) for r in lr if r["type"] == "data_hall" and not r["racks"]}
+        for r in lr:
+            r["level"] = lvl
+            if r["type"] == "data_hall" and not r["racks"]:  # a bay with no racks yet is room to grow
+                r.update(type="reserve", name="Expansion hall", code=f"EX-H{r['code'][-2:]}", rows=[])
+                r.pop("mw", None)
+                r.pop("racks", None)
+            elif r.get("hall") in empty:
+                r.update(type="reserve", name="Reserved plant space")
+                r.pop("hall", None)
+        rooms += lr
+    if rotate:
+        for r in rooms:
+            r["x"], r["y"], r["w"], r["d"] = r["y"], r["x"], r["d"], r["w"]
+            for w in r.get("rows", []):
+                w["x"], w["y"], w["w"], w["d"], w["v"] = w["y"], w["x"], w["d"], w["w"], True
+    return rooms
+
+
+def _npv(v, mw: float, capex: float, land: float, energy: float, opex: float, water: float, months: float,
+         capex_x: float = 1.0, rev_x: float = 1.0, energy_x: float = 1.0) -> tuple[float, float | None]:
+    """Yearly cash flows for the analysis horizon -> (net present value, simple payback in years or None)."""
+    rate, years = v("discount_rate"), int(v("analysis_years"))
+    occ1, occ = v("occupancy_first_year"), v("occupancy_stabilized")
+    rev = mw * v("revenue_per_mw_year") * rev_x
+    flows = [-(capex * capex_x + land)]
+    for t in range(1, years + 1):
+        on = min(1.0, max(0.0, (12 * t - months) / 12))  # share of the year in operation
+        first = max(0.0, min(12 * t, months + 12) - max(12 * (t - 1), months)) / 12  # share that is first-year lease-up
+        load = first * occ1 + (on - first) * occ
+        flows.append(rev * load - (energy * energy_x + water) * load / occ - opex * on)
+    npv = sum(f / (1 + rate) ** t for t, f in enumerate(flows))
+    cum, payback = 0.0, None
+    for t, f in enumerate(flows):
+        if payback is None and t and cum < 0 <= cum + f:
+            payback = t - 1 + (-cum) / f
+        cum += f
+    return npv, payback
+
+
 def generate(brief: dict[str, Any], site: dict[str, Any], grid: dict[str, Any], priorities: dict[str, float],
              overrides: dict[str, float] | None = None, edits: dict[str, Any] | None = None) -> dict[str, Any]:
-    """`edits` holds the user's changes per concept id: {"building": {dx, dy}, "yard": {code: {x, y}}, "added": [...]}.
+    """`edits` holds the user's changes per concept id:
+    {"building": {dx, dy}, "rotate": bool, "yard": {code: {x, y}}, "added": [{code, type, x, y, w, d}]}.
     Edited geometry is measured and checked exactly like generated geometry."""
-    ov = overrides or {}
+    ov = dict(overrides or {})
+    if brief.get("rent_kw_month"):
+        ov["revenue_per_mw_year"] = float(brief["rent_kw_month"]) * 12_000.0
     c = _Ctx(brief, ov)
     v = c.v
     site_w, site_d, setback = float(brief["site_w"]), float(brief["site_d"]), float(brief.get("setback_m", 8.0))
@@ -325,11 +430,11 @@ def generate(brief: dict[str, Any], site: dict[str, Any], grid: dict[str, Any], 
     env_w = float(brief.get("env_w") or max(30.0, usable_w - yard0["w"] - gap))
     env_d = float(brief.get("env_d") or usable_d)
 
-    flex = float(brief.get("flexible_share", 0.0))
-    price, carbon = grid["price"], grid["carbon"]
-    mult = v("flex_rate_multiple")
-    p_flat, p_flex = sum(price) / len(price), _flex_avg(price, price, flex, mult)
-    c_flat, c_flex = sum(carbon) / len(carbon), _flex_avg(carbon, price, flex, mult)
+    # operation: every sourced price day, the latest carbon shape for each
+    flex, mult, cprice = float(brief.get("flexible_share", 0.0)), v("flex_rate_multiple"), v("carbon_price_per_t")
+    days = grid.get("days") or [{"date": grid.get("price_date"), "prices": grid["price"]}]
+    per_day = [_flex_day(d["prices"], grid["carbon"], flex, mult, cprice) for d in days]
+    p_flat, p_flex, c_flat, c_flex = (sum(x[i] for x in per_day) / len(per_day) for i in range(4))
     it_mwh = c.mw * v("it_load_factor") * 8760.0
     fac_mwh = it_mwh * c.pue
     water_m3 = it_mwh * 1000.0 * v(f"wue_{c.cooling}") / 1000.0
@@ -338,22 +443,26 @@ def generate(brief: dict[str, Any], site: dict[str, Any], grid: dict[str, Any], 
     homes, gridg = _gate(site, "Residential proximity"), _gate(site, "Grid proximity")
     home_m = float(homes["value"]) if homes and isinstance(homes.get("value"), (int, float)) else None
     sub_km = float(gridg["value"]) if gridg and isinstance(gridg.get("value"), (int, float)) else None
-    interconnect = (sub_km if sub_km is not None else v("default_substation_km")) * v("interconnect_cost_per_km")
+    km = sub_km if sub_km is not None else v("default_substation_km")
+    interconnect = km * v("interconnect_cost_per_km")
+    land = float(site.get("land_cost") or 0.0)
+    months = max(v("construction_months"), v("interconnect_base_months") + v("interconnect_months_per_km") * km)
 
     out = []
     for cid, name, fn, strategy in CONCEPTS:
-        g, fits = _best(c, fn, env_w, env_d)
-        bw, bd = g["w"], g["d"]
+        ed = (edits or {}).get(cid) or {}
+        rotate = bool(ed.get("rotate"))
+        g, fits = _best(c, fn, env_d if rotate else env_w, env_w if rotate else env_d)
+        bw, bd = (g["d"], g["w"]) if rotate else (g["w"], g["d"])
+        rooms = _storeys(c, fn, g["length"], rotate)
         yard = _yard(c, max(usable_d, 40.0))
         total_w = bw + gap + yard["w"]
         ox, oy = (site_w - total_w) / 2, (site_d - bd) / 2
-        ed = (edits or {}).get(cid) or {}
         yx, yy = ox + bw + gap, (site_d - min(usable_d, max(i["y"] + i["d"] for i in yard["items"]))) / 2
         ox, oy = ox + float((ed.get("building") or {}).get("dx", 0)), oy + float((ed.get("building") or {}).get("dy", 0))
-        rooms = g["rooms"]
         for r in rooms:
             r["x"], r["y"] = r["x"] + ox, r["y"] + oy
-            r["h"] = 0.15 if r["type"] == "corridor" else FLOOR_H
+            r["h"], r["z"] = (0.15 if r["type"] == "corridor" else FLOOR_H), r["level"] * FLOOR_H
             for rw in r.get("rows", []):
                 rw["x"], rw["y"] = rw["x"] + ox, rw["y"] + oy
         equipment = []
@@ -371,7 +480,7 @@ def generate(brief: dict[str, Any], site: dict[str, Any], grid: dict[str, Any], 
                  d=float(a["d"]), h=ADDED[a["type"]][1], added=True)
             for a in ed.get("added") or [] if a.get("type") in ADDED]
         halls = [r for r in rooms if r["type"] == "data_hall"]
-        by = lambda t: next(i for i in yard_items if i["type"] == t)  # noqa: E731
+        by = lambda t: next(i for i in yard_items if i["type"] == t and not i.get("added"))  # noqa: E731
         sub, gen, cool = by("yard_sub"), by("yard_gen"), by("yard_cool")
         mmr = next(r for r in rooms if r["code"] == "MMR-A")
         routes: dict[str, list] = {"power": [], "cooling": [], "data": []}
@@ -386,9 +495,12 @@ def generate(brief: dict[str, Any], site: dict[str, Any], grid: dict[str, Any], 
                     pts, ln = _route(a, b2)
                     routes[kind].append(pts)
                     lens[kind] += ln
+                lens[kind] += hl["level"] * FLOOR_H  # riser to an upper storey
 
         footprint = bw * bd
-        yard_area = sum(i["w"] * i["d"] for i in yard_items)
+        gfa = footprint * c.levels
+        area = lambda t: sum(i["w"] * i["d"] for i in yard_items if i["type"] == t and i.get("added"))  # noqa: E731
+        yard_area = sum(i["w"] * i["d"] for i in yard_items if i["type"] != "yard_trees")
         coverage = (footprint + yard_area) / (site_w * site_d)
         placed = sum(hl["racks"] for hl in halls)
         positions = sum(hl["positions"] for hl in halls)
@@ -399,25 +511,38 @@ def generate(brief: dict[str, Any], site: dict[str, Any], grid: dict[str, Any], 
         # Money
         equip = c.mw * v("capex_per_mw") * v("equipment_share_of_capex") * v(RED_COST[c.red])
         cool_capex = c.mw * v(f"cooling_capex_{c.cooling}")
-        shell = footprint * v("shell_cost_per_m2")
+        shell = gfa * v("shell_cost_per_m2") * (1 + (c.levels - 1) * v("multistorey_cost_premium"))
         distribution = lens["power"] * v("busway_cost_per_m") + lens["cooling"] * v("pipe_cost_per_m")
-        bess_mwh = sum(i["w"] * i["d"] for i in yard_items if i["type"] == "yard_bess") * v("bess_mwh_per_m2")
-        canopy_kwp = sum(i["w"] * i["d"] for i in yard_items if i["type"] == "yard_solar") * v("roof_solar_kw_per_m2")
-        added_cost = bess_mwh * v("bess_cost_per_mwh") + canopy_kwp * v("solar_cost_per_kwp")
+        bess_mwh = area("yard_bess") * v("bess_mwh_per_m2")
+        canopy_kwp = area("yard_solar") * v("roof_solar_kw_per_m2")
+        walls = [i for i in yard_items if i["type"] == "yard_wall"]
+        added_cost = (bess_mwh * v("bess_cost_per_mwh") + canopy_kwp * v("solar_cost_per_kwp")
+                      + area("yard_water") * v("tank_cost_per_m2") + area("yard_parking") * v("paving_cost_per_m2")
+                      + area("yard_trees") * v("landscape_cost_per_m2") + area("yard_guard") * v("gatehouse_cost_per_m2")
+                      + sum(max(i["w"], i["d"]) for i in walls) * v("noise_wall_cost_per_m"))
         capex = equip + cool_capex + shell + distribution + interconnect + added_cost
         energy_flat, energy_flex = fac_mwh * p_flat, fac_mwh * p_flex
         opex = c.mw * v("opex_per_mw_year")
-        ten_year = capex + 10 * (energy_flex + opex + water_cost)
+        ten_year = capex + land + 10 * (energy_flex + opex + water_cost)
+        npv, payback = _npv(v, c.mw, capex, land, energy_flex, opex, water_cost, months)
+        rng = random.Random(20261114)  # same draws for every concept so the spreads are comparable
+        u = UNCERTAINTY
+        draws = sorted(_npv(v, c.mw, capex, land, energy_flex, opex, water_cost,
+                            months + rng.triangular(u["delay_months"][0], u["delay_months"][1], u["delay_months"][0]),
+                            rng.triangular(u["build_cost"][0], u["build_cost"][1], 1.0),
+                            rng.triangular(u["revenue"][0], u["revenue"][1], 1.0),
+                            rng.triangular(u["energy_price"][0], u["energy_price"][1], 1.0))[0] for _ in range(400))
 
         # People: standby generator noise, heard only during tests and outages
         gx, gy = _c(gen)
         edge = max(1.0, min(gx, site_w - gx, gy, site_d - gy))
-        src = v("genset_dba_at_7m") + 10 * math.log10(max(1, c.gens_needed))
+        walled = any(_gap(w, gen) <= 20.0 for w in walls)
+        src = v("genset_dba_at_7m") + 10 * math.log10(max(1, c.gens_needed)) - (v("noise_wall_loss_dba") if walled else 0.0)
         noise_edge = src - 20 * math.log10(max(edge, 7.0) / 7.0)
         noise_home = src - 20 * math.log10(max(edge + home_m, 7.0) / 7.0) if home_m is not None else None
 
         # Planet
-        embodied_t = footprint * v("embodied_kgco2_per_m2") / 1000.0
+        embodied_t = gfa * v("embodied_kgco2_per_m2") / 1000.0
         solar_kwp = footprint * v("roof_solar_usable_share") * v("roof_solar_kw_per_m2") + canopy_kwp
         solar_mwh = solar_kwp * v("solar_kwh_per_kwp") / 1000.0
         co2_flat, co2_flex = fac_mwh * c_flat / 1000.0, fac_mwh * c_flex / 1000.0
@@ -429,9 +554,10 @@ def generate(brief: dict[str, Any], site: dict[str, Any], grid: dict[str, Any], 
                  if min(a["x"] + a["w"], o["x"] + o["w"]) - max(a["x"], o["x"]) > 0.05
                  and min(a["y"] + a["d"], o["y"] + o["d"]) - max(a["y"], o["y"]) > 0.05]
         gens_ok = c.gens >= c.gens_needed + (1 if c.red != "N" else 0) or c.red == "N"
+        ew, edp = (env_d, env_w) if rotate else (env_w, env_d)
         checks = [
             dict(name="Fits the building envelope", ok=fits,
-                 detail=f"Building {bw:.0f} x {bd:.0f} m in a {env_w:.0f} x {env_d:.0f} m envelope."),
+                 detail=f"Building {bw:.0f} x {bd:.0f} m in a {edp if rotate else ew:.0f} x {ew if rotate else edp:.0f} m envelope."),
             dict(name="Inside the setback", ok=margin >= setback - 1e-6,
                  detail=("Something sits outside the site boundary." if margin < 0 else
                          f"Closest point is {margin:.0f} m from the boundary; the setback is {setback:.0f} m.")),
@@ -458,23 +584,29 @@ def generate(brief: dict[str, Any], site: dict[str, Any], grid: dict[str, Any], 
                 r["need_m2"] = round(r["need_m2"], 1)
             r["area_m2"] = round(r["w"] * r["d"], 1)
         out.append(dict(
-            id=cid, name=name, strategy=strategy, feasible=all(k["ok"] for k in checks[:5]),
-            building=dict(x=round(ox, 2), y=round(oy, 2), w=round(bw, 2), d=round(bd, 2), h=FLOOR_H),
+            id=cid, name=name, strategy=strategy, feasible=all(k["ok"] for k in checks[:5]), rotated=rotate,
+            building=dict(x=round(ox, 2), y=round(oy, 2), w=round(bw, 2), d=round(bd, 2), h=FLOOR_H * c.levels,
+                          storeys=c.levels, floor_h=FLOOR_H),
             rooms=rooms, yard=[{k: (round(val, 2) if isinstance(val, float) else val) for k, val in i.items()} for i in yard_items],
             equipment=equipment, routes=routes, checks=checks,
             metrics=dict(
-                footprint_m2=round(footprint), placed_racks=placed, rack_positions=positions,
-                spare_positions=positions - placed, expansion_bay_positions=bay, hall_area_m2=round(hall_area),
-                corridor_area_m2=round(corridor_area), corridor_share=round(corridor_area / footprint, 3),
+                footprint_m2=round(footprint), gross_floor_m2=round(gfa), storeys=c.levels, placed_racks=placed,
+                rack_positions=positions, spare_positions=positions - placed, expansion_bay_positions=bay,
+                hall_area_m2=round(hall_area), corridor_area_m2=round(corridor_area), corridor_share=round(corridor_area / gfa, 3),
                 power_route_m=round(lens["power"]), cooling_route_m=round(lens["cooling"]), data_route_m=round(lens["data"]),
                 site_coverage=round(coverage, 3), yard_area_m2=round(yard_area), generators=c.gens),
             money=dict(capex=round(capex), shell=round(shell), equipment=round(equip + cool_capex),
                        distribution=round(distribution), interconnect=round(interconnect), added=round(added_cost),
+                       land=round(land), total_investment=round(capex + land),
                        energy_per_year=round(energy_flex), energy_per_year_flat=round(energy_flat),
-                       opex_per_year=round(opex), water_per_year=round(water_cost), ten_year=round(ten_year)),
+                       opex_per_year=round(opex), water_per_year=round(water_cost), ten_year=round(ten_year),
+                       revenue_per_year=round(c.mw * v("revenue_per_mw_year") * v("occupancy_stabilized")),
+                       npv=round(npv), npv_p10=round(draws[40]), npv_p50=round(draws[200]), npv_p90=round(draws[360]),
+                       payback_years=round(payback, 1) if payback is not None else None, months_to_power=round(months, 1),
+                       analysis_years=int(v("analysis_years"))),
             people=dict(noise_at_boundary_dba=round(noise_edge, 1),
                         noise_at_home_dba=round(noise_home, 1) if noise_home is not None else None,
-                        generator_to_boundary_m=round(edge), home_distance_m=home_m),
+                        generator_to_boundary_m=round(edge), home_distance_m=home_m, noise_wall=walled),
             planet=dict(co2_t_per_year=round(co2_flex), co2_t_per_year_flat=round(co2_flat), embodied_t=round(embodied_t),
                         roof_solar_kwp=round(solar_kwp), canopy_solar_kwp=round(canopy_kwp), roof_solar_mwh=round(solar_mwh),
                         roof_solar_share=round(solar_mwh / fac_mwh, 4), solar_avoided_t=round(solar_t)),
@@ -484,58 +616,97 @@ def generate(brief: dict[str, Any], site: dict[str, Any], grid: dict[str, Any], 
                            bess_minutes=round(bess_mwh / c.fac_mw * 60.0, 1)),
         ))
 
-    _score(out, priorities)
+    ranking = _score(out, priorities)
+    flex_note = None
+    if flex > 0:
+        if c_flex > c_flat + 0.05:
+            flex_note = ("Moving flexible work lowers the energy bill but raises emissions on these days: the cheapest hours "
+                         "were not the cleanest.")
+        elif p_flex > p_flat + 0.005:
+            flex_note = "Moving flexible work cuts emissions but costs slightly more on these days."
     return dict(
-        brief=dict(mw_it=c.mw, rack_kw=c.rack_kw, racks=c.racks, halls=c.halls, racks_per_hall=c.per_hall,
-                   redundancy=c.red, cooling=c.cooling, pue=c.pue, facility_mw=round(c.fac_mw, 1), generators=c.gens,
-                   site_w=site_w, site_d=site_d, setback_m=setback, env_w=round(env_w, 1), env_d=round(env_d, 1),
-                   expansion_pct=reserve * 100, flexible_share=flex),
-        concepts=out,
+        brief=dict(mw_it=c.mw, rack_kw=c.rack_kw, racks=c.racks, halls=c.total_halls, racks_per_hall=c.all_halls,
+                   storeys=c.levels, redundancy=c.red, cooling=c.cooling, pue=c.pue, facility_mw=round(c.fac_mw, 1),
+                   generators=c.gens, site_w=site_w, site_d=site_d, setback_m=setback, env_w=round(env_w, 1),
+                   env_d=round(env_d, 1), expansion_pct=reserve * 100, flexible_share=flex,
+                   rent_kw_month=round(v("revenue_per_mw_year") / 12_000.0, 1)),
+        concepts=out, ranking=ranking,
         operating=dict(price_flat=round(p_flat, 2), price_flex=round(p_flex, 2), carbon_flat=round(c_flat, 1),
                        carbon_flex=round(c_flex, 1), price_label=grid.get("price_label"),
                        carbon_label=grid.get("carbon_label"), price_source=grid.get("price_source"),
-                       carbon_source=grid.get("carbon_source"), notes=grid.get("notes", [])),
-        site=dict(home_distance_m=home_m, substation_km=sub_km, gates=site.get("gates") or [], name=site.get("name")),
+                       carbon_source=grid.get("carbon_source"), notes=grid.get("notes", []),
+                       price_days=len(days), price_dates=[d.get("date") for d in days], carbon_days=1,
+                       carbon_price_per_t=cprice, flex_note=flex_note),
+        finance=dict(discount_rate=v("discount_rate"), analysis_years=int(v("analysis_years")), uncertainty=UNCERTAINTY,
+                     draws=400, label="Simulated",
+                     note="NPV range from 400 draws over build cost, revenue, energy price and delay. Team scenario ranges."),
+        site=dict(home_distance_m=home_m, substation_km=sub_km, gates=site.get("gates") or [], name=site.get("name"),
+                  land_cost=land or None, land_label=site.get("land_label") if land else "Unknown",
+                  land_basis=site.get("land_basis") if land else "No land price for this location; land is not in the totals."),
         assumptions=[dict(key=a.key, value=A.value(a.key, ov), unit=a.unit, basis=a.basis, label=a.label, verify=a.verify)
-                     for a in STUDIO_ASSUMPTIONS],
+                     for a in STUDIO_ASSUMPTIONS]
+        + [dict(key=k, value=A.value(k, ov), unit=A.ASSUMPTIONS[k].unit, basis=A.ASSUMPTIONS[k].basis,
+                label=A.ASSUMPTIONS[k].label, verify=A.ASSUMPTIONS[k].verify)
+           for k in ("revenue_per_mw_year", "discount_rate", "capex_per_mw", "opex_per_mw_year", "interconnect_cost_per_km",
+                     "it_load_factor", "flex_rate_multiple")],
         labels=dict(geometry="Estimated", money="Estimated", people="Estimated", planet="Estimated", resources="Estimated",
-                    interconnect="Simulated"),
+                    interconnect="Simulated", npv_range="Simulated", months_to_power="Simulated"),
         note="Conceptual planning evidence computed from the brief and the listed assumptions. Not engineering design.",
     )
 
 
-def _score(concepts: list[dict], pr: dict[str, float]) -> None:
-    """Rank feasible concepts. Scores compare the three concepts with each other; they are not absolute grades."""
-    def rel(vals: list[float], lower: bool = True) -> list[float]:
-        best = min(vals) if lower else max(vals)
-        if best <= 0:
-            return [100.0 for _ in vals]
-        return [round(100.0 * (best / x if lower else x / best), 1) if x > 0 else 0.0 for x in vals]
+def _usd(n: float) -> str:
+    return f"${abs(n) / 1e9:.2f}B" if abs(n) >= 1e9 else f"${abs(n) / 1e6:.1f}M" if abs(n) >= 1e6 else f"${abs(n) / 1e3:.0f}K"
 
-    money = rel([k["money"]["ten_year"] for k in concepts])
-    nb = [k["people"]["noise_at_boundary_dba"] for k in concepts]
-    people = [round(max(0.0, 100.0 - (x - min(nb)) * 5.0), 1) for x in nb]
-    planet = rel([max(1.0, k["planet"]["embodied_t"] - k["planet"]["solar_avoided_t"]) for k in concepts])
-    land = rel([k["metrics"]["site_coverage"] for k in concepts])
-    spare = rel([float(k["resources"]["spare_positions"]) + 1 for k in concepts], lower=False)
-    w = {k: max(0.0, float(pr.get(k, 1.0))) for k in ("money", "people", "planet", "resources")}
+
+FACTS = [  # what a layout actually changes, in real units: (label, getter, lower is better, formatter)
+    ("build cost", lambda k: k["money"]["capex"], True, _usd),
+    ("room for future racks", lambda k: k["resources"]["spare_positions"], False, lambda n: f"{n:,.0f} positions"),
+    ("power route length", lambda k: k["metrics"]["power_route_m"], True, lambda n: f"{n:,.0f} m"),
+    ("building footprint", lambda k: k["metrics"]["footprint_m2"], True, lambda n: f"{n:,.0f} m2"),
+    ("generator noise at the boundary", lambda k: k["people"]["noise_at_boundary_dba"], True, lambda n: f"{n:.1f} dBA"),
+]
+
+
+def _score(concepts: list[dict], pr: dict[str, float]) -> dict[str, Any]:
+    """Rank feasible concepts. Each factor score is 100 minus how many percent (or points) worse the concept is than
+    the best of the three, in real units, so a small real difference stays a small score difference."""
+    cap = min(k["money"]["capex"] for k in concepts)
+    best_npv = max(k["money"]["npv"] for k in concepts)
+    quiet = min(k["people"]["noise_at_boundary_dba"] for k in concepts)
+    carbon = [k["planet"]["embodied_t"] + 10 * (k["planet"]["co2_t_per_year"] - k["planet"]["solar_avoided_t"]) for k in concepts]
+    spare = [k["resources"]["spare_positions"] / max(1, k["metrics"]["placed_racks"]) for k in concepts]
+    cover = [k["metrics"]["site_coverage"] for k in concepts]
+    w = {f: max(0.0, float(pr.get(f, 1.0))) for f in ("money", "people", "planet", "resources")}
     tot = sum(w.values()) or 1.0
     for i, k in enumerate(concepts):
-        res = round((land[i] + spare[i]) / 2, 1)
-        k["scores"] = dict(money=money[i], people=people[i], planet=planet[i], resources=res)
-        k["score"] = round((w["money"] * money[i] + w["people"] * people[i] + w["planet"] * planet[i] + w["resources"] * res) / tot, 1)
+        sc = dict(
+            money=100 - 100 * (best_npv - k["money"]["npv"]) / cap,
+            people=100 - 5 * (k["people"]["noise_at_boundary_dba"] - quiet),
+            planet=100 - 100 * (carbon[i] - min(carbon)) / max(1.0, min(carbon)),
+            resources=100 - 100 * (max(spare) - spare[i]) - 100 * (cover[i] - min(cover)))
+        k["scores"] = {f: round(max(0.0, x), 1) for f, x in sc.items()}
+        k["score"] = round(sum(w[f] * k["scores"][f] for f in w) / tot, 1)
     order = sorted(range(len(concepts)), key=lambda i: (not concepts[i]["feasible"], -concepts[i]["score"]))
     for rank, i in enumerate(order):
         concepts[i]["rank"] = rank + 1
-    names = {"money": "lowest 10-year cost", "people": "quietest at the boundary", "planet": "lowest net build carbon",
-             "resources": "most room to grow on the least land"}
     for k in concepts:
         others = [o for o in concepts if o is not k]
-        lead = [f for f in names if k["scores"][f] > max(o["scores"][f] for o in others) + 0.5]
-        worst = min(names, key=lambda f: k["scores"][f])
-        ties = [f for f in names if f not in lead and k["scores"][f] >= max(o["scores"][f] for o in others) - 0.5]
-        k["advantage"] = (names[lead[0]].capitalize() + " of the three.") if lead else \
-            (f"Matches the best concept on {', '.join(ties)}; leads on none." if ties else "Does not lead on any factor.")
-        weak = {"money": "ten-year cost", "people": "generator noise", "planet": "build carbon", "resources": "land use and room to grow"}[worst]
-        k["tradeoff"] = (f"Weakest on {weak}: {k['scores'][worst]:.0f} of 100 against the best concept."
-                         if k["scores"][worst] < 99 else "No material weakness against the other two.")
+        lead = trail = None
+        for label, get, lower, fmt in FACTS:
+            mine, rest = get(k), [get(o) for o in others]
+            best_other, worst_other = (min(rest), max(rest)) if lower else (max(rest), min(rest))
+            if lead is None and (mine < best_other if lower else mine > best_other):
+                lead = f"Best on {label}: {fmt(mine)} against {fmt(worst_other)} for the weakest."
+            if trail is None and (mine > worst_other if lower else mine < worst_other):
+                trail = f"Weakest on {label}: {fmt(mine)} against {fmt(best_other)} for the best."
+        k["advantage"] = lead or "Does not lead on anything measured."
+        k["tradeoff"] = trail or "Not the weakest on anything measured."
+    fit = [concepts[i] for i in order if concepts[i]["feasible"]]
+    close = len(fit) >= 2 and fit[0]["score"] - fit[1]["score"] < 1.0
+    spread = (fit[0]["score"] - fit[-1]["score"]) if fit else 0.0
+    note = ("Too close to call: the top concepts are within one point on your priorities. For this brief the layout "
+            "changes little; cooling, redundancy, storeys and how the site is run change far more. Choose on the trade-offs."
+            if close else f"Ranked by your priorities. The three are {spread:.1f} points apart.")
+    return dict(close=close, spread=round(spread, 1), note=note,
+                method="Each factor score is 100 minus the percent (or points) worse than the best of the three, in real units.")

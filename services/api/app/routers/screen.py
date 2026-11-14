@@ -56,6 +56,7 @@ class ThresholdsIn(BaseModel):
     min_substation_kv: float = Field(138, ge=0, le=765)
     max_water_stress_cat: int = Field(2, ge=0, le=4)
     max_water_cooling_cat: int = Field(1, ge=0, le=4)
+    min_sensitive_distance_m: float = Field(200, ge=0, le=5000)
 
     def to(self) -> Thresholds:
         return Thresholds(**self.model_dump())
@@ -166,7 +167,8 @@ def screen(market: str = "Houston", min_acres: float = 0, offline: bool = False)
     t = Thresholds()
     homes = load_homes(external.MARKET_BBOX.get(market))
     subs = external.osm_substations(market, offline=offline)
-    results = [screen_parcel(p, homes, subs, t, offline=offline) for p in candidate_pool(market, min_acres)]
+    sens = external.osm_sensitive(market, offline=offline)
+    results = [screen_parcel(p, homes, subs, t, offline=offline, sensitive=sens) for p in candidate_pool(market, min_acres)]
     counts = {s: sum(r.status == s for r in results) for s in ("Pass", "Needs review", "Fail")}
     return {"market": market, "thresholds": t.__dict__, "counts": counts, "results": [r.as_dict() for r in results]}
 
@@ -187,7 +189,11 @@ def evaluate_point(q: EvaluateIn) -> dict[str, Any]:
     homes = load_homes(external.MARKET_BBOX.get(q.market))
     subs = external.osm_substations(q.market)
     pid = f"pin:{q.lat:.5f},{q.lon:.5f}"
-    s = screen_parcel({"parcel_id": pid, "lat": q.lat, "lon": q.lon}, homes, subs, q.thresholds.to())
+    # a free-chosen point has no lot record, so also look at what is mapped on and around it
+    acres = q.acres or 10.0
+    reach = max((acres * 4046.86 / 3.14159) ** 0.5, q.thresholds.min_home_distance_m) + 60
+    s = screen_parcel({"parcel_id": pid, "lat": q.lat, "lon": q.lon}, homes, subs, q.thresholds.to(),
+                      sensitive=external.osm_sensitive(q.market), land=external.osm_land(q.lat, q.lon, reach), acres=acres)
     return {"id": pid, "name": q.name, "lat": q.lat, "lng": q.lon, "lotAcres": q.acres,
             "supportableMw": round(q.acres * assumptions.value("mw_per_acre"), 1) if q.acres else None,
             "source": "user", "screen": s.as_dict(),

@@ -30,6 +30,8 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
 GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY", "")
+MONGODB_URI = os.getenv("MONGODB_URI", "")
+MONGODB_DB = os.getenv("MONGODB_DB", "plotstar")
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "")
 

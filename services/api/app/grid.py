@@ -33,20 +33,17 @@ SIM_PRICE = [26, 24, 23, 23, 24, 28, 36, 42, 38, 34, 33, 35, 38, 42, 48, 58, 74,
 SIM_CARBON = [380, 370, 360, 355, 360, 390, 420, 440, 400, 350, 320, 300, 290, 300, 330, 380, 430, 470, 480, 460, 440, 420, 400, 390]
 
 
-def _fetch_dam(hub: str) -> dict[str, Any] | None:
-    try:
-        lst = httpx.get(ERCOT_LIST, timeout=30, headers={"User-Agent": USER_AGENT}).json()
-        docs = [d["Document"] for d in lst.get("ListDocsByRptTypeRes", {}).get("DocumentList", [])]
-        csvs = [d for d in docs if "csv" in d.get("FriendlyName", "").lower()]
-        if not csvs:
-            return None
-        doc = csvs[0]
-        z = httpx.get(ERCOT_DL.format(doc_id=doc["DocID"]), timeout=60, headers={"User-Agent": USER_AGENT})
-        z.raise_for_status()
-        zf = zipfile.ZipFile(io.BytesIO(z.content))
-        rows = list(csv.DictReader(io.TextIOWrapper(zf.open(zf.namelist()[0]), encoding="utf-8")))
-    except (httpx.HTTPError, ValueError, KeyError, zipfile.BadZipFile, IndexError):
-        return None
+def _dam_docs() -> list[dict[str, Any]]:
+    lst = httpx.get(ERCOT_LIST, timeout=30, headers={"User-Agent": USER_AGENT}).json()
+    docs = [d["Document"] for d in lst.get("ListDocsByRptTypeRes", {}).get("DocumentList", [])]
+    return [d for d in docs if "csv" in d.get("FriendlyName", "").lower()]
+
+
+def _dam_doc(doc: dict[str, Any], hub: str) -> dict[str, Any] | None:
+    z = httpx.get(ERCOT_DL.format(doc_id=doc["DocID"]), timeout=60, headers={"User-Agent": USER_AGENT})
+    z.raise_for_status()
+    zf = zipfile.ZipFile(io.BytesIO(z.content))
+    rows = list(csv.DictReader(io.TextIOWrapper(zf.open(zf.namelist()[0]), encoding="utf-8")))
     hub_rows = [r for r in rows if r.get("SettlementPoint") == hub and r.get("DSTFlag", "N") == "N"]
     if len(hub_rows) < 24:
         return None
@@ -54,6 +51,43 @@ def _fetch_dam(hub: str) -> dict[str, Any] | None:
     prices = [float(r["SettlementPointPrice"]) for r in hub_rows[:24]]
     return {"date": hub_rows[0]["DeliveryDate"], "hub": hub, "prices": prices,
             "doc_id": doc["DocID"], "published": doc.get("PublishDate")}
+
+
+def _fetch_dam(hub: str) -> dict[str, Any] | None:
+    try:
+        csvs = _dam_docs()
+        return _dam_doc(csvs[0], hub) if csvs else None
+    except (httpx.HTTPError, ValueError, KeyError, zipfile.BadZipFile, IndexError):
+        return None
+
+
+def dam_days(n: int = 7, hub: str = HUB, *, offline: bool = False) -> dict[str, Any] | None:
+    """The most recent delivery days of day-ahead prices (up to n). Days already cached are not downloaded again."""
+    key = f"ercot-dam:{hub}:days"
+    hit = _cached(key)
+    if offline:
+        return hit
+    have = {d["doc_id"]: d for d in (hit["payload"]["days"] if hit else [])}
+    try:
+        docs = _dam_docs()[:n]
+    except (httpx.HTTPError, ValueError, KeyError):
+        return hit
+    days, changed = [], False
+    for doc in docs:
+        if doc["DocID"] in have:
+            days.append(have[doc["DocID"]])
+            continue
+        try:
+            day = _dam_doc(doc, hub)
+        except (httpx.HTTPError, ValueError, KeyError, zipfile.BadZipFile, IndexError):
+            day = None
+        if day:
+            days.append(day)
+            changed = True
+    if not days or not changed:
+        return hit
+    days.sort(key=lambda d: d["date"][6:] + d["date"][:5])  # MM/DD/YYYY -> sortable
+    return _store(key, "ERCOT Day-Ahead Market Settlement Point Prices (report 12331)", ERCOT_LIST, {"hub": hub, "days": days})
 
 
 def day_ahead_prices(hub: str = HUB, *, offline: bool = False) -> dict[str, Any] | None:

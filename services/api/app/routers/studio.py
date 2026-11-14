@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import math
 import re
+import threading
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
@@ -15,7 +16,7 @@ import httpx
 from pydantic import BaseModel, Field
 
 from .. import assumptions as A
-from .. import config, grid, layout_engine
+from .. import config, grid, layout_engine, store
 
 router = APIRouter(tags=["studio"])
 
@@ -34,6 +35,8 @@ class Brief(BaseModel):
     env_d: float | None = Field(None, ge=20, le=5000)
     expansion_pct: float = Field(10, ge=0, le=80)
     flexible_share: float = Field(0, ge=0, le=0.6)
+    storeys: int = Field(1, ge=1, le=3)
+    rent_kw_month: float | None = Field(None, ge=20, le=600)
 
 
 class SiteIn(BaseModel):
@@ -42,6 +45,9 @@ class SiteIn(BaseModel):
     lat: float | None = Field(None, ge=-90, le=90)
     lon: float | None = Field(None, ge=-180, le=180)
     gates: list[dict[str, Any]] = Field(default_factory=list, max_length=12)
+    land_cost: float | None = Field(None, ge=0, le=5e9)
+    land_label: str | None = Field(None, max_length=20)
+    land_basis: str | None = Field(None, max_length=200)
 
 
 class Offset(BaseModel):
@@ -56,13 +62,14 @@ class Pos(BaseModel):
 
 class Added(Pos):
     code: str = Field(..., max_length=24, pattern=r"^[A-Za-z0-9-]+$")
-    type: Literal["yard_bess", "yard_solar", "yard_water"]
-    w: float = Field(..., ge=4, le=600)
-    d: float = Field(..., ge=4, le=600)
+    type: Literal["yard_bess", "yard_solar", "yard_water", "yard_parking", "yard_wall", "yard_trees", "yard_guard"]
+    w: float = Field(..., ge=1, le=800)
+    d: float = Field(..., ge=1, le=800)
 
 
 class ConceptEdit(BaseModel):
     building: Offset = Field(default_factory=Offset)
+    rotate: bool = False
     yard: dict[str, Pos] = Field(default_factory=dict)
     added: list[Added] = Field(default_factory=list, max_length=24)
 
@@ -75,13 +82,34 @@ class GenerateIn(BaseModel):
     assumptions: dict[str, float] = Field(default_factory=dict)
 
 
+_refreshing = False
+
+
+def _grid() -> dict[str, Any]:
+    """The cached grid day plus every cached price day. The first call starts one background fetch of recent days."""
+    global _refreshing
+    out = grid.grid_day(offline=True)
+    hit = grid.dam_days(offline=True)
+    days = hit["payload"]["days"] if hit else []
+    if len(days) < 7 and not _refreshing:
+        _refreshing = True
+        threading.Thread(target=lambda: grid.dam_days(7), daemon=True).start()
+    if days:
+        out["days"] = days
+        out["price_label"] = "Sourced"
+        out["price_source"] = (f"{hit['source']}, {len(days)} delivery days {days[0]['date']} to {days[-1]['date']}, "
+                               f"retrieved {hit['retrieved_at']}")
+        out["notes"] = [*out.get("notes", []), "Hourly carbon uses the latest fuel-mix day for every price day."]
+    return out
+
+
 @router.post("/studio/generate")
 def generate(q: GenerateIn) -> dict[str, Any]:
     bad = [k for k in q.assumptions if k not in A.ASSUMPTIONS]
     if bad:
         raise HTTPException(422, f"Unknown assumption keys: {', '.join(bad)}")
     try:
-        return layout_engine.generate(q.brief.model_dump(), q.site.model_dump(), grid.grid_day(offline=True),
+        return layout_engine.generate(q.brief.model_dump(), q.site.model_dump(), _grid(),
                                       q.priorities, q.assumptions, {k: e.model_dump() for k, e in q.edits.items()})
     except ValueError as e:
         raise HTTPException(422, str(e)) from e
@@ -158,3 +186,57 @@ def explain(q: ExplainIn) -> dict[str, Any]:
     return dict(text=text, model=config.GEMINI_MODEL, facts=facts,
                 written_by=f"Written by Google Gemini ({config.GEMINI_MODEL}) from the computed numbers; "
                            "every figure was checked against them.")
+
+
+class ProjectIn(BaseModel):
+    """A saved Studio project. The analysis is not stored: it is recomputed from the brief, site and edits."""
+    name: str = Field(..., max_length=120)
+    market: str = Field(..., max_length=40)
+    mw_it: float = Field(..., gt=0, le=500)
+    status: Literal["draft", "generated", "decided"] = "draft"
+    site: dict[str, Any] = Field(default_factory=dict)
+    brief: dict[str, Any] = Field(default_factory=dict)
+    priorities: dict[str, float] = Field(default_factory=dict)
+    edits: dict[str, Any] = Field(default_factory=dict)
+    preferred: str | None = Field(None, max_length=40)
+    reasons: str = Field("", max_length=1200)
+    decided_by: str = Field("", max_length=80)
+    decided_at: str | None = Field(None, max_length=40)
+    summary: dict[str, Any] = Field(default_factory=dict)
+
+
+def _need(value: Any) -> Any:
+    if value is None:
+        raise HTTPException(503, store.status()["reason"] or "Project storage is not available.")
+    return value
+
+
+@router.get("/studio/store")
+def store_status() -> dict[str, Any]:
+    return store.status()
+
+
+@router.get("/studio/projects")
+def projects() -> dict[str, Any]:
+    return {"projects": _need(store.listing())}
+
+
+@router.put("/studio/projects/{project_id}")
+def save_project(project_id: str, q: ProjectIn) -> dict[str, Any]:
+    if not re.fullmatch(r"[A-Za-z0-9_-]{6,40}", project_id):
+        raise HTTPException(422, "Invalid project id")
+    return _need(store.save(project_id, q.model_dump()))
+
+
+@router.get("/studio/projects/{project_id}")
+def load_project(project_id: str) -> dict[str, Any]:
+    _need(store.listing(1))
+    found = store.get(project_id)
+    if not found:
+        raise HTTPException(404, "No such project")
+    return found
+
+
+@router.delete("/studio/projects/{project_id}")
+def delete_project(project_id: str) -> dict[str, Any]:
+    return {"deleted": _need(store.delete(project_id))}

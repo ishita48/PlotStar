@@ -127,3 +127,70 @@ def test_added_battery_and_solar_change_cost_and_capacity():
     assert add["money"]["capex"] == pytest.approx(base["money"]["capex"] + add["money"]["added"], abs=3)
     assert {"BESS-1", "PV-1"} <= {y["code"] for y in add["yard"]}
     assert all(k["ok"] for k in add["checks"][:5])
+
+
+def test_storeys_stack_the_same_plan_and_keep_every_rack():
+    one, two = run()["concepts"], run(storeys=2)["concepts"]
+    for a, b in zip(one, two):
+        assert b["metrics"]["placed_racks"] == 1000 and b["metrics"]["storeys"] == 2
+        assert b["metrics"]["footprint_m2"] < a["metrics"]["footprint_m2"] * 0.75
+        assert b["metrics"]["gross_floor_m2"] == pytest.approx(2 * b["metrics"]["footprint_m2"], abs=2)
+        assert {r["level"] for r in b["rooms"]} == {0, 1}
+        assert len({r["code"] for r in b["rooms"]}) == len(b["rooms"])
+        assert b["feasible"], b["checks"]
+    odd = run(mw_it=15, storeys=2)["concepts"][0]  # 3 halls on 2 storeys: one empty bay kept for growth
+    assert odd["metrics"]["placed_racks"] == 750
+    assert any(r["type"] == "reserve" and r["name"] == "Expansion hall" for r in odd["rooms"])
+
+
+def test_rotating_the_building_swaps_its_sides():
+    a = run()["concepts"][0]
+    b = edited({"long-halls": {"rotate": True}})
+    assert (b["building"]["w"], b["building"]["d"]) == pytest.approx((a["building"]["d"], a["building"]["w"]), abs=0.01)
+    assert b["metrics"]["placed_racks"] == 1000
+    hall = next(r for r in b["rooms"] if r["type"] == "data_hall")
+    assert all(w["v"] and w["x"] >= hall["x"] and w["y"] + w["d"] <= hall["y"] + hall["d"] + 0.05 for w in hall["rows"])
+
+
+def test_finance_follows_rent_land_and_distance_to_power():
+    base = run()["concepts"][0]["money"]
+    assert base["npv_p10"] <= base["npv_p50"] <= base["npv_p90"]
+    rich = run(rent_kw_month=220)["concepts"][0]["money"]
+    assert rich["npv"] > base["npv"] and rich["revenue_per_year"] > base["revenue_per_year"]
+    assert rich["payback_years"] is not None and (base["payback_years"] is None or rich["payback_years"] < base["payback_years"])
+    landed = L.generate(brief(), {**SITE, "land_cost": 5e6, "land_label": "Sourced"}, GRID, {})
+    assert landed["concepts"][0]["money"]["land"] == 5e6 and landed["site"]["land_label"] == "Sourced"
+    assert landed["concepts"][0]["money"]["npv"] == pytest.approx(base["npv"] - 5e6, abs=5)
+    assert run()["site"]["land_label"] == "Unknown"
+    far = L.generate(brief(), {"gates": [{"gate": "Grid proximity", "value": 9.0}]}, GRID, {})["concepts"][0]["money"]
+    assert far["months_to_power"] > base["months_to_power"] and far["npv"] < base["npv"]
+
+
+def test_ranking_keeps_small_real_differences_small():
+    r = run()
+    for c in r["concepts"]:
+        assert all(s >= 90 for s in c["scores"].values()), c["scores"]
+    assert r["ranking"]["spread"] < 6
+    assert isinstance(r["ranking"]["close"], bool) and r["ranking"]["note"]
+
+
+def test_flexible_hours_weigh_carbon_as_well_as_price():
+    price = [20.0] * 12 + [21.0] * 12       # first half slightly cheaper...
+    carbon = [900.0] * 12 + [100.0] * 12    # ...but far dirtier
+    r = L.generate(brief(flexible_share=0.3), SITE, {"price": price, "carbon": carbon}, {})
+    assert r["operating"]["carbon_flex"] < r["operating"]["carbon_flat"]
+    days = L.generate(brief(flexible_share=0.3), SITE, {**GRID, "days": [{"date": "a", "prices": GRID["price"]}, {"date": "b", "prices": [50.0] * 24}]}, {})
+    assert days["operating"]["price_days"] == 2
+    assert days["operating"]["price_flat"] == pytest.approx((sum(GRID["price"]) / 24 + 50) / 2, abs=0.01)
+
+
+def test_a_noise_wall_and_other_added_items_count():
+    base = run()["concepts"][0]
+    gen = next(y for y in base["yard"] if y["type"] == "yard_gen")
+    wall = edited({"long-halls": {"added": [{"code": "WALL-1", "type": "yard_wall", "x": gen["x"] + gen["w"] + 2, "y": gen["y"], "w": 1, "d": 40}]}})
+    assert wall["people"]["noise_wall"] and wall["people"]["noise_at_boundary_dba"] == pytest.approx(base["people"]["noise_at_boundary_dba"] - 8, abs=0.11)
+    assert wall["money"]["added"] == 40 * 1500
+    far_wall = edited({"long-halls": {"added": [{"code": "WALL-1", "type": "yard_wall", "x": 10, "y": 10, "w": 1, "d": 40}]}})
+    assert not far_wall["people"]["noise_wall"]
+    tank = edited({"long-halls": {"added": [{"code": "TANK-1", "type": "yard_water", "x": 12, "y": 12, "w": 10, "d": 10}]}})
+    assert tank["money"]["added"] == 100 * 1800
