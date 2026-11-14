@@ -8,7 +8,7 @@ import {
   ConversationProvider, useConversationClientTool, useConversationControls, useConversationMode, useConversationStatus,
   type MessagePayload,
 } from '@elevenlabs/react';
-import { AudioLines, Check, Loader2, Mic, MicOff, PhoneOff, Send, X } from 'lucide-react';
+import { AudioLines, Check, Loader2, Maximize2, Mic, MicOff, Minimize2, PhoneOff, Send, X } from 'lucide-react';
 import { PUBLIC_DATA_API } from '@/lib/plotstar-api';
 import type { BriefPatch } from '../copilot';
 import { Screen, realClick } from './screen';
@@ -22,6 +22,7 @@ interface Props {
   onApply: (patch: BriefPatch) => void;
 }
 type Line = { who: 'you' | 'guide'; text: string };
+const POS_KEY = 'plotstar-guide-pos';
 type Pointer = { x: number; y: number; w: number; h: number; caption: string; click: boolean } | null;
 interface CopilotRun { answer: string; planned_by: string; tools: { name: string; ok: boolean; ms: number }[]; ms: number;
   proposal: { patch: BriefPatch; consequences: { concept: string; changed: { metric: string; before_text: string; after_text: string }[] } } | null }
@@ -47,6 +48,12 @@ function GuideInner({ body, conceptId, selected, stage, market, hasSite, onApply
   const [proposal, setProposal] = useState<CopilotRun['proposal']>(null);
   const [applied, setApplied] = useState(false);
   const [level, setLevel] = useState(0);
+  // compact: shrink to a pill whenever the user works elsewhere on the page, so form fields stay reachable
+  const [compact, setCompact] = useState(false);
+  const [off, setOff] = useState<{ x: number; y: number }>(() => {
+    try { const v = JSON.parse(localStorage.getItem(POS_KEY) || 'null'); return v && Number.isFinite(v.x) && Number.isFinite(v.y) ? v : { x: 0, y: 0 }; } catch { return { x: 0, y: 0 }; }
+  });
+  const drag = useRef<{ sx: number; sy: number; ox: number; oy: number; moved: boolean } | null>(null);
   const screen = useRef(new Screen(() => document.querySelector('.st') ?? document));
   const pointed = useRef<Element | null>(null);
   const lastRun = useRef<CopilotRun | null>(null);
@@ -79,6 +86,37 @@ function GuideInner({ body, conceptId, selected, stage, market, hasSite, onApply
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [live, isSpeaking, getInputVolume, getOutputVolume]);
+
+  // collapse while the user works elsewhere; expand again for things that need their attention
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: Event) => { if (!(e.target as Element | null)?.closest?.('[data-guide-ui]')) setCompact(true); };
+    document.addEventListener('pointerdown', away, true);
+    document.addEventListener('focusin', away, true);
+    return () => { document.removeEventListener('pointerdown', away, true); document.removeEventListener('focusin', away, true); };
+  }, [open]);
+  useEffect(() => { if (proposal || error) setCompact(false); }, [proposal, error]);
+
+  // drag by the header (or the pill); the position is remembered in this browser only
+  function onDragStart(e: React.PointerEvent) {
+    if ((e.target as Element).closest('button, input, a')) return;
+    drag.current = { sx: e.clientX, sy: e.clientY, ox: off.x, oy: off.y, moved: false };
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+  }
+  function onDragMove(e: React.PointerEvent) {
+    const d = drag.current;
+    if (!d) return;
+    const dx = e.clientX - d.sx, dy = e.clientY - d.sy;
+    if (Math.abs(dx) + Math.abs(dy) > 3) d.moved = true;
+    setOff({ x: Math.max(-innerWidth + 260, Math.min(160, d.ox + dx)), y: Math.max(-innerHeight + 200, Math.min(60, d.oy + dy)) });
+  }
+  function onDragEnd() {
+    const moved = drag.current?.moved;
+    drag.current = null;
+    if (moved) { try { localStorage.setItem(POS_KEY, JSON.stringify(off)); } catch { /* storage unavailable */ } }
+    return moved;
+  }
+  const place = { transform: `translate(${off.x}px, ${off.y}px)` };
 
   // keep the agent aware of where the user is
   useEffect(() => {
@@ -178,7 +216,7 @@ function GuideInner({ body, conceptId, selected, stage, market, hasSite, onApply
       setError(msg.includes('fetch') ? `Can't reach the PlotStar API at ${PUBLIC_DATA_API}.` : msg);
     }
   }
-  function stop() { endSession(); setOpen(false); setPointer(null); }
+  function stop() { endSession(); setOpen(false); setPointer(null); setCompact(false); }
   function send(e: React.FormEvent) { e.preventDefault(); if (typed.trim() && live) { sendUserMessage(typed.trim()); setLines((l) => [...l.slice(-5), { who: 'you', text: typed.trim() }]); setTyped(''); } }
 
   const label = status === 'connecting' ? 'Connecting…' : !live ? 'Talk to PlotStar' : isSpeaking ? 'Speaking' : muted ? 'Muted' : 'Listening';
@@ -200,12 +238,25 @@ function GuideInner({ body, conceptId, selected, stage, market, hasSite, onApply
           <AudioLines size={16} /> Talk to PlotStar
         </button>
       ) : (
-        <section className={s.panel} data-guide-ui aria-label="PlotStar voice guide">
-          <div className={s.top}>
+        compact ? (
+        <section className={s.pill} data-guide-ui aria-label="PlotStar voice guide, collapsed" style={place}
+          onPointerDown={onDragStart} onPointerMove={onDragMove} onPointerUp={(e) => { if (!onDragEnd() && !(e.target as Element).closest('button')) setCompact(false); }}>
+          <div className={`${s.orb} ${s.orbSmall} ${isSpeaking ? s.speaking : ''}`} style={{ ['--lvl' as string]: level }}>
+            {status === 'connecting' ? <Loader2 size={14} className={s.spin} /> : <AudioLines size={14} />}
+          </div>
+          <div className={s.pillText}><b>{label}</b><span>{[...lines].reverse().find((l) => l.who === 'guide')?.text ?? 'PlotStar guide'}</span></div>
+          <button className={s.icon} onClick={() => setCompact(false)} aria-label="Expand the guide"><Maximize2 size={14} /></button>
+          {live && <button className={s.icon} onClick={() => setMuted(!muted)} aria-label={muted ? 'Unmute microphone' : 'Mute microphone'}>{muted ? <MicOff size={14} /> : <Mic size={14} />}</button>}
+          <button className={s.icon} onClick={stop} aria-label="End the conversation">{live ? <PhoneOff size={14} /> : <X size={14} />}</button>
+        </section>
+        ) : (
+        <section className={s.panel} data-guide-ui aria-label="PlotStar voice guide" style={place}>
+          <div className={`${s.top} ${s.handle}`} onPointerDown={onDragStart} onPointerMove={onDragMove} onPointerUp={onDragEnd} title="Drag to move">
             <div className={`${s.orb} ${isSpeaking ? s.speaking : ''}`} style={{ ['--lvl' as string]: level }}>
               {status === 'connecting' ? <Loader2 size={16} className={s.spin} /> : <AudioLines size={16} />}
             </div>
             <div className={s.state}><b>{label}</b><span>PlotStar guide · ElevenLabs voice</span></div>
+            <button className={s.icon} onClick={() => setCompact(true)} aria-label="Collapse the guide"><Minimize2 size={15} /></button>
             {live && <button className={s.icon} onClick={() => setMuted(!muted)} aria-label={muted ? 'Unmute microphone' : 'Mute microphone'}>{muted ? <MicOff size={15} /> : <Mic size={15} />}</button>}
             <button className={s.icon} onClick={stop} aria-label="End the conversation">{live ? <PhoneOff size={15} /> : <X size={15} />}</button>
           </div>
@@ -230,6 +281,7 @@ function GuideInner({ body, conceptId, selected, stage, market, hasSite, onApply
             </form>
           )}
         </section>
+        )
       )}
     </>
   );
