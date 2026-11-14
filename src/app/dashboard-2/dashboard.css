@@ -486,6 +486,44 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 11px;
 }
+.d2-concept {
+  margin: 14px 0 0;
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid rgba(75, 82, 100, 0.14);
+  background: linear-gradient(180deg, #f7f5f0 0%, #ece9e1 100%);
+}
+.d2-concept-canvas {
+  position: relative;
+  height: clamp(240px, 38vw, 360px);
+  cursor: grab;
+  touch-action: none;
+}
+.d2-concept-canvas:active {
+  cursor: grabbing;
+}
+.d2-concept-status {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  color: #6b7183;
+}
+.d2-concept figcaption {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 16px 12px;
+  font-size: 12px;
+  color: #6b7183;
+  border-top: 1px solid rgba(75, 82, 100, 0.1);
+}
+.d2-concept figcaption b {
+  color: #2b3142;
+  font-weight: 600;
+}
 .d2-type-card {
   min-width: 0;
   display: flex;

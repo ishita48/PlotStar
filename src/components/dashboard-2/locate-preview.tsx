@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, type Ref } from 'react';
+import { Component, useState, type ReactNode, type Ref } from 'react';
+import dynamic from 'next/dynamic';
 import {
   ArrowLeft,
   ArrowRight,
@@ -26,6 +27,43 @@ import {
 } from './sample-data';
 
 type HeadingRef = { headingRef: Ref<HTMLHeadingElement> };
+
+const ConceptModel = dynamic(() => import('./concepts/concept-model'), {
+  ssr: false,
+  loading: () => <div className="d2-concept-status">Sketching the concept…</div>,
+});
+
+class ConceptBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    return this.state.failed ? (
+      <div className="d2-concept-status">3D preview unavailable in this browser.</div>
+    ) : (
+      this.props.children
+    );
+  }
+}
+
+/** Illustrative 3D sketch of the selected project type, not a replica of a real site. */
+function ConceptPreview({ type }: { type: PreviewProjectType }) {
+  const project = sampleProjectTypes.find((p) => p.id === type)!;
+  return (
+    <figure className="d2-concept" aria-label={`${project.label} concept sketch, drag to orbit`}>
+      <div className="d2-concept-canvas">
+        <ConceptBoundary key={type}>
+          <ConceptModel type={type} />
+        </ConceptBoundary>
+      </div>
+      <figcaption>
+        <b>{project.label}</b>
+        <span>Concept sketch · drag to orbit, scroll to zoom</span>
+      </figcaption>
+    </figure>
+  );
+}
 
 export function DescribePreview({
   type,
@@ -94,6 +132,7 @@ export function DescribePreview({
               </label>
             ))}
           </div>
+          <ConceptPreview type={type} />
         </fieldset>
         <label className="d2-city-field">
           <span>Where are you thinking?</span>
