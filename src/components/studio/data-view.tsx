@@ -197,7 +197,7 @@ export function DataView() {
               <ul className="dt-hits">{search.hits.map((h) => (
                 <li key={h.parcel_id} onClick={() => doNear(h)} title="Click: what else is near this parcel">
                   <b>{nm(h)}</b><span>{addr(h) || <code>{h.parcel_id}</code>}</span>
-                  <small>{facts(h)} · <em className={`dt-st dt-st-${h.screen_status.replace(/\s/g, '')}`}>{h.screen_status}</em> · score {h.score.toFixed(2)}</small>
+                  <small>{facts(h)} · <em className={`dt-st dt-st-${h.screen_status.replace(/\s/g, '')}`}>{h.screen_status}</em>{h.score > 0 ? ` · score ${h.score.toFixed(2)}` : ''}</small>
                 </li>))}</ul>
               <div className="dt-facets">{Object.entries(search.facets).map(([k, v]) => (
                 <div key={k}><small>{k.replace('_', ' ')}</small>{v.map((b) => <span key={b._id} className="dt-chip static">{b._id} <b>{b.count}</b></span>)}</div>))}
