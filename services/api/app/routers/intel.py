@@ -6,6 +6,9 @@ GET  /mcp/audit                   recent tool calls from every surface (MCP, cop
 GET  /deal-room                   saved comp selections, scenarios and analyses (?parcel_id=&project_id=)
 POST /deal-room                   save a comp selection or scenario (body: {kind, parcel_id, project_id, payload, confirm})
 POST /deal/run                    Deal-to-Design: criteria → ranked, sourced shortlist + memo + timeline
+GET  /deal/runs, /deal/runs/{id}  saved runs (summaries from Atlas; the full result from the local store)
+POST /deal-room/notes             save an inspection note for a property
+GET  /mongo/status                what PlotStar keeps in MongoDB, the batch writer's counters, the data rule
 """
 from __future__ import annotations
 
@@ -15,7 +18,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Body, HTTPException
 from pydantic import BaseModel, Field
 
-from .. import deal_agent, deal_room
+from .. import deal_agent, deal_room, mongo
 from ..costar import tools as T
 
 router = APIRouter(tags=["intel"])
@@ -86,3 +89,38 @@ class DealIn(BaseModel):
 @router.post("/deal/run")
 def deal_run(q: DealIn) -> dict[str, Any]:
     return deal_agent.run(q.model_dump())
+
+
+@router.get("/deal/runs")
+def deal_runs(limit: int = 20) -> dict[str, Any]:
+    return {"runs": deal_room.deal_runs(max(1, min(100, limit)))}
+
+
+@router.get("/deal/runs/{run_id}")
+def deal_run(run_id: str) -> dict[str, Any]:
+    r = deal_room.deal_run(run_id)
+    if r is None:
+        raise HTTPException(404, "No such run on this machine")
+    return r
+
+
+class NoteIn(BaseModel):
+    parcel_id: str | None = Field(None, max_length=60)
+    project_id: str | None = Field(None, max_length=60)
+    note: str = Field(..., min_length=1, max_length=4000)
+    author: str = Field("", max_length=80)
+
+
+@router.post("/deal-room/notes")
+def save_note(q: NoteIn) -> dict[str, Any]:
+    try:
+        return deal_room.save_note(q.parcel_id, q.project_id, q.note, q.author)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+
+
+@router.get("/mongo/status")
+def mongo_status() -> dict[str, Any]:
+    from .. import copilot
+    return {**mongo.status(), "copilot_memory": copilot.MEMORY["backend"] or "starts on the first question",
+            "deal_room": deal_room.status()}

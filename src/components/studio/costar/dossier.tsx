@@ -133,11 +133,20 @@ function CompsTab({ id, onUse }: { id: string; onUse?: (v: number, l: string, b:
   const api = useApi<CompsResp>(`/costar/land/${encodeURIComponent(id)}`, `/costar/comps/${encodeURIComponent(id)}`);
   const [confirm, setConfirm] = useState(false);
   const [used, setUsed] = useState(false);
+  const [kept, setKept] = useState<'idle' | 'saved' | 'error'>('idle');
+  async function keepSelection(d: CompsResp) {
+    try {
+      const r = await fetch(`${PUBLIC_DATA_API}/deal-room`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: 'comp_selection', parcel_id: id, confirm: true,
+          payload: { excluded: (d.excluded ?? d.comps.filter((c) => c.excluded).map((c) => c.comp_id)).map(String), basis: d.basis } }) });
+      setKept(r.ok ? 'saved' : 'error');
+    } catch { setKept('error'); }
+  }
   const toggle = (d: CompsResp, cid: number) => {
     const ex = new Set(d.excluded ?? d.comps.filter((c) => c.excluded).map((c) => c.comp_id));
     if (ex.has(cid)) ex.delete(cid); else ex.add(cid);
     api.reload({ exclude: [...ex] });
-    setUsed(false);
+    setUsed(false); setKept('idle');
   };
   return (
     <State api={api} what="Sales comparables">{(d) => {
@@ -175,6 +184,10 @@ function CompsTab({ id, onUse }: { id: string; onUse?: (v: number, l: string, b:
                     </div>
                   ) : <button className="st-btn primary" onClick={() => setConfirm(true)}>Use as acquisition value</button>
               )}
+            </div>
+            <div className={s.confirm}>
+              <button className="st-btn" onClick={() => void keepSelection(d)}>Save this comp selection</button>
+              <span>{kept === 'saved' ? 'Saved to the deal room (MongoDB Atlas): the excluded comp ids, not CoStar data.' : kept === 'error' ? 'Could not save the selection.' : 'Keeps which comps you excluded, so the estimate can be reproduced.'}</span>
             </div>
             <MiniMap points={pts} height={250} legend="Comps: darker = more similar; grey = stale or excluded" />
             <p className={s.note}>

@@ -107,6 +107,11 @@ def _hash(cfg: dict[str, Any]) -> str:
 
 
 def _load() -> dict[str, Any]:
+    """Agent id + config hash: MongoDB Atlas (app_state) first, so every machine reuses one agent; local file fallback."""
+    from . import mongo
+    st = mongo.get_state("guide_agent")
+    if st and st.get("agent_id"):
+        return {"agent_id": st["agent_id"], "hash": st.get("hash")}
     try:
         return json.loads(STATE_FILE.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -114,6 +119,8 @@ def _load() -> dict[str, Any]:
 
 
 def _save(d: dict[str, Any]) -> None:
+    from . import mongo
+    mongo.set_state("guide_agent", {"agent_id": d["agent_id"], "hash": d["hash"], "llm": LLM, "voice_id": VOICE_ID})
     STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
     STATE_FILE.write_text(json.dumps(d), encoding="utf-8")
 

@@ -140,7 +140,10 @@ def run(criteria: dict[str, Any]) -> dict[str, Any]:
     t0 = time.time()
     out = graph().invoke({"criteria": c, "analyses": [], "timeline": []},
                          {"run_name": "plotstar-deal-to-design", "tags": ["plotstar", "deal"], "max_concurrency": 4})
-    return {"criteria": c, "shortlist": out.get("ranked", []), "memo": out.get("memo", {}), "timeline": out.get("timeline", []),
+    result = {"criteria": c, "shortlist": out.get("ranked", []), "memo": out.get("memo", {}), "timeline": out.get("timeline", []),
             "ms": round((time.time() - t0) * 1000), "rule": "Hard-gate failures last, then infeasible layouts, then over budget, "
             "then missing acquisition basis, then highest NPV (P50).",
             "note": "Every figure comes from CoStar records and PlotStar's deterministic development model; see each step's sources."}
+    from . import deal_room
+    result["run_id"] = deal_room.save_deal_run(result)  # summary to Atlas, full payload local
+    return result

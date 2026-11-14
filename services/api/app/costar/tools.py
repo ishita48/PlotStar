@@ -89,10 +89,17 @@ def run(tool: str, via: str = "api", **args: Any) -> dict[str, Any]:
     fn = TOOLS.get(tool)
     if fn is None:
         return {"ok": False, "tool": tool, "data": None, "sources": [], "label": None, "error": f"Unknown tool {tool}", "ms": 0}
+    clean = {k: v for k, v in args.items() if v is not None}
     try:
-        data, label = fn(**{k: v for k, v in args.items() if v is not None})
-        sources = _sources_from(data)
-        out = {"ok": True, "tool": tool, "data": data, "sources": sources, "label": label, "error": None}
+        hit = deal_room.cached(tool, clean) if tool in CACHEABLE else None
+        if hit is not None:
+            out = {**hit, "cached": True}
+        else:
+            data, label = fn(**clean)
+            sources = _sources_from(data)
+            out = {"ok": True, "tool": tool, "data": data, "sources": sources, "label": label, "error": None}
+            if tool in CACHEABLE:  # payload to the local cache, metadata to Atlas (CoStar-derived data stays local)
+                deal_room.save_analysis(tool, clean, out, clean.get("parcel_id"), sources, label)
     except (ToolError, ValueError, TypeError) as e:
         out = {"ok": False, "tool": tool, "data": None, "sources": [], "label": None, "error": str(e)}
     except Exception as e:  # an unexpected failure is reported, never raised to the agent
@@ -477,3 +484,7 @@ TOOLS: dict[str, Callable[..., tuple[Any, str | None]]] = {
     "save_to_deal_room": save_to_deal_room,
 }
 READ_ONLY = {k for k in TOOLS if k != "save_to_deal_room"}
+# Deterministic for the same arguments within the cache window (6 h); search is cheap and stays uncached.
+CACHEABLE = {"find_sales_comps", "underwrite_acquisition", "analyze_occupancy", "analyze_residential_impact",
+             "analyze_submarket", "evaluate_conversion", "get_matterport_model", "get_property_intelligence",
+             "identify_data_gaps", "find_off_market_candidates", "find_adjacent_properties"}

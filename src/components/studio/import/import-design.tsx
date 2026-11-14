@@ -15,6 +15,8 @@ const Import3D = dynamic(() => import('./import-3d'), { ssr: false, loading: () 
 export interface Shape { id: string; layer: string; points: [number, number][]; closed: boolean; area_m2: number | null; from_lines?: boolean; label?: string }
 export interface Drawing {
   kind: 'dxf' | 'image' | 'pdf'; name: string; label: string; units: string; units_assumed: boolean; scale_to_m: number; unit_options?: string[];
+  /** Set when the file was kept in MongoDB Atlas (GridFS); builds and notes attach to it. */
+  design_id?: string | null;
   layers: { name: string; shapes: number }[]; polygons: Shape[]; texts: { layer: string; x: number; y: number; h: number; text: string }[];
   bbox: { x: number; y: number; w: number; d: number };
   footprint: { source: string; shape_id: string | null; layer: string | null; area_m2: number; cx: number; cy: number; w: number; d: number; angle_deg: number };
@@ -214,11 +216,12 @@ export function ImportDesign({ body, onResult, onClose }: {
     if (d < 20) { setError('The footprint must be at least 20 m on each side for a data center layout.'); return; }
     setBusy('Laying the brief out inside your footprint…'); setError(null);
     try {
-      const r = await post<{ result: StudioResult; fit: Fit; notes: NotePreview[] }>('/blueprint/build', {
-        ...body, footprint: { w, d, angle_deg: foot.angle, source: foot.source }, drawing_name: drawing?.name ?? '',
+      const r = await post<{ result: StudioResult; fit: Fit; notes: NotePreview[]; design_id?: string | null }>('/blueprint/build', {
+        ...body, footprint: { w, d, angle_deg: foot.angle, source: foot.source }, drawing_name: drawing?.name ?? '', design_id: drawing?.design_id ?? null,
         notes: pins.filter((p) => p.text.trim()).map((p) => ({ id: p.id, text: p.text.trim(), x: p.x, y: p.y })),
       });
       setBuilt(r);
+      if (r.design_id && drawing && !drawing.design_id) setDrawing({ ...drawing, design_id: r.design_id });
     } catch (e) { setError((e as Error).message); } finally { setBusy(null); }
   }
 

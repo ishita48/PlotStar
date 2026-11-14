@@ -106,3 +106,36 @@ def test_real_store_search_and_adjacency_carry_sources():
     a = T.run("find_adjacent_properties", via="test", parcel_id=pid, radius_m=1500)
     assert a["ok"] and all(n["distance_m"] <= 1500 for n in a["data"]["neighbours"])
     assert "not that the lots touch" in a["data"]["limits"][0]
+
+
+def test_mongo_wiring_without_atlas_falls_back_and_keeps_costar_payloads_local():
+    from app import mongo
+    assert mongo.db() is None  # conftest keeps tests off the real cluster
+    saver, where = mongo.checkpointer()
+    assert where == "process memory"
+    k = deal_room.save_analysis("find_sales_comps", {"parcel_id": "costar:1"}, {"comps": [{"address": "1 Main St"}]},
+                                "costar:1", ["row 1"], "Estimated")
+    assert deal_room.cached("find_sales_comps", {"parcel_id": "costar:1"}) == {"comps": [{"address": "1 Main St"}]}
+    assert k
+    run_id = deal_room.save_deal_run({"criteria": {"market": "Houston"}, "shortlist": [
+        {"parcel_id": "costar:1", "rank": 1, "npv": -5, "name": "Secret Name", "address": "1 Main St", "acquisition": 9e6}],
+        "memo": {"recommendation": "Proceed to diligence", "because": "x"}, "timeline": []})
+    summary = deal_room.deal_runs(5)[0]
+    assert summary["run_id"] == run_id and summary["shortlist"][0] == {k: ({"parcel_id": "costar:1", "rank": 1, "npv": -5}).get(k)
+                                                                        for k in deal_room._RUN_ROW}
+    assert "Secret Name" not in str(summary) and "1 Main St" not in str(summary)  # CoStar-derived fields stay local
+    assert deal_room.deal_run(run_id)["shortlist"][0]["name"] == "Secret Name"
+
+
+def test_tool_results_are_cached(monkeypatch):
+    calls = {"n": 0}
+
+    def fake(parcel_id):
+        calls["n"] += 1
+        return {"status": "ok", "parcel": parcel_id}, "Estimated"
+    monkeypatch.setitem(T.TOOLS, "find_sales_comps", fake)
+    import uuid
+    pid = f"costar:cache-{uuid.uuid4().hex[:8]}"  # fresh key: the local cache persists between runs
+    a = T.run("find_sales_comps", via="test", parcel_id=pid)
+    b = T.run("find_sales_comps", via="test", parcel_id=pid)
+    assert a["ok"] and b["ok"] and b.get("cached") is True and calls["n"] == 1

@@ -52,6 +52,24 @@ export function ExistingVsProposed({ parcelId, conceptSlot, mwIt, rackKw, onNote
   const [pick, setPick] = useState(0);
   const [play, setPlay] = useState(false);
   const [note, setNote] = useState('');
+  const [saved, setSaved] = useState<{ note: string; created_at?: string }[]>([]);
+  const [saving, setSaving] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  useEffect(() => {
+    let alive = true;
+    fetch(`${PUBLIC_DATA_API}/deal-room?parcel_id=${encodeURIComponent(parcelId)}`).then((r) => r.json())
+      .then((d) => alive && setSaved(d.inspection_notes ?? [])).catch(() => {});
+    return () => { alive = false; };
+  }, [parcelId]);
+  async function saveNote() {
+    if (!note.trim()) return;
+    setSaving('saving');
+    try {
+      const r = await fetch(`${PUBLIC_DATA_API}/deal-room/notes`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parcel_id: parcelId, note }) });
+      if (!r.ok) throw new Error();
+      setSaved((x) => [{ note, created_at: new Date().toISOString() }, ...x]); setSaving('saved');
+    } catch { setSaving('error'); }
+  }
   const [conv, setConv] = useState<ConversionResp | null>(null);
 
   useEffect(() => {
@@ -130,7 +148,11 @@ export function ExistingVsProposed({ parcelId, conceptSlot, mwIt, rackKw, onNote
           <div className={s.cardHead}><b>Inspection notes</b></div>
           <textarea className={s.textarea} rows={5} value={note} maxLength={2000} placeholder="What you saw in the scan or on site: columns, slab cracks, dock doors, roof…"
             onChange={(e) => setNote(e.target.value)} onBlur={() => onNote?.(note)} aria-label="Inspection notes" />
-          <small className={s.muted}>Kept with this session{onNote ? ' and passed to the Studio' : ''}; not sent anywhere else.</small>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
+            <button className="st-btn" onClick={() => void saveNote()} disabled={!note.trim() || saving === 'saving'}>{saving === 'saving' ? 'Saving…' : 'Save to deal room'}</button>
+            <small className={s.muted}>{saving === 'saved' ? 'Saved to the deal room (MongoDB Atlas).' : saving === 'error' ? 'Could not save; the note stays here.' : 'Your notes; they are not CoStar data.'}</small>
+          </div>
+          {saved.length > 0 && <ul className={s.bullets}>{saved.slice(0, 5).map((n, i) => <li key={i}>{n.note}{n.created_at ? <small className={s.muted}> · {new Date(n.created_at).toLocaleString()}</small> : null}</li>)}</ul>}
         </div>
       </div>
       <small className={s.src}>{data.source}. {data.embed_note}</small>

@@ -931,7 +931,6 @@ def _route_after_plan(state: State) -> str:
 
 
 def build_graph():
-    from langgraph.checkpoint.memory import InMemorySaver
     from langgraph.graph import END, START, StateGraph
     g = StateGraph(State)
     g.add_node("plan", n_plan)
@@ -943,10 +942,14 @@ def build_graph():
     g.add_edge("act", "verify")
     g.add_edge("verify", "respond")
     g.add_edge("respond", END)
-    return g.compile(checkpointer=InMemorySaver())
+    from . import mongo
+    saver, where = mongo.checkpointer()  # conversation memory on Atlas when reachable, else process memory
+    MEMORY["backend"] = where
+    return g.compile(checkpointer=saver)
 
 
 _GRAPH = None
+MEMORY: dict[str, Any] = {"backend": None}
 
 
 def ask(question: str, req: dict[str, Any], thread_id: str, grid_fn: Callable[[], dict]) -> dict[str, Any]:
@@ -983,7 +986,8 @@ def ask(question: str, req: dict[str, Any], thread_id: str, grid_fn: Callable[[]
 
 
 def status() -> dict[str, Any]:
-    return dict(model=MODEL if llm_ready() else None, llm=llm_ready(), framework="LangGraph StateGraph (plan, act, verify, respond) with InMemorySaver",
+    return dict(model=MODEL if llm_ready() else None, llm=llm_ready(),
+                framework=f"LangGraph StateGraph (plan, act, verify, respond); memory: {MEMORY['backend'] or 'not started'}",
                 tools=list(TOOLS), costar_to_llm=LLM_COSTAR, langsmith=TRACING, costar_store=db_ready(),
                 note=("CoStar records are shown to the user but kept out of model prompts (set COPILOT_LLM_COSTAR=1 once the "
                       "sponsor confirms kit data may go to an outside AI provider).") if not LLM_COSTAR else "CoStar fields may be sent to the model.")
