@@ -36,7 +36,8 @@ def tool_get_run(run_id: str) -> dict[str, Any]:
         "site_id", "site_name", "cooling", "f", "d", "firm_capacity_share", "firm_capacity_basis", "land",
         "energy_cost_year", "co2_est_t_year", "peak_mw", "cost", "stress_hours")}
     return {"request": {k: req.get(k) for k in ("mw_it", "flexible_share", "price_multiplier", "carbon_price_per_t", "market")},
-            "optimized": slim(res["optimized"]), "baseline": slim(res["baseline"]), "delta": res["delta"],
+            "optimized": slim(res["optimized"]), "baseline": slim(res["baseline"]),
+            "without_flexibility": slim(res.get("inflexible")) if "inflexible" in res else "not computed", "delta": res["delta"],
             "rejected": res["rejected"][:8], "labels": res["labels"], "notes": res["feasibility_notes"],
             "grid": {k: res["grid"].get(k) for k in ("price_label", "carbon_label", "price_date", "carbon_date", "hub")}}
 
@@ -115,7 +116,7 @@ def _llm():
     if config.ANTHROPIC_API_KEY:
         from langchain_anthropic import ChatAnthropic
         return ChatAnthropic(model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5"), api_key=config.ANTHROPIC_API_KEY,
-                             max_tokens=600, temperature=0), "anthropic"
+                             max_tokens=800), "anthropic"
     if config.BEDROCK_MODEL_ID and (os.getenv("AWS_ACCESS_KEY_ID") or os.getenv("AWS_PROFILE")):
         from langchain_aws import ChatBedrockConverse
         return ChatBedrockConverse(model=config.BEDROCK_MODEL_ID, region_name=config.AWS_REGION, temperature=0), "bedrock"
