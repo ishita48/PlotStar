@@ -4,10 +4,10 @@
   gap: 6px;
   font-size: 8px;
   letter-spacing: 1.1px;
-  border: 1px solid #ebe4d7;
-  background: #f9f0e4;
+  border: 1px solid #dde5d6;
+  background: #eff5e7;
   border-radius: 20px;
-  color: #606e8e;
+  color: #608e6c;
   padding: 7px 10px;
   white-space: nowrap;
 }
@@ -22,26 +22,26 @@
   display: block;
   font-size: 13px;
   font-weight: 550;
-  color: #515b72;
+  color: #517259;
 }
 .d2-shell .hv-model-title div > span {
   display: block;
   font-size: 10px;
-  color: #81899d;
+  color: #819d88;
   margin-top: 4px;
 }
 .d2-shell .hv-note {
   font-size: 10px;
-  color: #7d869c;
+  color: #7d9c85;
   line-height: 1.8;
   margin-top: 18px;
 }
 .d2-shell .hv-twin {
   position: relative;
-  border: 1px solid #e8e1d5;
+  border: 1px solid #d5e8da;
   border-radius: 17px;
   overflow: hidden;
-  background: #f8efe3;
+  background: #e6f5ea;
 }
 .d2-shell .hv-viewer-tools {
   display: flex;
@@ -49,8 +49,8 @@
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
-  background: #fcf7f1;
-  border-bottom: 1px solid #ebe4d7;
+  background: #f5f9ef;
+  border-bottom: 1px solid #dde5d6;
 }
 .d2-shell .hv-viewer-tools .d2-view-toggle button {
   font-size: 10px;
@@ -66,22 +66,22 @@
   place-items: center;
   width: 28px;
   height: 28px;
-  border: 1px solid #f3e2cb;
+  border: 1px solid #e0ecd0;
   background: #fff;
   border-radius: 7px;
-  color: #707c99;
+  color: #70997a;
 }
 .d2-shell .hv-camera-tools button:hover:not(:disabled) {
-  background: #f6e9d7;
+  background: #dbf2e1;
 }
 .d2-shell .hv-camera-tools select {
   max-width: 112px;
   padding: 5px 7px;
   height: 28px;
-  border: 1px solid #f3e2cb;
+  border: 1px solid #e0ecd0;
   border-radius: 7px;
   font-size: 10px;
-  color: #626f8c;
+  color: #628c6c;
   background: #fff;
 }
 .d2-shell .hv-canvas {
@@ -95,7 +95,7 @@
   min-height: 350px;
   display: grid;
   place-items: center;
-  color: #7d879f;
+  color: #7d9f86;
   font-size: 13px;
 }
 .d2-shell .hv-twin-caption {
@@ -103,9 +103,9 @@
   justify-content: space-between;
   gap: 10px;
   padding: 10px 15px;
-  border-top: 1px solid #f3e2cb;
-  background: #fcf8f2;
-  color: #858ea4;
+  border-top: 1px solid #e0ecd0;
+  background: #f7faf2;
+  color: #85a48d;
   font-size: 8px;
 }
 .d2-shell .hv-twin-caption > span:first-child {
@@ -123,7 +123,7 @@
   padding: 10px 15px;
   background: #fff;
   font-size: 8px;
-  color: #7d869d;
+  color: #7d9d85;
 }
 .d2-shell .hv-model-legend > span {
   display: flex;
@@ -137,10 +137,10 @@
   display: inline-block;
 }
 .d2-shell .hv-dot.sensor {
-  background: #6fa5b0;
+  background: #77a883;
 }
 .d2-shell .hv-dot.clear {
-  background: #616f91;
+  background: #61916d;
 }
 .d2-shell .hv-dot.hazard {
   background: #d4816b;
@@ -150,16 +150,16 @@
   align-items: start;
   flex-direction: column;
   gap: 5px;
-  border-top: 1px solid #f2e1ca;
+  border-top: 1px solid #cfedd7;
   padding: 14px 34px 14px 17px;
   position: relative;
-  background: #faf4eb;
+  background: #edf8f0;
   font-size: 11px;
-  color: #515d7a;
+  color: #517a5b;
 }
 .d2-shell .hv-inspection > span {
   font-size: 9px;
-  color: #7884a0;
+  color: #78a082;
 }
 .d2-shell .hv-inspection button {
   position: absolute;
@@ -176,9 +176,9 @@
 .d2-shell .hv-model-fallback > p {
   font-size: 10px;
   line-height: 1.7;
-  color: #7e879d;
+  color: #7d8a7c;
   padding: 10px 15px;
-  background: #fcf8f2;
+  background: #f7faf2;
 }
 .d2-shell .hv-design-details {
   display: grid;
@@ -189,13 +189,13 @@
 .d2-shell .hv-design-details span {
   display: block;
   font-size: 8px;
-  color: #8c95a9;
+  color: #8ca993;
   letter-spacing: 1px;
 }
 .d2-shell .hv-design-details b {
   display: block;
   margin-top: 7px;
-  color: #556280;
+  color: #558060;
   font-size: 11px;
   font-weight: 500;
 }
@@ -209,14 +209,14 @@
   gap: 24px;
 }
 .d2-shell .hv-prerequisite > svg {
-  color: #828eab;
+  color: #82ab8c;
 }
 .d2-shell .hv-prerequisite h1 {
   font-size: 34px;
 }
 .d2-shell .hv-prerequisite p {
   max-width: 430px;
-  color: #7e879d;
+  color: #7d8a7c;
   font-size: 13px;
   line-height: 1.8;
 }
@@ -227,14 +227,14 @@
   margin-top: 30px;
 }
 .d2-shell .hv-protection-card {
-  border: 1px solid #ece6dc;
+  border: 1px solid #dde5d6;
   border-radius: 17px;
   padding: 23px;
-  background: #fdfaf6;
+  background: #fbfcf7;
 }
 .d2-shell .hv-protection-card.is-enabled {
-  background: #fbf4ec;
-  border-color: #eed6b7;
+  background: #eef9f1;
+  border-color: #cfe0bb;
 }
 .d2-shell .hv-protection-card > div:first-child {
   display: flex;
@@ -248,8 +248,8 @@
   width: 44px;
   height: 44px;
   border-radius: 12px;
-  background: #f7ebdb;
-  color: #7180a1;
+  background: #dff3e4;
+  color: #71a17d;
 }
 .d2-shell .hv-protection-card h2 {
   font-size: 17px;
@@ -260,7 +260,7 @@
 .d2-shell .hv-protection-card p {
   font-size: 11px;
   line-height: 1.8;
-  color: #79849e;
+  color: #799e82;
   max-width: 280px;
 }
 .d2-shell .hv-switch {
@@ -281,7 +281,7 @@
   position: absolute;
   inset: 0;
   border-radius: 20px;
-  background: #e7e0d3;
+  background: #d3e7d8;
   pointer-events: none;
   transition: background 0.18s;
 }
@@ -294,17 +294,17 @@
   height: 16px;
   background: #fff;
   border-radius: 50%;
-  box-shadow: 0 1px 3px #7c531d1a;
+  box-shadow: 0 1px 3px #2b52391a;
   transition: transform 0.18s;
 }
 .d2-shell .hv-switch input:checked + span {
-  background: #617092;
+  background: #61926d;
 }
 .d2-shell .hv-switch input:checked + span::after {
   transform: translateX(14px);
 }
 .d2-shell .hv-switch input:focus-visible + span {
-  outline: 3px solid #d79e53;
+  outline: 3px solid #9fc46a;
   outline-offset: 4px;
 }
 .d2-shell .hv-limit {
@@ -314,9 +314,9 @@
   gap: 12px;
   margin-top: 22px;
   padding-top: 17px;
-  border-top: 1px solid #f3e3ce;
+  border-top: 1px solid #e3eed5;
   font-size: 10px;
-  color: #7985a2;
+  color: #79a283;
 }
 .d2-shell .hv-limit > div {
   display: flex;
@@ -326,11 +326,11 @@
 .d2-shell .hv-limit input {
   min-width: 0;
   width: 80px;
-  border: 1px solid #f2dfc7;
+  border: 1px solid #cdecd5;
   border-radius: 8px;
   padding: 8px 10px;
   background: #fff;
-  color: #a87128;
+  color: #4f7f5b;
   font-size: 17px;
   font-weight: 500;
 }
@@ -338,9 +338,9 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #7a88a7;
+  color: #7aa785;
   font-size: 10px;
-  border-top: 1px solid #f3e3ce;
+  border-top: 1px solid #e3eed5;
   padding-top: 17px;
   margin-top: 22px;
 }
@@ -348,12 +348,12 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  background: #fbf5ed;
+  background: #eff9f2;
   padding: 18px;
   border-radius: 12px;
-  border: 1px solid #f4e4d0;
+  border: 1px solid #e3eed5;
   margin-top: 22px;
-  color: #7884a1;
+  color: #7d8a7c;
 }
 .d2-shell .hv-mode-note > div {
   flex: 1;
@@ -361,7 +361,7 @@
 .d2-shell .hv-mode-note b {
   font-size: 11px;
   font-weight: 550;
-  color: #5e6c8c;
+  color: #3e5247;
 }
 .d2-shell .hv-mode-note p {
   font-size: 10px;
@@ -373,8 +373,8 @@
   letter-spacing: 1px;
 }
 .d2-shell .hv-demo-controls {
-  border: 1px solid #f3e3ce;
-  background: #fcf9f4;
+  border: 1px solid #e3eed5;
+  background: #f5fbf6;
   border-radius: 15px;
   padding: 18px 20px;
   margin-top: 22px;
@@ -384,7 +384,7 @@
   align-items: center;
   gap: 6px;
   font-size: 8px;
-  color: #838ea6;
+  color: #83a68c;
   letter-spacing: 1px;
   margin-bottom: 13px;
 }
@@ -398,20 +398,20 @@
   align-items: center;
   gap: 7px;
   background: #fff;
-  border: 1px solid #f3e1ca;
+  border: 1px solid #e0ecd0;
   border-radius: 9px;
   padding: 10px 13px;
-  color: #69789b;
+  color: #699b76;
   font-size: 10px;
 }
 .d2-shell .hv-demo-controls button:hover:not(:disabled) {
-  background: #f8eee2;
-  border-color: #e4bd8a;
+  background: #e5f5e9;
+  border-color: #97d7a7;
 }
 .d2-shell .hv-demo-controls .hv-fire-trigger {
   color: #ae806d;
-  border-color: #e9dacc;
-  background: #fffaf5;
+  border-color: #cce9d3;
+  background: #f7faf2;
 }
 .d2-shell .hv-plan-grid {
   display: grid;
@@ -423,8 +423,8 @@
   display: flex;
   gap: 12px;
   align-items: start;
-  border: 1px solid #f3e3ce;
-  background: #fdfaf6;
+  border: 1px solid #e3eed5;
+  background: #fbfcf7;
   padding: 19px;
   border-radius: 14px;
   position: relative;
@@ -437,21 +437,21 @@
   height: 1px;
 }
 .d2-shell .hv-plan-card:focus-within {
-  outline: 3px solid #d79e53;
+  outline: 3px solid #9fc46a;
   outline-offset: 3px;
 }
 .d2-shell .hv-plan-card.is-selected {
-  background: #f9f0e5;
-  border-color: #8692af;
+  background: #e8f6eb;
+  border-color: #86af90;
 }
 .d2-shell .hv-plan-card.is-blocked {
-  background: #fbf1eb;
-  border-color: #e9cec1;
+  background: #eef8f0;
+  border-color: #c2e8cc;
   cursor: not-allowed;
   opacity: 0.75;
 }
 .d2-shell .hv-plan-icon {
-  color: #7e8ba9;
+  color: #7d8a7c;
   display: block;
   margin-top: 2px;
 }
@@ -460,7 +460,7 @@
 }
 .d2-shell .hv-plan-card b {
   font-size: 13px;
-  color: #54617e;
+  color: #547e5e;
   font-weight: 550;
 }
 .d2-shell .hv-plan-card small {
@@ -468,36 +468,36 @@
   font-size: 10px;
   line-height: 1.8;
   margin-top: 7px;
-  color: #7985a0;
+  color: #79a083;
 }
 .d2-shell .hv-plan-card em {
   display: block;
   margin-top: 10px;
   font-size: 8px;
   font-style: normal;
-  color: #7f8ba8;
+  color: #7d8a7c;
 }
 .d2-shell .hv-route-summary {
-  border: 1px solid #f2e0c9;
+  border: 1px solid #ceedd6;
   border-radius: 13px;
   padding: 18px;
-  background: #faf4eb;
+  background: #edf8f0;
 }
 .d2-shell .hv-route-summary > div:first-child {
   display: flex;
   align-items: start;
   gap: 10px;
-  color: #717fa0;
+  color: #71a07d;
 }
 .d2-shell .hv-route-summary b {
   display: block;
-  color: #b4782a;
+  color: #3da156;
   font-size: 11px;
   font-weight: 550;
 }
 .d2-shell .hv-route-summary small {
   display: block;
-  color: #7a87a4;
+  color: #7aa484;
   font-size: 9px;
   line-height: 1.8;
   margin-top: 4px;
@@ -513,21 +513,21 @@
   align-items: center;
   gap: 5px;
   padding: 5px 8px;
-  border: 1px solid #f2dfc6;
+  border: 1px solid #ccecd4;
   border-radius: 6px;
   font-size: 8px;
-  background: #fefbf7;
-  color: #657497;
+  background: #f8fdf9;
+  color: #3e5247;
 }
 .d2-shell .hv-exit-chips > .is-blocked {
-  border-color: #e7c9b9;
-  background: #f9ebe2;
-  color: #b37b60;
+  border-color: #bbe5c5;
+  background: #e6f5ea;
+  color: #60b375;
 }
 .d2-shell .hv-route-summary > p {
   font-size: 8px;
   margin-top: 13px;
-  color: #8e98af;
+  color: #8e9a8c;
   line-height: 1.7;
 }
 .d2-shell .hv-inline-alert {
@@ -535,9 +535,9 @@
   align-items: center;
   gap: 10px;
   padding: 17px;
-  border: 1px solid #e7c5af;
-  background: #fff2e7;
-  color: #ab7d57;
+  border: 1px solid #b4e2bf;
+  background: #eef8f0;
+  color: #57ab6c;
   border-radius: 11px;
   margin-top: 18px;
   font-size: 11px;
@@ -549,12 +549,12 @@
   align-items: center;
   margin-top: 30px;
   padding: 24px;
-  background: #faf3ea;
-  border: 1px solid #f3e1ca;
+  background: #ecf8ef;
+  border: 1px solid #e0ecd0;
   border-radius: 16px;
 }
 .d2-shell .hv-deploy-facility > span:first-child {
-  color: #818eab;
+  color: #81ab8b;
 }
 .d2-shell .hv-deploy-facility > div {
   flex: 1;
@@ -564,7 +564,7 @@
 }
 .d2-shell .hv-deploy-facility p {
   font-size: 11px;
-  color: #7582a1;
+  color: #75a180;
   margin-top: 6px;
 }
 .d2-shell .hv-deploy-list {
@@ -575,29 +575,29 @@
   grid-template-columns: 145px minmax(0, 1fr);
   gap: 24px;
   padding: 19px 0;
-  border-bottom: 1px solid #f7ebdb;
+  border-bottom: 1px solid #dff3e4;
 }
 .d2-shell .hv-deploy-list dt {
   font-size: 11px;
-  color: #848fa7;
+  color: #84a78d;
 }
 .d2-shell .hv-deploy-list dd {
   margin: 0;
   font-size: 12px;
   line-height: 1.9;
-  color: #586685;
+  color: #588563;
 }
 .d2-shell .hv-deploy-list small {
   display: block;
   font-size: 10px;
-  color: #8f98af;
+  color: #8faf97;
 }
 .d2-shell .hv-command-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 18px 23px;
-  background: #fefaf5;
+  background: #fbfcf7;
   border: 1px solid #fff;
   border-radius: 17px;
   margin-bottom: 28px;
@@ -606,12 +606,12 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  color: #627194;
+  color: #62946f;
 }
 .d2-shell .hv-command-bar > div > span {
   font-size: 9px;
   letter-spacing: 1.4px;
-  color: #b67a2b;
+  color: #4f7f5b;
 }
 .d2-shell .hv-command-bar small {
   display: block;
@@ -619,7 +619,7 @@
   font-weight: 400;
   letter-spacing: 0;
   margin-top: 4px;
-  color: #8893ac;
+  color: #88ac91;
 }
 .d2-shell .hv-live-heading {
   display: flex;
@@ -635,7 +635,7 @@
 }
 .d2-shell .hv-live-heading p {
   font-size: 11px;
-  color: #8791a8;
+  color: #8e9a8c;
   margin-top: 8px;
 }
 .d2-shell .hv-health-banner {
@@ -643,10 +643,10 @@
   gap: 16px;
   align-items: center;
   padding: 21px 24px;
-  border: 1px solid #eed6b7;
+  border: 1px solid #cfe0bb;
   border-radius: 15px;
-  background: #f8eddf;
-  color: #cd8930;
+  background: #e3f4e7;
+  color: #46b762;
   margin-bottom: 22px;
 }
 .d2-shell .hv-health-banner > div {
@@ -660,25 +660,25 @@
   font-size: 11px;
   line-height: 1.8;
   margin-top: 4px;
-  color: #7784a4;
+  color: #77a482;
 }
 .d2-shell .hv-health-banner button {
   font-size: 11px;
   border-radius: 10px;
   background: #fff;
-  border: 1px solid #edd4b4;
+  border: 1px solid #bce5c6;
   padding: 10px 13px;
   display: flex;
   align-items: center;
   gap: 6px;
 }
 .d2-shell .hv-health-banner.warning {
-  background: #fff4df;
-  border-color: #e8d3a1;
-  color: #af8a42;
+  background: #eef5e3;
+  border-color: #cfe0bb;
+  color: #42af5d;
 }
 .d2-shell .hv-health-banner.warning p {
-  color: #b29a67;
+  color: #67b27a;
 }
 .d2-shell .hv-health-banner.critical {
   background: #fcebe4;
@@ -686,15 +686,15 @@
   color: #b86b53;
 }
 .d2-shell .hv-health-banner.critical p {
-  color: #b98c78;
+  color: #78b988;
 }
 .d2-shell .hv-health-banner.recovering {
-  background: #eaf0f7;
-  border-color: #c9d7e7;
-  color: #6f8eae;
+  background: #eef5e3;
+  border-color: #c3cdbc;
+  color: #4f7f5b;
 }
 .d2-shell .hv-health-banner.recovering p {
-  color: #91a5bb;
+  color: #92ba9c;
 }
 .d2-shell .hv-metrics {
   display: grid;
@@ -714,16 +714,16 @@
   flex-wrap: wrap;
   gap: 6px;
   font-size: 10px;
-  color: #7c88a3;
+  color: #7ca386;
 }
 .d2-shell .hv-metric small {
   font-size: 6px;
   letter-spacing: 0.6px;
-  color: #a2aabd;
+  color: #a2bda9;
 }
 .d2-shell .hv-metric b {
   display: block;
-  color: #586583;
+  color: #3e5247;
   font-size: 23px;
   letter-spacing: -0.6px;
   margin-top: 18px;
@@ -731,16 +731,16 @@
 }
 .d2-shell .hv-metric p {
   font-size: 9px;
-  color: #949db2;
+  color: #9aa698;
   margin-top: 8px;
   line-height: 1.8;
 }
 .d2-shell .hv-metric.is-warning {
-  background: #fff7ec;
-  border-color: #e8d2ba;
+  background: #eef5e3;
+  border-color: #bce6c7;
 }
 .d2-shell .hv-metric.is-warning b {
-  color: #b58058;
+  color: #58b56f;
 }
 .d2-shell .hv-command-grid {
   display: grid;
@@ -778,7 +778,7 @@
 }
 .d2-shell .hv-section-heading > span:not(.d2-sample-tag) {
   font-size: 10px;
-  color: #949db3;
+  color: #94b39c;
 }
 .d2-shell .hv-empty-state {
   min-height: 240px;
@@ -787,36 +787,36 @@
   align-items: center;
   justify-content: center;
   text-align: center;
-  color: #dfb379;
+  color: #87d199;
   gap: 14px;
 }
 .d2-shell .hv-empty-state b {
   font-size: 13px;
-  color: #7785a5;
+  color: #77a583;
   font-weight: 500;
 }
 .d2-shell .hv-empty-state p {
   font-size: 10px;
-  color: #919cb5;
+  color: #91b59a;
   line-height: 1.9;
   max-width: 220px;
 }
 .d2-shell .hv-incident {
-  border: 1px solid #e9d6b9;
-  background: #fff8ec;
+  border: 1px solid #bce6c7;
+  background: #eef5e3;
   border-radius: 12px;
   padding: 16px;
   margin-top: 12px;
 }
 .d2-shell .hv-incident.critical {
-  background: #fdf0e9;
-  border-color: #e7c4b4;
+  background: #eef8f0;
+  border-color: #b7e4c2;
 }
 .d2-shell .hv-incident > div {
   display: flex;
   align-items: start;
   gap: 9px;
-  color: #bb9367;
+  color: #67bb7c;
 }
 .d2-shell .hv-incident.critical > div {
   color: #be7d65;
@@ -824,7 +824,7 @@
 .d2-shell .hv-incident h3 {
   font-size: 13px;
   font-weight: 550;
-  color: #aa8156;
+  color: #56aa6b;
   line-height: 1.6;
 }
 .d2-shell .hv-incident.critical h3 {
@@ -833,20 +833,20 @@
 .d2-shell .hv-incident small {
   font-size: 8px;
   line-height: 1.8;
-  color: #bba181;
+  color: #81bb90;
   display: block;
   margin-top: 4px;
 }
 .d2-shell .hv-incident p {
-  color: #b7a185;
+  color: #85b792;
   font-size: 9px;
   line-height: 1.9;
   margin-top: 13px;
 }
 .d2-shell .hv-incident .hv-response {
-  border-top: 1px solid #e9dcc8;
+  border-top: 1px solid #c8e9d0;
   padding-top: 12px;
-  color: #aa997e;
+  color: #7eaa89;
 }
 .d2-shell .hv-incident footer {
   margin-top: 14px;
@@ -856,17 +856,17 @@
 }
 .d2-shell .hv-incident footer > span {
   font-size: 8px;
-  color: #bea484;
+  color: #84be92;
 }
 .d2-shell .hv-incident footer button {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 7px;
-  border: 1px solid #e4ccb0;
+  border: 1px solid #b2e2be;
   background: #fff;
   border-radius: 7px;
-  color: #b18e66;
+  color: #66b179;
   font-size: 9px;
   padding: 8px;
 }
@@ -886,19 +886,19 @@
   gap: 6px;
   padding: 7px 10px;
   font-size: 9px;
-  color: #7f8ba8;
-  border: 1px solid #f4e5d1;
+  color: #7d8a7c;
+  border: 1px solid #d6efdc;
   border-radius: 20px;
-  background: #fcf8f2;
+  background: #f7faf2;
 }
 .d2-shell .hv-agent-strip i {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: #bbc2d2;
+  background: #bbd2c1;
 }
 .d2-shell .hv-agent-strip i.has-activity {
-  background: #d2923e;
+  background: #52be6d;
 }
 .d2-shell .hv-timeline ol {
   margin: 0;
@@ -910,7 +910,7 @@
   display: flex;
   align-items: start;
   gap: 13px;
-  border-left: 1px solid #f4e4d0;
+  border-left: 1px solid #e3eed5;
   margin-left: 4px;
   padding: 0 0 22px 19px;
 }
@@ -922,9 +922,9 @@
   position: absolute;
   width: 7px;
   height: 7px;
-  background: #e5c08f;
+  background: #b9dc6c;
   border: 2px solid #fff;
-  box-shadow: 0 0 0 1px #f4e4cf;
+  box-shadow: 0 0 0 1px #d4efdb;
   border-radius: 50%;
   left: -4px;
   top: 5px;
@@ -933,12 +933,12 @@
   flex: 1;
 }
 .d2-shell .hv-timeline b {
-  color: #6a799b;
+  color: #6a9b76;
   font-size: 10px;
   font-weight: 550;
 }
 .d2-shell .hv-timeline li p {
-  color: #8994ac;
+  color: #89ac92;
   font-size: 10px;
   line-height: 1.8;
   margin-top: 5px;
@@ -946,7 +946,7 @@
 .d2-shell .hv-timeline time {
   font-size: 8px;
   white-space: nowrap;
-  color: #9fa8bc;
+  color: #9fbca6;
   padding-top: 2px;
 }
 .d2-shell .hv-save-error {
@@ -955,10 +955,10 @@
   justify-content: space-between;
   gap: 14px;
   padding: 17px 20px;
-  border: 1px solid #e7c1ac;
+  border: 1px solid #b1e2bd;
   border-radius: 12px;
-  color: #b58669;
-  background: #fff4e9;
+  color: #69b57c;
+  background: #eff9f2;
   font-size: 12px;
   line-height: 1.8;
   margin-bottom: 20px;
@@ -1111,12 +1111,12 @@
   width: 32px;
   height: 32px;
   border-radius: 100px;
-  border: 1px solid #f3e3ce;
+  border: 1px solid #e3eed5;
   background: #fff;
-  color: #b67a2b;
+  color: #4f7f5b;
 }
 .d2-shell .hv-command-back:hover {
-  background: #f4f1ec;
+  background: #f3f7ee;
 }
 .d2-shell .hv-setup-back {
   margin: -6px 0 10px 4px;
@@ -1132,13 +1132,13 @@
 .d2-shell .dp-current-note {
   justify-content: space-between;
   margin: 0 0 20px;
-  background: #fefaf5;
-  border-color: #f3e3ce;
-  color: #6d7993;
+  background: #fbfcf7;
+  border-color: #e3eed5;
+  color: #6f7c72;
 }
 .d2-shell .dp-current-note .d2-back {
   padding: 0;
-  color: #7e541d;
+  color: #2b5239;
   white-space: nowrap;
 }
 .d2-shell .dp-filters {
@@ -1149,19 +1149,19 @@
 }
 .d2-shell .dp-filters button {
   font-size: 12px;
-  color: #797f8e;
+  color: #6f7c72;
   padding: 8px 14px;
   border-radius: 100px;
-  border: 1px solid #f3e3ce;
+  border: 1px solid #e3eed5;
   background: #fbfaf9;
 }
 .d2-shell .dp-filters button:hover {
-  background: #f4f1ec;
+  background: #f3f7ee;
 }
 .d2-shell .dp-filters button.is-active {
-  background: #f2ede6;
-  color: #7e541d;
-  border-color: #eae4da;
+  background: #eff5e7;
+  color: #2b5239;
+  border-color: #dde5d6;
   font-weight: 550;
 }
 .d2-shell .dp-grid {
@@ -1183,14 +1183,14 @@
   border-radius: 17px;
   border: 1px solid #fff;
   background: #fff;
-  box-shadow: 0 4px 14px #56391406;
+  box-shadow: 0 4px 14px #1d3a2c06;
   transition:
     border-color 0.15s,
     box-shadow 0.15s;
 }
 .d2-shell .dp-card:hover {
-  border-color: #eae4da;
-  box-shadow: 0 6px 18px #56391412;
+  border-color: #dde5d6;
+  box-shadow: 0 6px 18px #1d3a2c12;
 }
 .d2-shell .dp-card-top {
   display: flex;
@@ -1205,8 +1205,8 @@
   width: 38px;
   height: 38px;
   border-radius: 12px;
-  background: #f4f1ec;
-  color: #7e541d;
+  background: #f3f7ee;
+  color: #2b5239;
 }
 .d2-shell .dp-status {
   display: inline-flex;
@@ -1215,9 +1215,9 @@
   font-size: 10px;
   padding: 5px 9px;
   border-radius: 100px;
-  border: 1px solid #eed6b7;
-  background: #f8eddf;
-  color: #be7f2c;
+  border: 1px solid #cfe0bb;
+  background: #e3f4e7;
+  color: #40aa5b;
 }
 .d2-shell .dp-status i {
   width: 6px;
@@ -1226,9 +1226,9 @@
   background: currentColor;
 }
 .d2-shell .dp-status.warning {
-  background: #fff4df;
-  border-color: #e8d3a1;
-  color: #a7843d;
+  background: #eef5e3;
+  border-color: #cfe0bb;
+  color: #3fa558;
 }
 .d2-shell .dp-status.critical {
   background: #fcebe4;
@@ -1236,24 +1236,24 @@
   color: #b86b53;
 }
 .d2-shell .dp-status.recovering {
-  background: #eaf0f7;
-  border-color: #c9d7e7;
-  color: #6f8eae;
+  background: #eef5e3;
+  border-color: #c3cdbc;
+  color: #4f7f5b;
 }
 .d2-shell .dp-status.paused {
-  background: #f5f3f0;
-  border-color: #e7e4de;
-  color: #868c9a;
+  background: #f0f5f1;
+  border-color: #dde5d6;
+  color: #869a8b;
 }
 .d2-shell .dp-name {
   font-size: 16px;
   font-weight: 550;
-  color: #3c455b;
+  color: #3e5247;
   letter-spacing: -0.3px;
 }
 .d2-shell .dp-meta {
   font-size: 11px;
-  color: #8791a8;
+  color: #8e9a8c;
 }
 .d2-shell .dp-readings {
   display: grid;
@@ -1261,17 +1261,17 @@
   gap: 8px;
   margin: 8px 0 4px;
   padding: 12px 0;
-  border-top: 1px solid #f4f1eb;
-  border-bottom: 1px solid #f4f1eb;
+  border-top: 1px solid #f3f7ee;
+  border-bottom: 1px solid #f3f7ee;
   font-size: 9px;
-  color: #949db2;
+  color: #9aa698;
 }
 .d2-shell .dp-readings b {
   display: block;
   margin-top: 4px;
   font-size: 13px;
   font-weight: 500;
-  color: #586583;
+  color: #3e5247;
 }
 .d2-shell .dp-card-foot {
   display: flex;
@@ -1287,7 +1287,7 @@
   gap: 6px;
   font-size: 11px;
   font-weight: 550;
-  color: #7e541d;
+  color: #2b5239;
 }
 @media (max-width: 1250px) {
   .d2-shell .dp-grid {
@@ -1318,21 +1318,21 @@
 .d2-shell .al-card {
   display: flex;
   flex-direction: column;
-  border: 1.5px solid #f6eadb;
+  border: 1.5px solid #e7efdc;
   border-radius: 18px;
-  background: #fdfbf9;
+  background: #f9fdfa;
   transition:
     border-color 0.15s,
     background 0.15s,
     box-shadow 0.15s;
 }
 .d2-shell .al-card:hover {
-  border-color: #efd9bd;
+  border-color: #c4e8cd;
 }
 .d2-shell .al-card.is-selected {
-  border-color: #ab7228;
+  border-color: #4f7f5b;
   background: #fff;
-  box-shadow: 0 6px 18px #5639140d;
+  box-shadow: 0 6px 18px #1d3a2c0d;
 }
 .d2-shell .al-card-main {
   position: relative;
@@ -1348,7 +1348,7 @@
   pointer-events: none;
 }
 .d2-shell .al-card:has(.al-card-main input:focus-visible) {
-  outline: 2px solid #ab7228;
+  outline: 2px solid #4f7f5b;
   outline-offset: 2px;
 }
 .d2-shell .al-icon {
@@ -1357,13 +1357,13 @@
   border-radius: 13px;
   display: grid;
   place-items: center;
-  background: #f4f1ec;
-  color: #606f90;
+  background: #f3f7ee;
+  color: #3e5247;
   margin-bottom: 10px;
   transition: all 0.15s;
 }
 .d2-shell .al-card.is-selected .al-icon {
-  background: #885b20;
+  background: #2f5a3f;
   color: #fff;
 }
 .d2-shell .al-check {
@@ -1373,26 +1373,26 @@
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  border: 1.5px solid #e2dbce;
+  border: 1.5px solid #cee2d3;
   display: grid;
   place-items: center;
   color: #fff;
   transition: all 0.15s;
 }
 .d2-shell .al-card.is-selected .al-check {
-  background: #885b20;
-  border-color: #885b20;
+  background: #2f5a3f;
+  border-color: #2f5a3f;
 }
 .d2-shell .al-card-main b {
   font-size: 15px;
   font-weight: 550;
   letter-spacing: -0.2px;
-  color: #3c455b;
+  color: #3e5247;
 }
 .d2-shell .al-card-main small {
   font-size: 12px;
   line-height: 1.6;
-  color: #838ca1;
+  color: #83a18a;
 }
 .d2-shell .al-limit {
   display: flex;
@@ -1400,9 +1400,9 @@
   justify-content: space-between;
   margin: 0 20px 18px;
   padding-top: 14px;
-  border-top: 1px solid #f4efe8;
+  border-top: 1px solid #e8f4eb;
   font-size: 11px;
-  color: #868fa4;
+  color: #8e9a8c;
 }
 .d2-shell .al-limit-field {
   display: inline-flex;
@@ -1413,10 +1413,10 @@
   width: 86px;
   padding: 7px 10px;
   border-radius: 9px;
-  border: 1px solid #f3e3ce;
+  border: 1px solid #e3eed5;
   background: #fff;
   font-size: 13px;
-  color: #3c455b;
+  color: #3e5247;
   text-align: right;
 }
 .d2-shell .al-limit input:disabled {
@@ -1426,7 +1426,7 @@
   margin-left: auto;
   margin-right: 18px;
   font-size: 11px;
-  color: #929bb0;
+  color: #92b09a;
 }
 .d2-shell .al-section-title {
   display: flex;
@@ -1437,7 +1437,7 @@
 .d2-shell .al-section-title h2 {
   font-size: 13px;
   font-weight: 550;
-  color: #596277;
+  color: #597761;
 }
 .d2-shell .db-row > .al-row-icon {
   width: 34px;
@@ -1445,13 +1445,13 @@
   border-radius: 11px;
   display: grid;
   place-items: center;
-  background: #f4f1ec;
-  color: #885b20;
+  background: #f3f7ee;
+  color: #2f5a3f;
 }
 .d2-shell .al-row .al-threshold b {
   display: inline;
   font-size: 13px;
-  color: #3c455b;
+  color: #3e5247;
 }
 .d2-shell .al-skipped small {
   margin: 0;
@@ -1461,10 +1461,10 @@
 }
 .d2-shell .al-select-input {
   font-size: 12px;
-  color: #7e541d;
+  color: #2b5239;
   padding: 7px 10px;
   border-radius: 9px;
-  border: 1px solid #f3e3ce;
+  border: 1px solid #e3eed5;
   background: #fff;
   max-width: 220px;
 }
@@ -1475,8 +1475,8 @@
   margin-top: 26px;
   padding: 20px 22px;
   border-radius: 18px;
-  background: linear-gradient(180deg, #fbf5ee, #fdfaf7);
-  border: 1px solid #f6e9d8;
+  background: linear-gradient(180deg, #f5f9ef, #fbfcf7);
+  border: 1px solid #e7efdc;
 }
 .d2-shell .db-hero > div {
   flex: 1;
@@ -1488,27 +1488,27 @@
   display: grid;
   place-items: center;
   background: #fff;
-  color: #885b20;
-  box-shadow: 0 2px 8px #56391410;
+  color: #2f5a3f;
+  box-shadow: 0 2px 8px #1d3a2c10;
 }
 .d2-shell .db-hero h2 {
   font-size: 17px;
   font-weight: 550;
   letter-spacing: -0.3px;
-  color: #3c455b;
+  color: #3e5247;
 }
 .d2-shell .db-hero p {
   font-size: 11px;
-  color: #868fa4;
+  color: #8e9a8c;
   margin-top: 4px;
 }
 .d2-shell .db-hero .db-hero-best {
-  color: #606f90;
+  color: #3e5247;
   margin-top: 3px;
 }
 .d2-shell .db-link {
   font-size: 12px;
-  color: #885b20;
+  color: #2f5a3f;
   font-weight: 550;
   padding: 6px 4px;
 }
@@ -1516,7 +1516,7 @@
   text-decoration: underline;
 }
 .d2-shell .db-group {
-  border: 1px solid #f3eee7;
+  border: 1px solid #e7f3ea;
   border-radius: 18px;
   overflow: hidden;
 }
@@ -1527,13 +1527,13 @@
   padding: 15px 22px;
 }
 .d2-shell .db-row + .db-row {
-  border-top: 1px solid #f4f1eb;
+  border-top: 1px solid #f3f7ee;
 }
 .d2-shell .db-row > span {
   width: 120px;
   flex-shrink: 0;
   font-size: 11px;
-  color: #868fa4;
+  color: #8e9a8c;
 }
 .d2-shell .db-row > div:first-of-type {
   flex: 1;
@@ -1543,37 +1543,37 @@
   display: block;
   font-size: 13px;
   font-weight: 500;
-  color: #3c455b;
+  color: #3e5247;
 }
 .d2-shell .db-row small {
   display: block;
   font-size: 10px;
-  color: #949db2;
+  color: #9aa698;
   margin-top: 3px;
 }
 .d2-shell .al-row > .al-threshold {
   width: auto;
   font-size: 12px;
-  color: #6d7993;
+  color: #6f7c72;
   white-space: nowrap;
 }
 .d2-shell .db-segment {
   display: inline-flex;
   padding: 3px;
   border-radius: 10px;
-  background: #f4f1eb;
+  background: #f3f7ee;
 }
 .d2-shell .db-segment button {
   font-size: 11px;
   padding: 6px 14px;
   border-radius: 8px;
-  color: #797f8e;
+  color: #6f7c72;
 }
 .d2-shell .db-segment button.is-active {
   background: #fff;
-  color: #7e541d;
+  color: #2b5239;
   font-weight: 550;
-  box-shadow: 0 1px 4px #56391414;
+  box-shadow: 0 1px 4px #1d3a2c14;
 }
 .d2-shell .db-segment button:disabled {
   opacity: 0.45;

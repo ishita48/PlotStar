@@ -62,16 +62,16 @@ export function SmartBlocksMark({ size = 26 }: { size?: number }) {
     <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
       <defs>
         <linearGradient id="sb-mark-a" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#ffd27a" />
-          <stop offset="1" stopColor="#f08a00" />
+          <stop offset="0" stopColor="#d6ef9c" />
+          <stop offset="1" stopColor="#4f7f5b" />
         </linearGradient>
         <linearGradient id="sb-mark-b" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#8fc1ff" />
-          <stop offset="1" stopColor="#2563eb" />
+          <stop offset="0" stopColor="#9fc46a" />
+          <stop offset="1" stopColor="#264d39" />
         </linearGradient>
       </defs>
       <path d="M16 3.5 26.5 9 16 14.5 5.5 9Z" fill="url(#sb-mark-a)" />
-      <path d="M5.5 9 16 14.5V27L5.5 21.5Z" fill="#f5a524" opacity=".55" />
+      <path d="M5.5 9 16 14.5V27L5.5 21.5Z" fill="#6fa24e" opacity=".55" />
       <path d="M26.5 9 16 14.5V27l10.5-5.5Z" fill="url(#sb-mark-b)" opacity=".9" />
       <path d="M16 14.5V27" stroke="#fff" strokeOpacity=".7" strokeWidth=".8" />
       <path

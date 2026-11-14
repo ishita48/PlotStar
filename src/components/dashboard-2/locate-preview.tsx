@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, type Ref } from 'react';
+import { Component, useState, type ReactNode, type Ref } from 'react';
+import dynamic from 'next/dynamic';
 import {
   ArrowLeft,
   ArrowRight,
@@ -26,6 +27,43 @@ import {
 } from './sample-data';
 
 type HeadingRef = { headingRef: Ref<HTMLHeadingElement> };
+
+const ConceptModel = dynamic(() => import('./concepts/concept-model'), {
+  ssr: false,
+  loading: () => <div className="d2-concept-status">Sketching the concept…</div>,
+});
+
+class ConceptBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    return this.state.failed ? (
+      <div className="d2-concept-status">3D preview unavailable in this browser.</div>
+    ) : (
+      this.props.children
+    );
+  }
+}
+
+/** Illustrative 3D sketch of the selected project type, not a replica of a real site. */
+function ConceptPreview({ type }: { type: PreviewProjectType }) {
+  const project = sampleProjectTypes.find((p) => p.id === type)!;
+  return (
+    <figure className="d2-concept" aria-label={`${project.label} concept sketch, drag to orbit`}>
+      <div className="d2-concept-canvas">
+        <ConceptBoundary key={type}>
+          <ConceptModel type={type} />
+        </ConceptBoundary>
+      </div>
+      <figcaption>
+        <b>{project.label}</b>
+        <span>Concept sketch · drag to orbit, scroll to zoom</span>
+      </figcaption>
+    </figure>
+  );
+}
 
 export function DescribePreview({
   type,
@@ -94,6 +132,7 @@ export function DescribePreview({
               </label>
             ))}
           </div>
+          <ConceptPreview type={type} />
         </fieldset>
         <label className="d2-city-field">
           <span>Where are you thinking?</span>
@@ -159,8 +198,8 @@ function PreviewMap({
             patternUnits="userSpaceOnUse"
             patternTransform="rotate(-14)"
           >
-            <rect width="86" height="68" fill="#f1ede6" />
-            <rect x="6" y="6" width="70" height="52" rx="5" fill="#f8f6f1" stroke="#e8e2d8" />
+            <rect width="86" height="68" fill="#eff5e7" />
+            <rect x="6" y="6" width="70" height="52" rx="5" fill="#f3f7ee" stroke="#dde5d6" />
             <path d="M0 64H86M82 0V68" stroke="#fff" strokeWidth="7" />
           </pattern>
         </defs>
@@ -168,36 +207,36 @@ function PreviewMap({
         <path
           d="M520 -30C410 80 600 100 490 208S410 330 470 480"
           fill="none"
-          stroke="#c6dbf7"
+          stroke="#d6ef9c"
           strokeWidth="53"
         />
         <path
           d="M520 -30C410 80 600 100 490 208S410 330 470 480"
           fill="none"
-          stroke="#dfeafb"
+          stroke="#eef5e3"
           strokeWidth="39"
         />
-        <path d="M-40 120L740 310M160 -30L355 480" stroke="#ddd6cb" strokeWidth="26" />
-        <path d="M-40 120L740 310M160 -30L355 480" stroke="#fffef7" strokeWidth="18" />
-        <path d="M-20 335L725 90" stroke="#e3ddc5" strokeWidth="13" />
-        <path d="M-20 335L725 90" stroke="#fffdf3" strokeWidth="9" />
+        <path d="M-40 120L740 310M160 -30L355 480" stroke="#c3cdbc" strokeWidth="26" />
+        <path d="M-40 120L740 310M160 -30L355 480" stroke="#fbfcf7" strokeWidth="18" />
+        <path d="M-20 335L725 90" stroke="#cfe0bb" strokeWidth="13" />
+        <path d="M-20 335L725 90" stroke="#fbfcf7" strokeWidth="9" />
         <path
           d="M325 38L412 55L394 116L315 103Z M45 217L119 202L147 267L61 283Z M544 320L647 297L676 386L566 411Z"
-          fill="#f1e3cb"
+          fill="#e0ecd0"
         />
         <path
           d="M191 113L245 97L268 151L213 170Z"
-          fill={selected.id === 'northline' ? '#5c9dff' : '#f3d3a0'}
-          stroke="#c98722"
+          fill={selected.id === 'northline' ? '#6fa24e' : '#cfe0bb'}
+          stroke="#4f7f5b"
           strokeWidth="2"
         />
         <path
           d="M473 136L531 122L550 178L496 194Z M350 310L410 288L437 346L374 366Z M77 278L124 265L144 308L94 328Z"
-          fill="#ecd8b5"
-          stroke="#c9a46a"
+          fill="#cfe0bb"
+          stroke="#9fc46a"
           strokeWidth="1.5"
         />
-        <g fill="#9a968f" fontSize="11" fontFamily="sans-serif" letterSpacing="2">
+        <g fill="#8e9a8c" fontSize="11" fontFamily="sans-serif" letterSpacing="2">
           <text x="70" y="63">
             NORTHWEST
           </text>
@@ -211,14 +250,14 @@ function PreviewMap({
         <text
           x="295"
           y="228"
-          fill="#857e72"
+          fill="#6b776e"
           fontSize="20"
           fontFamily="sans-serif"
           letterSpacing="4"
         >
           {city.split(',')[0].toUpperCase()}
         </text>
-        <text x="545" y="366" fill="#9a968f" fontSize="10" fontFamily="sans-serif">
+        <text x="545" y="366" fill="#8e9a8c" fontSize="10" fontFamily="sans-serif">
           GREENWAY
         </text>
       </svg>
@@ -442,15 +481,15 @@ export function FinalizePreview({
       <div className="d2-preview-site-hero">
         <div className="d2-parcel-art" aria-hidden="true">
           <svg viewBox="0 0 200 140">
-            <path d="M20 100L100 135L180 92L100 59Z" fill="#f3ead9" />
-            <path d="M30 84L100 115L171 77L101 46Z" fill="#f0dcb8" stroke="#d6a35a" />
-            <path d="M62 71L101 88L139 68L101 51Z" fill="#fbf7ef" stroke="#cf9a4e" />
+            <path d="M20 100L100 135L180 92L100 59Z" fill="#e7efdc" />
+            <path d="M30 84L100 115L171 77L101 46Z" fill="#cfe0bb" stroke="#6fa24e" />
+            <path d="M62 71L101 88L139 68L101 51Z" fill="#f5f9ef" stroke="#6fa24e" />
             <path
               d="M62 71V47L101 64V88M101 64L139 44V68M62 47L100 28L139 44L101 64"
-              fill="#f8efdf"
-              stroke="#cf9a4e"
+              fill="#ecf3e3"
+              stroke="#6fa24e"
             />
-            <path d="M44 92L52 87M151 87L158 90" stroke="#c4862f" strokeWidth="3" />
+            <path d="M44 92L52 87M151 87L158 90" stroke="#4f7f5b" strokeWidth="3" />
           </svg>
         </div>
         <div>

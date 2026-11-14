@@ -80,7 +80,7 @@ function RouteSegment({ points, flowing }: { points: Point3[]; flowing: boolean 
     <Line
       ref={line}
       points={points}
-      color="#2f7bff"
+      color="#2f5a3f"
       lineWidth={6}
       dashed
       dashSize={0.32}
@@ -127,7 +127,7 @@ function Model({
             p.entity.startsWith('room')
               ? fire
                 ? '#f0937f'
-                : '#a9c7f5'
+                : '#cfe0bb'
               : p.color,
         }),
       ),
@@ -148,7 +148,7 @@ function Model({
       <AnimationTicker active={animating} />
       <mesh position={[0, -0.06, 0]}>
         <boxGeometry args={[20, 0.12, 15]} />
-        <meshStandardMaterial color="#ebe7e0" />
+        <meshStandardMaterial color="#dde5d6" />
       </mesh>
       <BuildingBatch items={parts} onPick={onPick} />
       {operational &&
@@ -177,10 +177,10 @@ function Model({
                       alerting
                         ? '#e45b4b'
                         : sensor.protection === 'leak' || sensor.protection === 'waterUsage'
-                          ? '#3b8bff'
-                          : '#f5a524'
+                          ? '#3f6b4e'
+                          : '#6fa24e'
                     }
-                    emissive={alerting ? '#ff2d1a' : '#1f5fd6'}
+                    emissive={alerting ? '#ff2d1a' : '#1d3a2c'}
                     emissiveIntensity={alerting ? 0.9 : 0.25}
                   />
                 </mesh>
@@ -201,7 +201,7 @@ function Model({
             >
               <boxGeometry args={[0.45, 0.7, 0.45]} />
               <meshStandardMaterial
-                color={available[id as keyof typeof evacuationPlans] ? '#3b8bff' : '#ce5b4b'}
+                color={available[id as keyof typeof evacuationPlans] ? '#3f6b4e' : '#ce5b4b'}
               />
             </mesh>
             {!available[id as keyof typeof evacuationPlans] && (
@@ -276,7 +276,7 @@ export default function TwinCanvas({
           camera={{ position: [16, 15, 18], fov: 38 }}
           gl={{ antialias: true, powerPreference: 'low-power' }}
         >
-          <color attach="background" args={['#f4f2ee']} />
+          <color attach="background" args={['#f3f7ee']} />
           <ambientLight intensity={1.8} />
           <directionalLight position={[10, 20, 12]} intensity={2.2} />
           <Model

@@ -9,27 +9,27 @@
 
 .d2-shell.sb {
   /* palette */
-  --sb-bg: #f6f8fa;
+  --sb-bg: #f7faf2;
   --sb-surface: #ffffff;
-  --sb-subtle: #f6f8fa;
-  --sb-ink: #1f2328;
-  --sb-ink-2: #3d444d;
-  --sb-muted: #656d76;
-  --sb-faint: #8c959f;
-  --sb-border: #d0d7de;
-  --sb-border-muted: #d8dee4;
-  --sb-hair: #e6eaef;
-  --sb-amber: #f5a524;
-  --sb-amber-hi: #ffc75a;
-  --sb-amber-strong: #e08600;
-  --sb-amber-deep: #8f4f00;
-  --sb-amber-soft: #fff6e5;
-  --sb-amber-line: #f5d79e;
-  --sb-blue: #2f7bff;
-  --sb-blue-hi: #6aa6ff;
-  --sb-blue-strong: #1859e6;
-  --sb-blue-soft: #eef4ff;
-  --sb-blue-line: #b6cffd;
+  --sb-subtle: #f7faf2;
+  --sb-ink: #1c3026;
+  --sb-ink-2: #3d4d41;
+  --sb-muted: #6b776e;
+  --sb-faint: #8e9a8c;
+  --sb-border: #d3ddcb;
+  --sb-border-muted: #dde5d6;
+  --sb-hair: #e8eee2;
+  --sb-amber: #6fa24e;
+  --sb-amber-hi: #b9dc6c;
+  --sb-amber-strong: #4f7f5b;
+  --sb-amber-deep: #264d39;
+  --sb-amber-soft: #eef5e3;
+  --sb-amber-line: #cfe0bb;
+  --sb-blue: #2f5a3f;
+  --sb-blue-hi: #9fc46a;
+  --sb-blue-strong: #264d39;
+  --sb-blue-soft: #eef5e3;
+  --sb-blue-line: #cfe0bb;
   --sb-red: #d1242f;
   --sb-red-soft: #ffebe9;
   --sb-red-line: #ffcecb;
@@ -41,7 +41,7 @@
   --sb-blur: blur(20px) saturate(180%);
   --sb-lift: 0 1px 0 rgba(31, 35, 40, 0.04);
   --sb-lift-hover: 0 1px 0 rgba(31, 35, 40, 0.04), 0 6px 16px -6px rgba(31, 35, 40, 0.12);
-  --sb-blue-ring: 0 0 0 1px var(--sb-blue), 0 0 0 4px rgba(47, 123, 255, 0.12);
+  --sb-blue-ring: 0 0 0 1px var(--sb-blue), 0 0 0 4px rgba(47, 90, 63, 0.12);
   --sb-radius: 12px;
   --sb-radius-sm: 8px;
   /* motion: calm macOS easing, no overshoot */
@@ -84,8 +84,8 @@
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(900px 420px at 12% -8%, rgba(245, 165, 36, 0.1), transparent 70%),
-    radial-gradient(900px 420px at 92% -12%, rgba(47, 123, 255, 0.08), transparent 70%),
+    radial-gradient(900px 420px at 12% -8%, rgba(111, 162, 78, 0.1), transparent 70%),
+    radial-gradient(900px 420px at 92% -12%, rgba(47, 90, 63, 0.08), transparent 70%),
     var(--sb-bg);
 }
 .sb-ambient .sb-orb {
@@ -277,7 +277,7 @@
 }
 .d2-shell.sb .d2-module.is-active .sb-module-icon {
   background: var(--sb-amber);
-  border-color: #d48a10;
+  border-color: #6fa24e;
   color: #fff;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
@@ -306,7 +306,7 @@
 }
 .d2-shell.sb .d2-local-dot {
   background: var(--sb-blue);
-  box-shadow: 0 0 0 3px rgba(47, 123, 255, 0.15);
+  box-shadow: 0 0 0 3px rgba(47, 90, 63, 0.15);
 }
 .d2-shell.sb .d2-sidebar-bottom > a {
   color: var(--sb-muted);
@@ -484,14 +484,14 @@
 
 /* ---------------------------------------------------------------- buttons */
 .d2-shell.sb .d2-button {
-  color: #2a1800;
+  color: #12241b;
   font-weight: 600;
   border-radius: var(--sb-radius-sm);
   min-height: 36px;
   padding: 8px 16px;
   gap: 10px;
-  background: linear-gradient(180deg, #ffbe45, #f5a524);
-  border: 1px solid #d48a10;
+  background: linear-gradient(180deg, #b9dc6c, #6fa24e);
+  border: 1px solid #6fa24e;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.4),
     0 1px 0 rgba(31, 35, 40, 0.06);
@@ -500,7 +500,7 @@
     transform 0.1s ease;
 }
 .d2-shell.sb .d2-button:hover:not(:disabled) {
-  background: linear-gradient(180deg, #ffb52d, #ec9a12);
+  background: linear-gradient(180deg, #67c57e, #46b862);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.35),
     0 1px 0 rgba(31, 35, 40, 0.06);
@@ -526,8 +526,8 @@
   transition: background 0.15s ease;
 }
 .d2-shell.sb .d2-back:hover:not(:disabled) {
-  background: #eef1f4;
-  border-color: #c4cbd3;
+  background: #eff5e7;
+  border-color: #c4d3c8;
 }
 
 /* ---------------------------------------------------------------- form fields */
@@ -549,7 +549,7 @@
 .d2-shell.sb :is(.d2-describe textarea, .al-limit input):focus,
 .d2-shell.sb .d2-city-input:focus-within {
   border-color: var(--sb-blue);
-  box-shadow: 0 0 0 3px rgba(47, 123, 255, 0.2);
+  box-shadow: 0 0 0 3px rgba(47, 90, 63, 0.2);
   outline: none;
 }
 
@@ -567,8 +567,8 @@
     background 0.15s ease;
 }
 .d2-shell.sb :is(.d2-type-card, .d2-location-row, .al-card):hover {
-  border-color: #b9c2cc;
-  background: #fcfdfe;
+  border-color: #c3cdbc;
+  background: #fbfcf7;
   box-shadow: var(--sb-lift-hover);
 }
 .d2-shell.sb :is(.d2-type-card, .d2-location-row, .al-card).is-selected {
@@ -672,7 +672,7 @@
   border-color: var(--sb-blue-strong);
   color: #fff;
   box-shadow:
-    0 0 0 4px rgba(47, 123, 255, 0.18),
+    0 0 0 4px rgba(47, 90, 63, 0.18),
     0 2px 6px rgba(31, 35, 40, 0.18);
 }
 .d2-shell.sb .d2-map-pin.is-selected span {
@@ -708,7 +708,7 @@
 
 /* ---------------------------------------------------------------- Locate · Finalize */
 .d2-shell.sb .d2-preview-site-hero {
-  background: linear-gradient(180deg, #fffaf0, #fff);
+  background: linear-gradient(180deg, #f5f9ef, #fff);
   border: 1px solid var(--sb-amber-line);
   border-radius: var(--sb-radius);
   box-shadow: var(--sb-lift);
@@ -771,7 +771,7 @@
 }
 .d2-shell.sb .hv-camera-tools button:hover:not(:disabled) {
   color: var(--sb-blue-strong);
-  border-color: #b9c2cc;
+  border-color: #c3cdbc;
 }
 .d2-shell.sb .hv-twin-caption {
   background: var(--sb-subtle);
@@ -807,7 +807,7 @@
 }
 .d2-shell.sb .al-card.is-selected .al-icon {
   background: var(--sb-amber);
-  border-color: #d48a10;
+  border-color: #6fa24e;
   color: #fff;
 }
 .d2-shell.sb .al-card.is-selected .al-check {
@@ -828,7 +828,7 @@
 
 /* ---------------------------------------------------------------- Protect · Deploy review */
 .d2-shell.sb .db-hero {
-  background: linear-gradient(180deg, #f5f9ff, #fff);
+  background: linear-gradient(180deg, #f9fbf9, #fff);
   border: 1px solid var(--sb-blue-line);
   border-radius: var(--sb-radius);
 }
@@ -1112,7 +1112,7 @@
   transition: background 0.15s ease;
 }
 .d2-shell.sb .hv-demo-controls button:hover:not(:disabled) {
-  background: #eef1f4;
+  background: #eff5e7;
 }
 .d2-shell.sb .hv-demo-controls .hv-fire-trigger {
   background: var(--sb-red-soft);
@@ -1182,7 +1182,7 @@
     box-shadow 0.15s ease;
 }
 .d2-shell.sb .dp-card:hover {
-  border-color: #b9c2cc;
+  border-color: #c3cdbc;
   box-shadow: var(--sb-lift-hover);
 }
 .d2-shell.sb .dp-icon {
@@ -1245,12 +1245,12 @@
   background: var(--sb-red);
 }
 .d2-shell.sb .dp-status.recovering {
-  background: #f1f0ff;
-  border-color: #d7d3ff;
-  color: #5a4fcf;
+  background: #f6f9f7;
+  border-color: #e4eee7;
+  color: #76a883;
 }
 .d2-shell.sb .dp-status.recovering i {
-  background: #6e62e5;
+  background: #8fb899;
 }
 .d2-shell.sb .dp-status.paused {
   background: var(--sb-subtle);
@@ -1293,7 +1293,7 @@
 }
 .d2-shell.sb .dr-stage {
   border-radius: var(--sb-radius);
-  background: #0d1117;
+  background: #0d1710;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 .d2-shell.sb .dr-controls {
@@ -1310,8 +1310,8 @@
   box-shadow: 0 1px 0 rgba(31, 35, 40, 0.04);
 }
 .d2-shell.sb .dr-key:hover:not(:disabled) {
-  background: #fcfdfe;
-  border-color: #b9c2cc;
+  background: #fbfcf7;
+  border-color: #c3cdbc;
   color: var(--sb-ink);
 }
 .d2-shell.sb .dr-key.is-pending {
@@ -1319,9 +1319,9 @@
   border-color: var(--sb-blue);
 }
 .d2-shell.sb .dr-key.dr-primary:not(:disabled) {
-  background: linear-gradient(180deg, #ffbe45, #f5a524);
-  border-color: #d48a10;
-  color: #2a1800;
+  background: linear-gradient(180deg, #b9dc6c, #6fa24e);
+  border-color: #6fa24e;
+  color: #12241b;
 }
 .d2-shell.sb .dr-c:not(:disabled) {
   background: var(--sb-blue);

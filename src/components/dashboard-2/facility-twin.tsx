@@ -40,18 +40,18 @@ function PlanView({ state }: { state: ProtectionState }) {
   return (
     <div className="hv-flat-plan">
       <svg viewBox="0 0 700 380" role="img" aria-label="Configured Level 4 demo evacuation plan">
-        <rect width="700" height="380" fill="#f3f1ee" />
+        <rect width="700" height="380" fill="#f3f7ee" />
         <rect
           x="50"
           y="50"
           width="600"
           height="280"
           rx="12"
-          fill="#fcfbf8"
-          stroke="#a8a39a"
+          fill="#fbfcf7"
+          stroke="#8e9a8c"
           strokeWidth="2"
         />
-        <path d="M65 189H635" stroke="#dce7f8" strokeWidth="45" />
+        <path d="M65 189H635" stroke="#e3eed5" strokeWidth="45" />
         {[0, 1, 2, 3, 4].map((i) => (
           <g key={i}>
             <rect
@@ -60,8 +60,8 @@ function PlanView({ state }: { state: ProtectionState }) {
               width="90"
               height="95"
               rx="5"
-              fill="#ece7dd"
-              stroke="#cfc6b6"
+              fill="#dde5d6"
+              stroke="#c3cdbc"
             />
             <rect
               x={75 + i * 110}
@@ -69,8 +69,8 @@ function PlanView({ state }: { state: ProtectionState }) {
               width="90"
               height="85"
               rx="5"
-              fill={hazard && i > 2 ? '#f2c6b8' : '#ece7dd'}
-              stroke="#cfc6b6"
+              fill={hazard && i > 2 ? '#f2c6b8' : '#dde5d6'}
+              stroke="#c3cdbc"
             />
           </g>
         ))}
@@ -80,7 +80,7 @@ function PlanView({ state }: { state: ProtectionState }) {
         {plan && (
           <path
             d={path}
-            stroke={available[plan || 'east'] ? '#2f7bff' : '#be6954'}
+            stroke={available[plan || 'east'] ? '#2f5a3f' : '#be6954'}
             strokeWidth="9"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -88,7 +88,7 @@ function PlanView({ state }: { state: ProtectionState }) {
             strokeDasharray="13 7"
           />
         )}
-        <circle cx="320.75" cy="238.6" r="9" fill="#f59e0b" stroke="#fff" strokeWidth="3" />
+        <circle cx="320.75" cy="238.6" r="9" fill="#6fa24e" stroke="#fff" strokeWidth="3" />
         {monitoringPoints
           .filter((sensor) => state.config[sensor.protection].enabled)
           .map((sensor) => (
@@ -97,14 +97,14 @@ function PlanView({ state }: { state: ProtectionState }) {
               cx={350 + sensor.position[0] * 45}
               cy={190 + sensor.position[2] * 36}
               r="6"
-              fill={active.some((i) => i.kind === sensor.protection) ? '#c26e52' : '#2f7bff'}
+              fill={active.some((i) => i.kind === sensor.protection) ? '#c26e52' : '#2f5a3f'}
               stroke="#fff"
               strokeWidth="2"
             >
               <title>{sensor.label}</title>
             </circle>
           ))}
-        <g fontSize="12" fontFamily="sans-serif" fill="#7c7a74">
+        <g fontSize="12" fontFamily="sans-serif" fill="#6f7c72">
           <text x="76" y="37">
             WEST STAIR → NORTH EXIT
           </text>
