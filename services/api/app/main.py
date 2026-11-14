@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import config, external
 from .db import db_ready
-from .routers import context, design, studio, voice
+from .routers import context, copilot, design, studio, voice
 from .routers import agent, data, integrations, livegrid, optimize, projects, screen, sites, vexcel
 from . import livegrid as livegrid_state
 from . import optimizer as optimizer_mod
@@ -41,5 +41,6 @@ def health() -> dict:
 
 # screen.router first so /sites/candidates is not captured by /sites/{parcel_id}
 for r in (screen.router, sites.router, data.router, projects.router, integrations.router, vexcel.router,
-          optimize.router, livegrid.router, agent.router, voice.router, design.router, context.router, studio.router):
+          optimize.router, livegrid.router, agent.router, voice.router, design.router, context.router, studio.router,
+          copilot.router):
     app.include_router(r)

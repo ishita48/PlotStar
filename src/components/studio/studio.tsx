@@ -16,6 +16,7 @@ import { verdict } from '../explore/types';
 import type { MapMode } from '../explore/explore-map';
 import { Plan2D, type Layers } from './plan2d';
 import type { MoveEdit, ViewPreset } from './model3d';
+import { Copilot, type BriefPatch } from './copilot';
 import type { AddedType, Brief, Concept, ConceptEdit, Edits, Factor, Room, StudioResult } from './types';
 import { COOLING_LABEL, ROUTE_COLOR, TYPE_STYLE, WHY, download, money, num, pct, toDxf } from './types';
 
@@ -47,6 +48,8 @@ const ADD: Record<AddedType, { prefix: string; w: number; d: number; label: stri
 };
 interface SavedProject { id: string; name: string; mw_it: number; status: string; decided_by?: string; updated_at?: string; site?: { name?: string; address?: string } }
 type SiteExtra = { landCost?: number; landCostBasis?: string; labels?: { landCost?: string } };
+// copilot patches use the engine's field names; map them back to Brief
+const API_TO_BRIEF = { rack_kw: 'rackKw', mw_it: 'mw', cooling: 'cooling', redundancy: 'redundancy', halls: 'halls', storeys: 'storeys', expansion_pct: 'expansion', setback_m: 'setback', rent_kw_month: 'rent' } as const;
 /** CoStar building names are often generic ("Bldg 2", "G"), so lead with the street address. */
 const siteLabel = (s: ExploreSite) => (s.area && (s.source as string | undefined) !== 'user' ? s.area : s.name);
 const isUser = (s: ExploreSite) => (s.source as string | undefined) === 'user';
@@ -283,6 +286,16 @@ export function Studio() {
     setReopen(false);
     void generate(brief, true, edits).then((r) => { if (r) { setBase(r); setStep(2); } });
   }, [reopen, site]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // a change the copilot previewed and the user confirmed: apply it and regenerate, keeping the first run as the comparison
+  function applyPatch(p: BriefPatch) {
+    const b = { ...brief };
+    for (const [k, v] of Object.entries(p)) {
+      if (k === 'flexible_share') b.flex = Math.round(Number(v) * 100);
+      else if (k in API_TO_BRIEF) (b as Record<string, unknown>)[API_TO_BRIEF[k as keyof typeof API_TO_BRIEF]] = v;
+    }
+    setBrief(b); void generate(b, true, edits);
+  }
 
   function decide() {
     const at = new Date().toISOString();
@@ -651,6 +664,8 @@ export function Studio() {
         </main>
       </div>
 
+      {result && <Copilot body={body(brief)} conceptId={concept?.id ?? null} selected={sel} stage={STEPS[step].key} market={brief.market}
+        onApply={applyPatch} onSelectSite={(id) => { const s = sites.find((x) => x.id === id); if (s) void pickSite(id); }} busy={busy} />}
       <footer className="st-foot">
         <button className="st-btn" onClick={() => (step === 0 && sub > 0 ? setSub(sub - 1) : setStep(Math.max(0, step - 1)))} disabled={step === 0 && sub === 0}><ArrowLeft size={14} /> Back</button>
         <span className="st-foot-note">{busy ? 'Working…' : step === 0 && !site ? 'Choose a site to continue.' : step === 0 && sub < 2 ? 'Review the brief to continue.' : step === 5 && !canNext ? 'Select a concept and give a reason.' : result?.note ?? ''}</span>
