@@ -221,6 +221,17 @@ def projects() -> dict[str, Any]:
     return {"projects": _need(store.listing())}
 
 
+@router.get("/studio/portfolio")
+def portfolio() -> dict[str, Any]:
+    """Rollup across every saved project (one Atlas aggregation). Also projects near a point when lat/lon are given."""
+    return _need(store.portfolio())
+
+
+@router.get("/studio/projects/near")
+def projects_near(lat: float, lon: float, km: float = 50) -> dict[str, Any]:
+    return {"projects": _need(store.near(lat, lon, km))}
+
+
 @router.put("/studio/projects/{project_id}")
 def save_project(project_id: str, q: ProjectIn) -> dict[str, Any]:
     if not re.fullmatch(r"[A-Za-z0-9_-]{6,40}", project_id):

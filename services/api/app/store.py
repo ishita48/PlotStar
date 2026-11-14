@@ -30,7 +30,9 @@ def _collection():
             return None
         try:
             from pymongo import MongoClient
-            client = MongoClient(config.MONGODB_URI, serverSelectionTimeoutMS=4000, connectTimeoutMS=4000, appname="plotstar")
+            client = MongoClient(
+                config.MONGODB_URI, appname="plotstar", serverSelectionTimeoutMS=4000, connectTimeoutMS=4000,
+                retryWrites=True, retryReads=True, w="majority", maxPoolSize=20, minPoolSize=0, maxIdleTimeMS=60000)
             client.admin.command("ping")
             _state.update(client=client, reason=None)
         except Exception as e:  # driver missing, network blocked, bad credentials: all mean "not available"
@@ -41,8 +43,10 @@ def _collection():
             return None
     col = _state["client"][config.MONGODB_DB][COLLECTION]
     if not _state["indexed"]:
-        col.create_index([("updated_at", -1)])
-        col.create_index([("site.loc", "2dsphere")])
+        col.create_index([("updated_at", -1)])                       # recent-first listing
+        col.create_index([("site.loc", "2dsphere")])                 # projects near a point
+        col.create_index([("status", 1), ("updated_at", -1)])        # portfolio rollups by status
+        col.create_index([("market", 1)])
         _state["indexed"] = True
     return col
 
@@ -108,3 +112,43 @@ def delete(project_id: str) -> bool | None:
     if col is None:
         return None
     return col.delete_one({"_id": project_id}).deleted_count == 1
+
+
+def portfolio() -> dict[str, Any] | None:
+    """A rollup of all saved projects, computed by Atlas with one aggregation pipeline, not in Python."""
+    col = _collection()
+    if col is None:
+        return None
+    agg = list(col.aggregate([{"$group": {
+        "_id": None,
+        "projects": {"$sum": 1},
+        "decided": {"$sum": {"$cond": [{"$eq": ["$status", "decided"]}, 1, 0]}},
+        "total_mw": {"$sum": {"$ifNull": ["$mw_it", 0]}},
+        "total_capex": {"$sum": {"$ifNull": ["$summary.capex", 0]}},
+        "avg_npv": {"$avg": "$summary.npv"},
+        "markets": {"$addToSet": "$market"},
+    }}]))
+    by_status = {d["_id"]: d["count"] for d in col.aggregate(
+        [{"$group": {"_id": "$status", "count": {"$sum": 1}}}])}
+    base = agg[0] if agg else {"projects": 0, "decided": 0, "total_mw": 0, "total_capex": 0, "avg_npv": None, "markets": []}
+    base.pop("_id", None)
+    base["by_status"] = by_status
+    return base
+
+
+def near(lat: float, lon: float, km: float = 50, limit: int = 10) -> list[dict[str, Any]] | None:
+    """Saved projects within `km` of a point, nearest first (2dsphere index). Empty list if none or the index is cold."""
+    col = _collection()
+    if col is None:
+        return None
+    try:
+        cur = col.find({"site.loc": {"$near": {"$geometry": {"type": "Point", "coordinates": [lon, lat]},
+                                               "$maxDistance": km * 1000}}},
+                       {"name": 1, "market": 1, "mw_it": 1, "status": 1, "site.name": 1}).limit(limit)
+        out = []
+        for d in cur:
+            d["id"] = d.pop("_id")
+            out.append(d)
+        return out
+    except Exception:
+        return []

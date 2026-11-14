@@ -3,12 +3,14 @@ import type { GateResult } from '@/lib/types';
 
 export type RoomType =
   | 'data_hall' | 'electrical' | 'battery' | 'mechanical' | 'corridor' | 'support' | 'network' | 'loading' | 'reserve'
-  | 'yard_sub' | 'yard_gen' | 'yard_cool' | 'yard_water' | 'yard_bess' | 'yard_solar';
+  | 'yard_sub' | 'yard_gen' | 'yard_cool' | 'yard_water' | 'yard_bess' | 'yard_solar' | 'yard_parking' | 'yard_wall'
+  | 'yard_trees' | 'yard_guard';
 
-export interface RackRow { x: number; y: number; w: number; d: number; n: number; cap: number }
+/** A row of rack positions. `v` marks a row that runs north-south (after the building is rotated). */
+export interface RackRow { x: number; y: number; w: number; d: number; n: number; cap: number; v?: boolean }
 export interface Room {
   code: string; name: string; type: RoomType; x: number; y: number; w: number; d: number; h?: number;
-  area_m2?: number; need_m2?: number; added?: boolean; hall?: number; racks?: number; positions?: number; mw?: number; rows?: RackRow[];
+  area_m2?: number; need_m2?: number; added?: boolean; level?: number; z?: number; hall?: number; racks?: number; positions?: number; mw?: number; rows?: RackRow[];
 }
 export interface Check { name: string; ok: boolean; detail: string }
 export type Factor = 'money' | 'people' | 'planet' | 'resources';
@@ -16,22 +18,25 @@ export type Factor = 'money' | 'people' | 'planet' | 'resources';
 export interface Concept {
   id: string; name: string; strategy: string; feasible: boolean; rank: number; score: number;
   scores: Record<Factor, number>; advantage: string; tradeoff: string;
-  building: { x: number; y: number; w: number; d: number; h: number };
+  building: { x: number; y: number; w: number; d: number; h: number; storeys: number; floor_h: number };
+  rotated: boolean;
   rooms: Room[]; yard: Room[];
   equipment: { code: string; type: string; x: number; y: number; w: number; d: number; h: number }[];
   routes: Record<'power' | 'cooling' | 'data', [number, number][][]>;
   checks: Check[];
   metrics: {
-    footprint_m2: number; placed_racks: number; rack_positions: number; spare_positions: number;
+    footprint_m2: number; gross_floor_m2: number; storeys: number; placed_racks: number; rack_positions: number; spare_positions: number;
     expansion_bay_positions: number; hall_area_m2: number; corridor_area_m2: number; corridor_share: number;
     power_route_m: number; cooling_route_m: number; data_route_m: number; site_coverage: number; yard_area_m2: number;
     generators: number;
   };
   money: {
     capex: number; shell: number; equipment: number; distribution: number; interconnect: number; added: number; energy_per_year: number;
+    land: number; total_investment: number; revenue_per_year: number; npv: number; npv_p10: number; npv_p50: number; npv_p90: number;
+    payback_years: number | null; months_to_power: number; analysis_years: number;
     energy_per_year_flat: number; opex_per_year: number; water_per_year: number; ten_year: number;
   };
-  people: { noise_at_boundary_dba: number; noise_at_home_dba: number | null; generator_to_boundary_m: number; home_distance_m: number | null };
+  people: { noise_at_boundary_dba: number; noise_at_home_dba: number | null; generator_to_boundary_m: number; home_distance_m: number | null; noise_wall: boolean };
   planet: {
     co2_t_per_year: number; co2_t_per_year_flat: number; embodied_t: number; roof_solar_kwp: number; canopy_solar_kwp: number; roof_solar_mwh: number;
     roof_solar_share: number; solar_avoided_t: number;
@@ -41,6 +46,7 @@ export interface Concept {
 
 export interface StudioResult {
   brief: {
+    storeys: number; rent_kw_month: number;
     mw_it: number; rack_kw: number; racks: number; halls: number; racks_per_hall: number[]; redundancy: string; cooling: string;
     pue: number; facility_mw: number; generators: number; site_w: number; site_d: number; setback_m: number; env_w: number;
     env_d: number; expansion_pct: number; flexible_share: number;
@@ -49,16 +55,23 @@ export interface StudioResult {
   operating: {
     price_flat: number; price_flex: number; carbon_flat: number; carbon_flex: number; price_label: string; carbon_label: string;
     price_source: string; carbon_source: string; notes: string[];
+    price_days: number; price_dates: (string | null)[]; carbon_price_per_t: number; flex_note: string | null;
   };
-  site: { home_distance_m: number | null; substation_km: number | null; gates: GateResult[]; name: string | null };
+  site: {
+    home_distance_m: number | null; substation_km: number | null; gates: GateResult[]; name: string | null;
+    land_cost: number | null; land_label: string | null; land_basis: string | null;
+  };
+  ranking: { close: boolean; spread: number; note: string; method: string };
+  finance: { discount_rate: number; analysis_years: number; draws: number; label: string; note: string; uncertainty: Record<string, [number, number]> };
   assumptions: { key: string; value: number; unit: string; basis: string; label: string; verify: boolean }[];
   note: string;
 }
 
-export type AddedType = 'yard_bess' | 'yard_solar' | 'yard_water';
+export type AddedType = 'yard_bess' | 'yard_solar' | 'yard_water' | 'yard_parking' | 'yard_wall' | 'yard_trees' | 'yard_guard';
 /** The user's changes to one concept. Sent with every request so the engine re-measures the edited layout. */
 export interface ConceptEdit {
   building: { dx: number; dy: number };
+  rotate: boolean;
   yard: Record<string, { x: number; y: number }>;
   added: { code: string; type: AddedType; x: number; y: number; w: number; d: number }[];
 }
@@ -67,7 +80,7 @@ export type Edits = Record<string, ConceptEdit>;
 export interface Brief {
   name: string; market: 'Houston' | 'Los Angeles'; mw: number; rackKw: number; redundancy: 'N' | 'N+1' | '2N';
   cooling: 'air' | 'hybrid' | 'water' | 'liquid'; halls: number | null; siteW: number; siteD: number; setback: number;
-  expansion: number; flex: number;
+  expansion: number; flex: number; storeys: number; rent: number | null;
 }
 
 export const COOLING_LABEL: Record<Brief['cooling'], string> = {
@@ -90,6 +103,10 @@ export const TYPE_STYLE: Record<RoomType, { fill: string; stroke: string; label:
   yard_water: { fill: '#c3deec', stroke: '#2f6f93', label: 'Water storage' },
   yard_bess: { fill: '#e3ece2', stroke: '#3b8f5e', label: 'Battery storage' },
   yard_solar: { fill: '#cfd9e8', stroke: '#1f3a5f', label: 'Solar canopy' },
+  yard_parking: { fill: '#d9dbd7', stroke: '#565b58', label: 'Parking' },
+  yard_wall: { fill: '#b5bcb4', stroke: '#4d564f', label: 'Noise wall' },
+  yard_trees: { fill: '#cfe0c6', stroke: '#4f7f55', label: 'Tree buffer' },
+  yard_guard: { fill: '#efe6cf', stroke: '#8a8062', label: 'Gatehouse' },
 };
 
 export const ROUTE_COLOR = { power: '#c26a12', cooling: '#2f7fb0', data: '#7a5fc0' } as const;
@@ -110,6 +127,10 @@ export const WHY: Record<RoomType, string> = {
   yard_water: 'Stored water for evaporative or hybrid cooling.',
   yard_bess: 'Battery storage you added. Its energy is estimated from its footprint and it adds to the build cost.',
   yard_solar: 'A solar canopy you added. Its output is estimated from its area and it adds to the build cost.',
+  yard_parking: 'Parking you added. It counts as covered land and adds paving cost.',
+  yard_wall: 'A noise wall you added. Within 20 m of the generator yard it is counted as an 8 dBA reduction (a team assumption).',
+  yard_trees: 'A planted buffer you added. It stays open land and adds landscaping cost.',
+  yard_guard: 'A gatehouse you added at the site entrance.',
 };
 
 export const money = (n: number) =>
@@ -132,10 +153,10 @@ export function toDxf(c: Concept, siteW: number, siteD: number): string {
   rect('SITE', 0, 0, siteW, siteD);
   rect('BUILDING', c.building.x, c.building.y, c.building.w, c.building.d);
   for (const r of [...c.rooms, ...c.yard]) {
-    const layer = r.type.toUpperCase();
+    const layer = r.type.toUpperCase() + (c.building.storeys > 1 && r.level != null ? `_L${r.level + 1}` : '');
     rect(layer, r.x, r.y, r.w, r.d);
     text('LABELS', r.x + 0.5, r.y + 0.5, Math.min(1.2, r.d / 4), `${r.code} ${r.name}`);
-    for (const row of r.rows ?? []) rect('RACK_ROWS', row.x, row.y, (row.w * row.n) / row.cap, row.d);
+    for (const row of r.rows ?? []) rect('RACK_ROWS', row.x, row.y, row.v ? row.w : (row.w * row.n) / row.cap, row.v ? (row.d * row.n) / row.cap : row.d);
   }
   for (const e of c.equipment) rect('GENERATORS', e.x, e.y, e.w, e.d);
   for (const kind of ['power', 'cooling', 'data'] as const)
