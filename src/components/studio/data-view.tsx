@@ -46,7 +46,8 @@ export function DataView() {
 
   const fail = (k: string) => (e: Error) => setErr((x) => ({ ...x, [k]: e.message }));
   const doSearch = useCallback((text: string) => { api(`/atlas/search?q=${encodeURIComponent(text)}&limit=6`).then(setSearch).catch(fail('search')); }, []);
-  const doSim = useCallback((text: string) => { setSim(null); api(`/atlas/similar?q=${encodeURIComponent(text)}&limit=5`).then(setSim).catch(fail('similar')); }, []);
+  // passing_only: show sites a developer could actually use, not just the closest wording
+  const doSim = useCallback((text: string) => { setSim(null); api(`/atlas/similar?q=${encodeURIComponent(text)}&limit=5&passing_only=true`).then(setSim).catch(fail('similar')); }, []);
   const doNear = useCallback((h: Hit) => {
     if (!h.loc) return;
     const [lon, lat] = h.loc.coordinates;
