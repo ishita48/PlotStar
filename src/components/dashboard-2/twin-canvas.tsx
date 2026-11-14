@@ -1,27 +1,29 @@
 'use client';
-import { Suspense, useEffect, useRef, useState, type ComponentRef } from 'react';
-import { Canvas, useThree } from '@react-three/fiber';
+import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Line, OrbitControls } from '@react-three/drei';
 import { Vector3 } from 'three';
+import { BuildingBatch, STATIC_BUILDING_PARTS } from './haven/building-shell';
+import { floorY } from './haven/building-layout';
 import {
-  BLACKWELL_CENTER,
-  BLACKWELL_HOME,
-  BlackwellModel,
-  MARKER_SCALE,
-  blackwellElevation,
-  scaleFootprint,
-  toBlackwell,
-} from './haven/blackwell-model';
-import { evacuationPlans, levelY, monitoringPoints, type Point3 } from '@/lib/haven/config';
+  AnimationTicker,
+  FireEffect,
+  PulseGroup,
+  WaterEffect,
+  useReducedMotion,
+} from './haven/hazard-effects';
+import {
+  demoScenarios,
+  evacuationPlans,
+  monitoringPoints,
+  type Point3,
+} from '@/lib/haven/config';
 import {
   activeIncidents,
   effectivePlan,
   routeAvailability,
   type ProtectionState,
 } from '@/lib/haven/engine';
-
-/** Isolated floors orbit the south bar, where the Level 4 monitoring and routes sit. */
-const FLOOR_TARGET: [number, number] = [20, -10];
 
 function Camera({
   floor,
@@ -34,20 +36,13 @@ function Camera({
   const controls = useRef<ComponentRef<typeof OrbitControls>>(null);
   const previousFloor = useRef(floor);
   useEffect(() => {
-    const target = floor
-      ? new Vector3(FLOOR_TARGET[0], blackwellElevation(floor) + 1, FLOOR_TARGET[1])
-      : new Vector3(...BLACKWELL_CENTER);
+    const target = new Vector3(0, floor ? floorY(floor) + 0.2 : 4.2, 0);
     if (previousFloor.current === floor && (command.action === 'in' || command.action === 'out'))
       camera.position
         .sub(target)
         .multiplyScalar(command.action === 'in' ? 0.8 : 1.2)
         .add(target);
-    else {
-      const offset = new Vector3(...BLACKWELL_HOME)
-        .sub(new Vector3(...BLACKWELL_CENTER))
-        .setLength(floor ? 70 : 118);
-      camera.position.copy(target).add(offset);
-    }
+    else camera.position.set(16, (floor ? floorY(floor) : 4) + 11, 18);
     controls.current?.target.copy(target);
     camera.lookAt(target);
     controls.current?.update();
@@ -58,137 +53,167 @@ function Camera({
     <OrbitControls
       ref={controls}
       makeDefault
-      minDistance={20}
-      maxDistance={220}
-      maxPolarAngle={Math.PI / 2.1}
+      minDistance={6}
+      maxDistance={60}
+      maxPolarAngle={Math.PI / 2.05}
       enableDamping={false}
     />
   );
 }
-function Overlays({
+
+/** Evacuation route; the dashes flow toward the exit while a hazard is being animated. */
+function RouteSegment({ points, flowing }: { points: Point3[]; flowing: boolean }) {
+  const line = useRef<ComponentRef<typeof Line>>(null);
+  useFrame((_, delta) => {
+    if (flowing && line.current) line.current.material.dashOffset -= delta * 0.9;
+  });
+  return (
+    <Line
+      ref={line}
+      points={points}
+      color="#2f7bff"
+      lineWidth={6}
+      dashed
+      dashSize={0.32}
+      gapSize={0.16}
+      depthTest={false}
+      renderOrder={10}
+    />
+  );
+}
+
+/** Base of the corridor floor at a scenario's configured hazard point on Level 4. */
+const hazardBase = ([x, , z]: Point3, dx = 0): Point3 => [x + dx, floorY(4) + 0.16, z];
+
+function Model({
   state,
   floor,
   operational,
+  still,
   onPick,
 }: {
   state: ProtectionState;
   floor: number | null;
   operational: boolean;
+  still: boolean;
   onPick: (id: string) => void;
 }) {
-  if (!operational) return null;
   const incidents = activeIncidents(state);
-  const hazard = incidents.some((i) => i.kind === 'leak' || i.kind === 'fire');
-  const fire = incidents.some((i) => i.kind === 'fire');
+  const fire = operational && incidents.some((i) => i.kind === 'fire');
+  const leak = operational && incidents.some((i) => i.kind === 'leak');
   const plan = effectivePlan(state);
   const available = routeAvailability(state);
+  const level4 = floor === null || floor === 4;
+  const parts = useMemo(
+    () =>
+      STATIC_BUILDING_PARTS.filter((p) => floor === null || (p.floor === floor && !p.roof)).map(
+        (p) => ({
+          ...p,
+          // Rooms and corridor in the affected east half of Level 4 take the hazard's colour.
+          color:
+            (fire || leak) &&
+            p.floor === 4 &&
+            p.position[0] > 1 &&
+            (p.entity.startsWith('room') || p.entity.startsWith('corridor'))
+              ? fire
+                ? '#f0937f'
+                : '#a9c7f5'
+              : p.color,
+        }),
+      ),
+    [floor, fire, leak],
+  );
   const path = plan ? evacuationPlans[plan].points : [];
   const segments: Point3[][] = [];
   for (let i = 1; i < path.length; i++)
     if (
       floor === null ||
-      (Math.abs(path[i][1] - (levelY(floor) + 0.3)) < 0.15 &&
+      (Math.abs(path[i][1] - (floorY(floor) + 0.3)) < 0.15 &&
         Math.abs(path[i - 1][1] - path[i][1]) < 0.15)
     )
-      segments.push([toBlackwell(path[i - 1]), toBlackwell(path[i])]);
-  const l4 = floor === null || floor === 4;
+      segments.push([path[i - 1], path[i]]);
+  const animating = (fire || leak) && level4 && !still;
   return (
     <group>
-      {monitoringPoints
-        .filter((s) => state.config[s.protection].enabled && (floor === null || floor === s.floor))
-        .map((sensor) => (
-          <mesh
-            key={sensor.id}
-            position={toBlackwell(sensor.position)}
-            renderOrder={6}
-            onClick={(e) => {
-              e.stopPropagation();
-              onPick(sensor.id);
-            }}
-          >
-            <sphereGeometry args={[0.14 * MARKER_SCALE, 14, 12]} />
-            <meshStandardMaterial
-              color={
-                incidents.some((i) => i.kind === sensor.protection)
-                  ? '#e45b4b'
-                  : sensor.protection === 'leak' || sensor.protection === 'waterUsage'
-                    ? '#5d9fae'
-                    : '#c2cc70'
+      <AnimationTicker active={animating} />
+      <mesh position={[0, -0.06, 0]}>
+        <boxGeometry args={[20, 0.12, 15]} />
+        <meshStandardMaterial color="#ebe7e0" />
+      </mesh>
+      <BuildingBatch items={parts} onPick={onPick} />
+      {operational &&
+        monitoringPoints
+          .filter(
+            (s) => state.config[s.protection].enabled && (floor === null || floor === s.floor),
+          )
+          .map((sensor) => {
+            const alerting = incidents.some((i) => i.kind === sensor.protection);
+            return (
+              <PulseGroup
+                key={sensor.id}
+                position={sensor.position}
+                active={alerting}
+                still={still}
+              >
+                <mesh
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onPick(sensor.id);
+                  }}
+                >
+                  <sphereGeometry args={[0.14, 14, 12]} />
+                  <meshStandardMaterial
+                    color={
+                      alerting
+                        ? '#e45b4b'
+                        : sensor.protection === 'leak' || sensor.protection === 'waterUsage'
+                          ? '#3b8bff'
+                          : '#f5a524'
+                    }
+                    emissive={alerting ? '#ff2d1a' : '#1f5fd6'}
+                    emissiveIntensity={alerting ? 0.9 : 0.25}
+                  />
+                </mesh>
+              </PulseGroup>
+            );
+          })}
+      {operational &&
+        segments.map((points, i) => <RouteSegment key={i} points={points} flowing={animating} />)}
+      {operational &&
+        Object.entries(evacuationPlans).map(([id, route]) => (
+          <group key={id} position={route.exitPosition}>
+            <mesh
+              onClick={() =>
+                onPick(
+                  `${route.name} · ${available[id as keyof typeof evacuationPlans] ? 'scenario-clear' : 'blocked in demo'}`,
+                )
               }
-              emissive={
-                incidents.some((i) => i.kind === sensor.protection) ? '#b74637' : '#406d52'
-              }
-              emissiveIntensity={0.25}
-            />
-          </mesh>
+            >
+              <boxGeometry args={[0.45, 0.7, 0.45]} />
+              <meshStandardMaterial
+                color={available[id as keyof typeof evacuationPlans] ? '#3b8bff' : '#ce5b4b'}
+              />
+            </mesh>
+            {!available[id as keyof typeof evacuationPlans] && (
+              <Line
+                points={[
+                  [-0.3, 0.5, 0],
+                  [0.3, -0.3, 0],
+                ]}
+                color="#b3493c"
+                lineWidth={5}
+                depthTest={false}
+              />
+            )}
+          </group>
         ))}
-      {segments.map((points, i) => (
-        <Line
-          key={i}
-          points={points}
-          color="#398b60"
-          lineWidth={5}
-          depthTest={false}
-          renderOrder={10}
-        />
-      ))}
-      {Object.entries(evacuationPlans).map(([id, route]) => (
-        <group key={id} position={toBlackwell(route.exitPosition)}>
-          <mesh
-            onClick={() =>
-              onPick(
-                `${route.name} · ${available[id as keyof typeof evacuationPlans] ? 'scenario-clear' : 'blocked in demo'}`,
-              )
-            }
-          >
-            <boxGeometry args={[0.45 * MARKER_SCALE, 0.7 * MARKER_SCALE, 0.45 * MARKER_SCALE]} />
-            <meshStandardMaterial
-              color={available[id as keyof typeof evacuationPlans] ? '#68a682' : '#ce5b4b'}
-            />
-          </mesh>
-          {!available[id as keyof typeof evacuationPlans] && (
-            <Line
-              points={[
-                [-0.9, 1.5, 0],
-                [0.9, -0.9, 0],
-              ]}
-              color="#b3493c"
-              lineWidth={5}
-              depthTest={false}
-            />
-          )}
-        </group>
-      ))}
-      {hazard && l4 && (
-        <>
-          {/* Affected east wing of Level 4, then the hazard itself in the corridor. */}
-          <mesh
-            position={toBlackwell([3.5, levelY(4) + 0.16, 0])}
-            rotation={[-Math.PI / 2, 0, 0]}
-            renderOrder={4}
-          >
-            <planeGeometry args={scaleFootprint([5, 6.4])} />
-            <meshBasicMaterial
-              color={fire ? '#e48272' : '#dca472'}
-              transparent
-              opacity={0.3}
-              depthWrite={false}
-            />
-          </mesh>
-          <mesh
-            position={toBlackwell([2.5, levelY(4) + 0.21, 0.55])}
-            rotation={[-Math.PI / 2, 0, 0]}
-            renderOrder={5}
-          >
-            <planeGeometry args={scaleFootprint([4, 1.2])} />
-            <meshBasicMaterial
-              color={fire ? '#e45f49' : '#6bb7c4'}
-              transparent
-              opacity={0.75}
-              depthWrite={false}
-            />
-          </mesh>
-        </>
+      {/* Demo hazards sit at each scenario's configured point in the east corridor. With both
+          active, the leak is drawn a little further east so the two effects stay readable. */}
+      {fire && level4 && (
+        <FireEffect position={hazardBase(demoScenarios.fire.hazardPosition, leak ? -0.4 : 0)} still={still} />
+      )}
+      {leak && level4 && (
+        <WaterEffect position={hazardBase(demoScenarios.leak.hazardPosition, fire ? 1.2 : 0)} still={still} />
       )}
     </group>
   );
@@ -209,6 +234,7 @@ export default function TwinCanvas({
   onUnavailable: () => void;
 }) {
   const [ready, setReady] = useState(false);
+  const still = useReducedMotion();
   useEffect(() => {
     const canvas = document.createElement('canvas');
     const context = canvas.getContext('webgl2');
@@ -223,27 +249,25 @@ export default function TwinCanvas({
     <div
       className="hv-canvas"
       role="img"
-      aria-label={`${state.facility.name} 3D digital twin · Blackwell Hall model`}
+      aria-label={`${state.facility.name} representative 3D digital twin`}
     >
       {ready ? (
         <Canvas
           frameloop="demand"
           dpr={[1, 1.5]}
-          camera={{ position: BLACKWELL_HOME, fov: 34, near: 0.5, far: 800 }}
+          camera={{ position: [16, 15, 18], fov: 38 }}
           gl={{ antialias: true, powerPreference: 'low-power' }}
         >
-          <color attach="background" args={['#edf2e9']} />
-          <ambientLight intensity={1.4} />
-          <directionalLight position={[-40, 90, 30]} intensity={2.2} />
-          <hemisphereLight args={['#fffdf5', '#a9bdb1', 1]} />
-          <mesh position={[23, -0.25, -42]}>
-            <boxGeometry args={[90, 0.12, 120]} />
-            <meshStandardMaterial color="#e2e9dc" />
-          </mesh>
-          <Suspense fallback={null}>
-            <BlackwellModel floor={floor} />
-          </Suspense>
-          <Overlays state={state} floor={floor} operational={operational} onPick={onPick} />
+          <color attach="background" args={['#f4f2ee']} />
+          <ambientLight intensity={1.8} />
+          <directionalLight position={[10, 20, 12]} intensity={2.2} />
+          <Model
+            state={state}
+            floor={floor}
+            operational={operational}
+            still={still}
+            onPick={onPick}
+          />
           <Camera floor={floor} command={command} />
         </Canvas>
       ) : (

@@ -327,7 +327,7 @@ function Timeline({ state }: { state: ProtectionState }) {
         ))}
       </ol>
       <p className="hv-note">
-        Shared threshold and response rules run locally in AFTERLIGHT’s backend. External HAVEN
+        Shared threshold and response rules run locally in Smart Blocks’ backend. External HAVEN
         uAgents, hardware, physical alarms and equipment controls are not connected.
       </p>
     </PrimaryCard>
@@ -499,6 +499,11 @@ export function ProtectModule({
             name="Electricity"
             value={state.config.electricity.enabled ? `${state.readings.electricity} kW` : 'Off'}
             detail={`Limit ${state.config.electricity.limit} kW`}
+            ratio={
+              state.config.electricity.enabled
+                ? state.readings.electricity / state.config.electricity.limit
+                : undefined
+            }
             warning={
               state.config.electricity.enabled &&
               state.readings.electricity >= state.config.electricity.limit
@@ -509,6 +514,11 @@ export function ProtectModule({
             name="Water usage"
             value={state.config.waterUsage.enabled ? `${state.readings.waterUsage} L/min` : 'Off'}
             detail={`Limit ${state.config.waterUsage.limit} L/min`}
+            ratio={
+              state.config.waterUsage.enabled
+                ? state.readings.waterUsage / state.config.waterUsage.limit
+                : undefined
+            }
             warning={
               state.config.waterUsage.enabled &&
               state.readings.waterUsage >= state.config.waterUsage.limit
@@ -542,23 +552,27 @@ export function ProtectModule({
           />
         </div>
         <div className="hv-command-grid">
-          <PrimaryCard className="hv-live-model">
-            <div className="hv-section-heading">
-              <div>
-                <span className="d2-overline">THE FACILITY, AT A GLANCE</span>
-                <h2>Operational digital twin</h2>
+          <div className="sb-command-main">
+            <PrimaryCard className="hv-live-model">
+              <div className="hv-section-heading">
+                <div>
+                  <span className="d2-overline">THE FACILITY, AT A GLANCE</span>
+                  <h2>Operational digital twin</h2>
+                </div>
+                <span className="d2-sample-tag">Sample model</span>
               </div>
-              <span className="d2-sample-tag">Sample model</span>
-            </div>
-            <FacilityTwin state={state} operational initialFloor={null} />
-            <RouteSummary state={state} />
-          </PrimaryCard>
-          <PrimaryCard className="hv-response-panel">
-            <IncidentSummary state={state} act={act} busy={busy} />
-          </PrimaryCard>
+              <FacilityTwin state={state} operational initialFloor={null} />
+              <RouteSummary state={state} />
+            </PrimaryCard>
+            <Timeline state={state} />
+          </div>
+          <div className="sb-command-side">
+            <PrimaryCard className="hv-response-panel">
+              <IncidentSummary state={state} act={act} busy={busy} />
+            </PrimaryCard>
+            <SimulationControls state={state} act={act} busy={busy} />
+          </div>
         </div>
-        <SimulationControls state={state} act={act} busy={busy} />
-        <Timeline state={state} />
       </>
     );
   return (
@@ -811,12 +825,15 @@ function Metric({
   value,
   detail,
   warning,
+  ratio,
 }: {
   icon: typeof Zap;
   name: string;
   value: string;
   detail: string;
   warning: boolean;
+  /** Reading ÷ limit, drawn as a meter. Omitted for on/off detectors. */
+  ratio?: number;
 }) {
   return (
     <div className={`hv-metric ${warning ? 'is-warning' : ''}`}>
@@ -826,6 +843,18 @@ function Metric({
         <small>SIMULATED</small>
       </span>
       <b>{value}</b>
+      {ratio !== undefined && (
+        <span
+          className="sb-meter"
+          role="meter"
+          aria-label={`${name} against its limit`}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(Math.min(ratio, 1.5) * 100)}
+        >
+          <i style={{ width: `${Math.min(ratio, 1) * 100}%` }} />
+        </span>
+      )}
       <p>{detail}</p>
     </div>
   );

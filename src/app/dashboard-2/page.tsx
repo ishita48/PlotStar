@@ -2,10 +2,12 @@ import type { Metadata } from 'next';
 import { DashboardTwo } from '@/components/dashboard-2/dashboard';
 import './dashboard.css';
 import './protection.css';
+import './smart-blocks.css';
 
 export const metadata: Metadata = {
-  title: 'AFTERLIGHT · Dashboard 2',
-  description: 'An interface preview of the AFTERLIGHT planning workspace.',
+  title: 'Smart Blocks',
+  description:
+    'Smart Blocks: locate, design, protect and deploy infrastructure in one connected workspace.',
 };
 
 export default function DashboardTwoPage() {

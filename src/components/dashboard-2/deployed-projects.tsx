@@ -186,6 +186,10 @@ export function DeployedProjects({
                           ? 'Off'
                           : `${project.readings.electricity} kW`}
                       </b>
+                      <LoadMeter
+                        value={project.readings.electricity}
+                        limit={project.limits?.electricity}
+                      />
                     </span>
                     <span>
                       Water
@@ -194,6 +198,10 @@ export function DeployedProjects({
                           ? 'Off'
                           : `${project.readings.waterUsage} L/min`}
                       </b>
+                      <LoadMeter
+                        value={project.readings.waterUsage}
+                        limit={project.limits?.waterUsage}
+                      />
                     </span>
                     <span>
                       Incidents
@@ -261,5 +269,20 @@ export function ProjectCommandCenter({
         />
       )}
     </>
+  );
+}
+
+/** Reading against its alert limit; amber when close, red past it. */
+function LoadMeter({ value, limit }: { value: number | null; limit?: number }) {
+  if (value === null || !limit) return <span className="sb-meter is-off" aria-hidden="true" />;
+  const ratio = value / limit;
+  return (
+    <span
+      className={`sb-meter ${ratio >= 1 ? 'is-over' : ratio >= 0.8 ? 'is-near' : ''}`}
+      title={`${Math.round(ratio * 100)}% of the ${limit} limit`}
+      aria-hidden="true"
+    >
+      <i style={{ width: `${Math.min(ratio, 1) * 100}%` }} />
+    </span>
   );
 }

@@ -159,8 +159,8 @@ function PreviewMap({
             patternUnits="userSpaceOnUse"
             patternTransform="rotate(-14)"
           >
-            <rect width="86" height="68" fill="#e9eee3" />
-            <rect x="6" y="6" width="70" height="52" rx="5" fill="#f3f5ed" stroke="#e0e6d9" />
+            <rect width="86" height="68" fill="#f1ede6" />
+            <rect x="6" y="6" width="70" height="52" rx="5" fill="#f8f6f1" stroke="#e8e2d8" />
             <path d="M0 64H86M82 0V68" stroke="#fff" strokeWidth="7" />
           </pattern>
         </defs>
@@ -168,36 +168,36 @@ function PreviewMap({
         <path
           d="M520 -30C410 80 600 100 490 208S410 330 470 480"
           fill="none"
-          stroke="#cedfd6"
+          stroke="#c6dbf7"
           strokeWidth="53"
         />
         <path
           d="M520 -30C410 80 600 100 490 208S410 330 470 480"
           fill="none"
-          stroke="#e0ebe2"
+          stroke="#dfeafb"
           strokeWidth="39"
         />
-        <path d="M-40 120L740 310M160 -30L355 480" stroke="#d0dac8" strokeWidth="26" />
+        <path d="M-40 120L740 310M160 -30L355 480" stroke="#ddd6cb" strokeWidth="26" />
         <path d="M-40 120L740 310M160 -30L355 480" stroke="#fffef7" strokeWidth="18" />
         <path d="M-20 335L725 90" stroke="#e3ddc5" strokeWidth="13" />
         <path d="M-20 335L725 90" stroke="#fffdf3" strokeWidth="9" />
         <path
           d="M325 38L412 55L394 116L315 103Z M45 217L119 202L147 267L61 283Z M544 320L647 297L676 386L566 411Z"
-          fill="#d7e4cb"
+          fill="#f1e3cb"
         />
         <path
           d="M191 113L245 97L268 151L213 170Z"
-          fill={selected.id === 'northline' ? '#84b49c' : '#bdd0b5'}
-          stroke="#6f997a"
+          fill={selected.id === 'northline' ? '#5c9dff' : '#f3d3a0'}
+          stroke="#c98722"
           strokeWidth="2"
         />
         <path
           d="M473 136L531 122L550 178L496 194Z M350 310L410 288L437 346L374 366Z M77 278L124 265L144 308L94 328Z"
-          fill="#c2d3b9"
-          stroke="#99b08e"
+          fill="#ecd8b5"
+          stroke="#c9a46a"
           strokeWidth="1.5"
         />
-        <g fill="#98a88f" fontSize="11" fontFamily="sans-serif" letterSpacing="2">
+        <g fill="#9a968f" fontSize="11" fontFamily="sans-serif" letterSpacing="2">
           <text x="70" y="63">
             NORTHWEST
           </text>
@@ -211,14 +211,14 @@ function PreviewMap({
         <text
           x="295"
           y="228"
-          fill="#7c9179"
+          fill="#857e72"
           fontSize="20"
           fontFamily="sans-serif"
           letterSpacing="4"
         >
           {city.split(',')[0].toUpperCase()}
         </text>
-        <text x="545" y="366" fill="#98ac8c" fontSize="10" fontFamily="sans-serif">
+        <text x="545" y="366" fill="#9a968f" fontSize="10" fontFamily="sans-serif">
           GREENWAY
         </text>
       </svg>
@@ -442,15 +442,15 @@ export function FinalizePreview({
       <div className="d2-preview-site-hero">
         <div className="d2-parcel-art" aria-hidden="true">
           <svg viewBox="0 0 200 140">
-            <path d="M20 100L100 135L180 92L100 59Z" fill="#e3ebda" />
-            <path d="M30 84L100 115L171 77L101 46Z" fill="#d1e0c7" stroke="#9eb48f" />
-            <path d="M62 71L101 88L139 68L101 51Z" fill="#f6f8ef" stroke="#93ad87" />
+            <path d="M20 100L100 135L180 92L100 59Z" fill="#f3ead9" />
+            <path d="M30 84L100 115L171 77L101 46Z" fill="#f0dcb8" stroke="#d6a35a" />
+            <path d="M62 71L101 88L139 68L101 51Z" fill="#fbf7ef" stroke="#cf9a4e" />
             <path
               d="M62 71V47L101 64V88M101 64L139 44V68M62 47L100 28L139 44L101 64"
-              fill="#edf3e5"
-              stroke="#93ad87"
+              fill="#f8efdf"
+              stroke="#cf9a4e"
             />
-            <path d="M44 92L52 87M151 87L158 90" stroke="#7fa077" strokeWidth="3" />
+            <path d="M44 92L52 87M151 87L158 90" stroke="#c4862f" strokeWidth="3" />
           </svg>
         </div>
         <div>

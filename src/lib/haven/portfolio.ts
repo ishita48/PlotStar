@@ -111,6 +111,8 @@ export interface DeployedProject {
   health: ReturnType<typeof buildingHealth>;
   activeIncidents: number;
   readings: { electricity: number | null; waterUsage: number | null };
+  /** Configured alert limits, for drawing readings against them. */
+  limits: { electricity: number; waterUsage: number };
   deployedAt: string | null;
 }
 
@@ -124,6 +126,10 @@ export function summarizeProject(state: ProtectionState): DeployedProject {
     readings: {
       electricity: state.config.electricity.enabled ? state.readings.electricity : null,
       waterUsage: state.config.waterUsage.enabled ? state.readings.waterUsage : null,
+    },
+    limits: {
+      electricity: state.config.electricity.limit,
+      waterUsage: state.config.waterUsage.limit,
     },
     deployedAt: state.deployedAt || null,
   };

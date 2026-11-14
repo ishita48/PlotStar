@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import { MapPin, Plus, ShieldCheck, Sparkles } from 'lucide-react';
 import { type Module, PrimaryCard, Sidebar, StepNavigation, type Status } from './shell';
 import { DesignModule, ProtectModule } from './protection-workspace';
@@ -32,6 +32,9 @@ function writeStore(key: string, value: unknown) {
     // Storage can be unavailable (private mode). Progress then lasts for this visit only.
   }
 }
+
+const GLOW_SURFACES =
+  '.d2-primary, .d2-sidebar, .d2-stepbar, .d2-type-card, .d2-location-row, .hv-metric, .dp-card, .hv-protection-card, .al-card, .dr-controls, .d2-support > div';
 
 export function DashboardTwo() {
   const [module, setModule] = useState<Module>('locate');
@@ -158,6 +161,21 @@ export function DashboardTwo() {
     if (index < 2) setStep(index + 1);
   }
 
+  // Glass surfaces catch a soft light where the pointer is (CSS reads --sb-mx / --sb-my).
+  const glowFrame = useRef(0);
+  function glow(event: PointerEvent<HTMLDivElement>) {
+    if (event.pointerType !== 'mouse') return;
+    const target = (event.target as Element).closest<HTMLElement>(GLOW_SURFACES);
+    if (!target) return;
+    const { clientX, clientY } = event;
+    cancelAnimationFrame(glowFrame.current);
+    glowFrame.current = requestAnimationFrame(() => {
+      const box = target.getBoundingClientRect();
+      target.style.setProperty('--sb-mx', `${clientX - box.left}px`);
+      target.style.setProperty('--sb-my', `${clientY - box.top}px`);
+    });
+  }
+
   async function reset() {
     if (!confirmReset) {
       setConfirmReset(true);
@@ -188,8 +206,20 @@ export function DashboardTwo() {
     setCompleted([false, false, false]);
   }
 
+  // Each screen gets its own key so the workspace plays the glass page transition on every move.
+  const viewKey = `${module}:${module === 'locate' ? step : module === 'design' ? designStep : typeof deployView === 'object' ? deployView.id : deployView}`;
+
   return (
-    <div className="d2-shell" style={hydrated ? undefined : { visibility: 'hidden' }}>
+    <div
+      className="d2-shell sb"
+      style={hydrated ? undefined : { visibility: 'hidden' }}
+      onPointerMove={glow}
+    >
+      <div className="sb-ambient" aria-hidden="true">
+        <i className="sb-orb sb-orb-amber" />
+        <i className="sb-orb sb-orb-blue" />
+        <i className="sb-orb sb-orb-white" />
+      </div>
       <Sidebar
         active={module}
         complete={completed[2]}
@@ -269,151 +299,153 @@ export function DashboardTwo() {
             <button onClick={() => void protection.reload()}>Reload workspace</button>
           </div>
         )}
-        {showingOtherDeployView ? (
-          typeof deployView === 'object' ? (
-            <ProjectCommandCenter
-              key={deployView.id}
-              facility={deployView}
-              onBack={() => setDeployView('projects')}
-            />
-          ) : (
-            <DeployedProjects
-              current={facility}
-              currentDeployed={currentDeployed}
-              onOpen={openProject}
-              onFinishCurrent={() => setModule(completed[2] ? 'protect' : 'locate')}
-            />
-          )
-        ) : module !== 'locate' ? (
-          !completed[2] ? (
-            <PrimaryCard className="hv-prerequisite">
-              <MapPin size={42} />
-              <h1>First, find its place.</h1>
-              <p>Finish Locate to carry your selected facility into Design and Protect.</p>
-              <button className="d2-button" onClick={() => setModule('locate')}>
-                Return to Locate
-              </button>
-            </PrimaryCard>
-          ) : protection.loading ? (
-            <PrimaryCard>
-              <div className="hv-model-loading" role="status">
-                Loading the facility’s protection workspace…
-              </div>
-            </PrimaryCard>
-          ) : module === 'design' ? (
-            designStep === 0 ? (
-              <DroneDiscover
-                facility={protection.state.facility}
-                onContinue={() => setDesignStep(1)}
-              />
-            ) : (
-              <DesignModule
-                state={protection.state}
-                busy={protection.busy}
-                act={protection.act}
-                onProtect={() => setModule('protect')}
-              />
-            )
-          ) : module === 'deploy' ? (
-            protection.state.deployed ? (
-              <ProtectModule
-                key={`${facility.id}-live`}
-                state={protection.state}
-                busy={protection.busy}
-                act={protection.act}
-                onDesign={() => setModule('design')}
-                live
+        <div className="sb-view" key={viewKey}>
+          {showingOtherDeployView ? (
+            typeof deployView === 'object' ? (
+              <ProjectCommandCenter
+                key={deployView.id}
+                facility={deployView}
                 onBack={() => setDeployView('projects')}
-                onEdit={() => {
-                  setProtectStart(0);
-                  setModule('protect');
-                }}
               />
             ) : (
               <DeployedProjects
                 current={facility}
-                currentDeployed={false}
+                currentDeployed={currentDeployed}
                 onOpen={openProject}
-                onFinishCurrent={() => setModule('protect')}
+                onFinishCurrent={() => setModule(completed[2] ? 'protect' : 'locate')}
+              />
+            )
+          ) : module !== 'locate' ? (
+            !completed[2] ? (
+              <PrimaryCard className="hv-prerequisite">
+                <MapPin size={42} />
+                <h1>First, find its place.</h1>
+                <p>Finish Locate to carry your selected facility into Design and Protect.</p>
+                <button className="d2-button" onClick={() => setModule('locate')}>
+                  Return to Locate
+                </button>
+              </PrimaryCard>
+            ) : protection.loading ? (
+              <PrimaryCard>
+                <div className="hv-model-loading" role="status">
+                  Loading the facility’s protection workspace…
+                </div>
+              </PrimaryCard>
+            ) : module === 'design' ? (
+              designStep === 0 ? (
+                <DroneDiscover
+                  facility={protection.state.facility}
+                  onContinue={() => setDesignStep(1)}
+                />
+              ) : (
+                <DesignModule
+                  state={protection.state}
+                  busy={protection.busy}
+                  act={protection.act}
+                  onProtect={() => setModule('protect')}
+                />
+              )
+            ) : module === 'deploy' ? (
+              protection.state.deployed ? (
+                <ProtectModule
+                  key={`${facility.id}-live`}
+                  state={protection.state}
+                  busy={protection.busy}
+                  act={protection.act}
+                  onDesign={() => setModule('design')}
+                  live
+                  onBack={() => setDeployView('projects')}
+                  onEdit={() => {
+                    setProtectStart(0);
+                    setModule('protect');
+                  }}
+                />
+              ) : (
+                <DeployedProjects
+                  current={facility}
+                  currentDeployed={false}
+                  onOpen={openProject}
+                  onFinishCurrent={() => setModule('protect')}
+                />
+              )
+            ) : (
+              <ProtectModule
+                key={facility.id}
+                state={protection.state}
+                busy={protection.busy}
+                act={protection.act}
+                onDesign={() => setModule('design')}
+                initialStep={protectStart}
+                onDeployed={openCommandCenter}
+                onOpenCommand={openCommandCenter}
               />
             )
           ) : (
-            <ProtectModule
-              key={facility.id}
-              state={protection.state}
-              busy={protection.busy}
-              act={protection.act}
-              onDesign={() => setModule('design')}
-              initialStep={protectStart}
-              onDeployed={openCommandCenter}
-              onOpenCommand={openCommandCenter}
-            />
-          )
-        ) : (
-          <>
-            {step === 0 && (
-              <DescribePreview
-                type={type}
-                setType={(next) => next !== type && changeChoice(() => setType(next))}
-                brief={brief}
-                setBrief={setBrief}
-                city={city}
-                setCity={(next) => next !== city && changeChoice(() => setCity(next))}
-                onContinue={() => advance(0)}
-                headingRef={heading}
-              />
-            )}
-            {step === 1 && (
-              <PickPreview
-                selected={selected}
-                onSelect={(id) => id !== selectedId && changeChoice(() => setSelectedId(id))}
-                city={city}
-                onContinue={() => advance(1)}
-                headingRef={heading}
-              />
-            )}
-            {step === 2 && (
-              <FinalizePreview
-                site={selected}
-                city={city}
-                projectLabel={projectType.label}
-                complete={completed[2]}
-                onBack={() => setStep(1)}
-                onConfirm={() => advance(2)}
-                onDesign={() => setModule('design')}
-                headingRef={heading}
-              />
-            )}
-            {step !== 1 && (
-              <div className="d2-support">
-                <div>
-                  <span className="d2-support-icon">
-                    <MapPin size={18} />
-                  </span>
-                  <b>A place with purpose.</b>
-                  <p>Great possibilities start with a thoughtful location.</p>
+            <>
+              {step === 0 && (
+                <DescribePreview
+                  type={type}
+                  setType={(next) => next !== type && changeChoice(() => setType(next))}
+                  brief={brief}
+                  setBrief={setBrief}
+                  city={city}
+                  setCity={(next) => next !== city && changeChoice(() => setCity(next))}
+                  onContinue={() => advance(0)}
+                  headingRef={heading}
+                />
+              )}
+              {step === 1 && (
+                <PickPreview
+                  selected={selected}
+                  onSelect={(id) => id !== selectedId && changeChoice(() => setSelectedId(id))}
+                  city={city}
+                  onContinue={() => advance(1)}
+                  headingRef={heading}
+                />
+              )}
+              {step === 2 && (
+                <FinalizePreview
+                  site={selected}
+                  city={city}
+                  projectLabel={projectType.label}
+                  complete={completed[2]}
+                  onBack={() => setStep(1)}
+                  onConfirm={() => advance(2)}
+                  onDesign={() => setModule('design')}
+                  headingRef={heading}
+                />
+              )}
+              {step !== 1 && (
+                <div className="d2-support">
+                  <div>
+                    <span className="d2-support-icon">
+                      <MapPin size={18} />
+                    </span>
+                    <b>A place with purpose.</b>
+                    <p>Great possibilities start with a thoughtful location.</p>
+                  </div>
+                  <div>
+                    <span className="d2-support-icon">
+                      <Sparkles size={18} />
+                    </span>
+                    <b>See the bigger picture.</b>
+                    <p>Money, people, and planet. Room for all three.</p>
+                  </div>
+                  <div>
+                    <span className="d2-support-icon">
+                      <ShieldCheck size={18} />
+                    </span>
+                    <b>One connected journey.</b>
+                    <p>From the first idea to what comes next.</p>
+                  </div>
                 </div>
-                <div>
-                  <span className="d2-support-icon">
-                    <Sparkles size={18} />
-                  </span>
-                  <b>See the bigger picture.</b>
-                  <p>Money, people, and planet. Room for all three.</p>
-                </div>
-                <div>
-                  <span className="d2-support-icon">
-                    <ShieldCheck size={18} />
-                  </span>
-                  <b>One connected journey.</b>
-                  <p>From the first idea to what comes next.</p>
-                </div>
-              </div>
-            )}
-          </>
-        )}
+              )}
+            </>
+          )}
+        </div>
         <footer className="d2-footer">
           <span>
-            AFTERLIGHT <i /> Built around your next possibility.
+            Smart Blocks <i /> Infrastructure intelligence
           </span>
           <span>
             {module === 'locate'

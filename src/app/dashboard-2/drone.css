@@ -1,11 +1,11 @@
 /* Design → Discover: Tello live view and flight controls. Scoped to .dr-discover. */
 .dr-discover {
-  --dr-stage: #121a18;
-  --dr-soft: #f4f7f5;
-  --dr-line: #e7ece9;
-  --dr-live: #2f9e6f;
+  --dr-stage: #12141a;
+  --dr-soft: #f8f6f3;
+  --dr-line: #edeae6;
+  --dr-live: #ba7213;
   --dr-wait: #c79a3b;
-  --dr-off: #b8c0bc;
+  --dr-off: #b6b9c2;
   --dr-test: #b98a2f;
   --dr-danger: #c2463d;
 }
@@ -21,7 +21,7 @@
   border: 1px solid var(--dr-line);
   font-size: 11px;
   font-weight: 550;
-  color: #4e615a;
+  color: #4b5364;
   white-space: nowrap;
 }
 .dr-pill i {
@@ -32,7 +32,7 @@
 }
 .dr-tone-live i {
   background: var(--dr-live);
-  box-shadow: 0 0 0 3px #2f9e6f26;
+  box-shadow: 0 0 0 3px #ba721326;
   animation: dr-pulse 2s ease-in-out infinite;
 }
 .dr-tone-wait i {
@@ -63,10 +63,10 @@
   border-radius: 22px;
   overflow: hidden;
   background:
-    radial-gradient(120% 90% at 50% 0%, #1d2926 0%, var(--dr-stage) 70%);
+    radial-gradient(120% 90% at 50% 0%, #1c202a 0%, var(--dr-stage) 70%);
   box-shadow:
     inset 0 0 0 1px #ffffff0d,
-    0 12px 32px #12201b1f;
+    0 12px 32px #291b091f;
 }
 .dr-stage img {
   position: absolute;
@@ -89,7 +89,7 @@
   justify-content: center;
   text-align: center;
   padding: 32px;
-  color: #d7e0dc;
+  color: #e2ddd5;
   gap: 6px;
 }
 .dr-empty-icon {
@@ -101,18 +101,18 @@
   background: #ffffff0d;
   border: 1px solid #ffffff14;
   margin-bottom: 10px;
-  color: #b9c8c2;
+  color: #b7bdca;
 }
 .dr-empty b {
   font-size: 15px;
   font-weight: 600;
   letter-spacing: -0.2px;
-  color: #f1f5f3;
+  color: #f6f4f0;
 }
 .dr-empty p {
   font-size: 12px;
   max-width: 330px;
-  color: #93a39d;
+  color: #9097a6;
 }
 .dr-badge,
 .dr-sweep-badge {
@@ -128,7 +128,7 @@
   letter-spacing: 0.9px;
   text-transform: uppercase;
   color: #fff;
-  background: #0b110f8c;
+  background: #0b0d118c;
   backdrop-filter: blur(14px) saturate(160%);
   -webkit-backdrop-filter: blur(14px) saturate(160%);
 }
@@ -175,7 +175,7 @@
   align-items: center;
   gap: 5px;
   font-size: 10px;
-  color: #8b9893;
+  color: #878d9c;
 }
 .dr-telemetry dd {
   margin: 3px 0 0;
@@ -205,7 +205,7 @@
   font-weight: 600;
   letter-spacing: 1.2px;
   text-transform: uppercase;
-  color: #8a9a92;
+  color: #868d9e;
   margin-bottom: 9px;
 }
 .dr-key {
@@ -217,29 +217,29 @@
   min-width: 44px;
   border-radius: 14px;
   background: #fff;
-  border: 1px solid #e2e8e4;
-  color: #2f4842;
+  border: 1px solid #e9e6e1;
+  color: #303747;
   font-size: 12px;
   font-weight: 560;
-  box-shadow: 0 1px 2px #1b2d2508;
+  box-shadow: 0 1px 2px #3a270e08;
   cursor: pointer;
 }
 .dr-key:hover:not(:disabled) {
-  border-color: #c9d8d0;
-  box-shadow: 0 3px 10px #1b2d2512;
+  border-color: #c8cdd9;
+  box-shadow: 0 3px 10px #3a270e12;
 }
 .dr-key:active:not(:disabled) {
   transform: scale(0.96);
 }
 .dr-key:disabled {
-  color: #b5c0bb;
-  background: #fafbfa;
+  color: #b3b7c2;
+  background: #fbfbfa;
   box-shadow: none;
   cursor: not-allowed;
 }
 .dr-key.is-pending {
   color: var(--forest);
-  border-color: #a9cbbc;
+  border-color: #e5c08f;
 }
 .dr-flight {
   display: grid;
@@ -247,12 +247,12 @@
   gap: 8px;
 }
 .dr-key.dr-primary:not(:disabled) {
-  background: #34745b;
-  border-color: #34745b;
+  background: #885b20;
+  border-color: #885b20;
   color: #fff;
 }
 .dr-key.dr-primary:hover:not(:disabled) {
-  background: #28634c;
+  background: #724b19;
 }
 .dr-dpad {
   display: grid;
@@ -322,7 +322,7 @@
   min-height: 36px;
   font-size: 11.5px;
   line-height: 1.5;
-  color: #6d7d76;
+  color: #697081;
 }
 .dr-message.is-error {
   color: var(--dr-danger);
@@ -332,7 +332,7 @@
   gap: 6px;
   margin: -6px 0 0;
   font-size: 10.5px;
-  color: #8b9893;
+  color: #878d9c;
   border-top: 1px solid var(--dr-line);
   padding-top: 12px;
 }
@@ -355,18 +355,18 @@
   padding: 0 4px;
   border-radius: 5px;
   background: #fff;
-  border: 1px solid #e0e6e2;
+  border: 1px solid #e7e4df;
   font: inherit;
   font-size: 9.5px;
   text-align: center;
-  color: #5d6f68;
+  color: #5a6172;
 }
 
 /* survey */
 .dr-survey {
   margin-top: 30px;
   padding-top: 26px;
-  border-top: 1px solid #edf0e9;
+  border-top: 1px solid #f1eee8;
 }
 .dr-survey-head {
   display: flex;
@@ -381,7 +381,7 @@
 }
 .dr-survey-head p {
   font-size: 12px;
-  color: #7d8a84;
+  color: #797f8e;
   margin-top: 4px;
   max-width: 470px;
 }
@@ -393,7 +393,7 @@
   border-radius: 6px;
   background: var(--dr-soft);
   border: 1px solid var(--dr-line);
-  color: #3c5650;
+  color: #3a4358;
 }
 .dr-survey-actions {
   display: flex;
@@ -402,7 +402,7 @@
 }
 .dr-ghost {
   font-size: 12px;
-  color: #4c6159;
+  color: #4a5163;
 }
 .dr-ghost:disabled,
 .dr-sweep:disabled {
@@ -449,7 +449,7 @@
   color: #fff;
   padding: 3px 8px;
   border-radius: 100px;
-  background: #0b110f99;
+  background: #0b0d1199;
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
 }
@@ -461,9 +461,9 @@
   margin-top: 16px;
   padding: 18px;
   border-radius: 14px;
-  border: 1px dashed #dfe6e2;
+  border: 1px dashed #e7e4de;
   font-size: 12px;
-  color: #93a09a;
+  color: #9096a3;
   text-align: center;
 }
 
@@ -481,7 +481,7 @@
   padding: 14px 18px;
   font-size: 12.5px;
   font-weight: 600;
-  color: #3b524b;
+  color: #394154;
   cursor: pointer;
   list-style: none;
 }
@@ -497,7 +497,7 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #d5dcd8;
+  background: #dddad4;
 }
 .dr-conn-dots i.ok,
 .dr-conn-list i.ok {
@@ -514,15 +514,15 @@
   align-items: center;
   gap: 12px;
   padding: 9px 0;
-  border-top: 1px solid #f0f3f1;
+  border-top: 1px solid #f4f2ef;
   font-size: 12px;
 }
 .dr-conn-list b {
   font-weight: 600;
-  color: #3b524b;
+  color: #394154;
 }
 .dr-conn-list span {
-  color: #7d8a84;
+  color: #797f8e;
   overflow-wrap: anywhere;
 }
 .dr-setup {
@@ -531,10 +531,10 @@
   border-radius: 12px;
   background: var(--dr-soft);
   font-size: 12px;
-  color: #5f716a;
+  color: #5c6374;
 }
 .dr-setup b {
-  color: #3b524b;
+  color: #394154;
 }
 .dr-setup ol {
   margin: 8px 0 8px 18px;

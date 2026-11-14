@@ -2,7 +2,7 @@
 // Routes use stairs and are not step-free. No surveyed or approved real-world route is implied.
 export type Point3 = [number, number, number];
 export const MODEL_ID = 'haven-six-level-sample-v1';
-export const MODEL_NAME = 'Blackwell Hall model';
+export const MODEL_NAME = 'HAVEN six-level cutaway';
 export const MODEL_NOTE = 'Representative sample model · configured monitoring on Level 4 only';
 export const levelY = (floor: number) => 0.42 + (floor - 1) * 1.45;
 const y = levelY(4) + 0.3;
