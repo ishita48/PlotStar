@@ -135,7 +135,7 @@
   flex: none;
   color: #fff;
   background: linear-gradient(150deg, var(--sb-blue-hi, #6aa6ff), var(--sb-blue-strong, #1859e6));
-  box-shadow: 0 10px 22px -10px rgba(47, 123, 255, 0.8);
+  box-shadow: 0 1px 2px rgba(47, 123, 255, 0.25);
 }
 .d2-shell .hv-health-banner.warning .cc-orb {
   background: linear-gradient(150deg, var(--sb-amber-hi, #ffc75a), var(--sb-amber-strong, #e88a00));
@@ -153,9 +153,9 @@
   align-items: stretch;
 }
 .d2-shell .cc-strip-metrics > * {
-  background: rgba(255, 255, 255, 0.66);
+  background: #ffffff;
   border: 1px solid rgba(18, 22, 36, 0.06);
-  border-radius: 16px;
+  border-radius: 10px;
   padding: 11px 14px;
   min-width: 0;
 }
@@ -288,7 +288,7 @@
   gap: 7px;
   padding: 8px 10px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.6);
+  background: #ffffff;
   border: 1px solid rgba(18, 22, 36, 0.06);
   color: var(--sb-blue, #2f7bff);
 }
@@ -313,7 +313,7 @@
   opacity: 0.75;
 }
 .d2-shell .cc-sequence {
-  border-radius: 16px;
+  border-radius: 10px;
   padding: 14px 16px;
   margin-bottom: 14px;
   background: linear-gradient(170deg, rgba(255, 248, 236, 0.9), rgba(255, 255, 255, 0.6));
@@ -405,11 +405,11 @@
 }
 .d2-shell .cc-tile.fire {
   background: linear-gradient(150deg, #ff8a7a, var(--sb-red, #e5484d));
-  box-shadow: 0 10px 24px -10px rgba(229, 72, 77, 0.8);
+  box-shadow: 0 1px 2px rgba(229, 72, 77, 0.25);
 }
 .d2-shell .cc-tile.leak {
   background: linear-gradient(150deg, var(--sb-blue-hi, #6aa6ff), var(--sb-blue-strong, #1859e6));
-  box-shadow: 0 10px 24px -10px rgba(47, 123, 255, 0.8);
+  box-shadow: 0 1px 2px rgba(47, 123, 255, 0.25);
 }
 .d2-shell .cc-tile.ok {
   background: linear-gradient(150deg, #6fd39a, #1d7a45);
@@ -448,7 +448,7 @@
   align-items: center;
   padding: 9px 12px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.62);
+  background: #ffffff;
   border: 1px solid rgba(18, 22, 36, 0.06);
 }
 .d2-shell .cc-impact li strong {
@@ -548,7 +548,7 @@
   color: var(--sb-ink-2, #343a4c);
 }
 .d2-shell .cc-approval {
-  border-radius: 16px;
+  border-radius: 10px;
   padding: 13px 14px;
   display: grid;
   gap: 9px;
@@ -607,7 +607,7 @@
   color: #fff;
   cursor: pointer;
   background: linear-gradient(150deg, var(--sb-blue-hi, #6aa6ff), var(--sb-blue-strong, #1859e6));
-  box-shadow: 0 14px 28px -14px rgba(47, 123, 255, 0.9);
+  box-shadow: 0 1px 2px rgba(47, 123, 255, 0.25);
   transition: transform 0.2s var(--sb-out, ease-out), box-shadow 0.2s;
 }
 .d2-shell .cc-approve:hover:not(:disabled) {
@@ -672,7 +672,7 @@
 .d2-shell .cc-call li {
   padding: 9px 11px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.65);
+  background: #ffffff;
   border: 1px solid rgba(18, 22, 36, 0.06);
   animation: cc-rise 0.45s var(--sb-out, ease-out) both;
 }
@@ -717,7 +717,7 @@
 /* ---------- response coordination ---------- */
 .d2-shell .cc-coordination {
   padding: 22px;
-  border-radius: 24px;
+  border-radius: 12px;
 }
 .d2-shell .cc-teams {
   display: grid;
@@ -729,8 +729,8 @@
   display: flex;
   gap: 10px;
   padding: 14px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.62);
+  border-radius: 10px;
+  background: #ffffff;
   border: 1px solid rgba(18, 22, 36, 0.06);
   color: var(--sb-blue, #2f7bff);
 }

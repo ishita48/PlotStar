@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type PointerEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { MapPin, Plus, ShieldCheck, Sparkles } from 'lucide-react';
 import { type Module, PrimaryCard, Sidebar, StepNavigation, type Status } from './shell';
 import { DesignModule, ProtectModule } from './protection-workspace';
@@ -32,9 +32,6 @@ function writeStore(key: string, value: unknown) {
     // Storage can be unavailable (private mode). Progress then lasts for this visit only.
   }
 }
-
-const GLOW_SURFACES =
-  '.d2-primary, .d2-sidebar, .d2-stepbar, .d2-type-card, .d2-location-row, .hv-metric, .dp-card, .hv-protection-card, .al-card, .dr-controls, .d2-support > div';
 
 export function DashboardTwo() {
   const [module, setModule] = useState<Module>('locate');
@@ -161,21 +158,6 @@ export function DashboardTwo() {
     if (index < 2) setStep(index + 1);
   }
 
-  // Glass surfaces catch a soft light where the pointer is (CSS reads --sb-mx / --sb-my).
-  const glowFrame = useRef(0);
-  function glow(event: PointerEvent<HTMLDivElement>) {
-    if (event.pointerType !== 'mouse') return;
-    const target = (event.target as Element).closest<HTMLElement>(GLOW_SURFACES);
-    if (!target) return;
-    const { clientX, clientY } = event;
-    cancelAnimationFrame(glowFrame.current);
-    glowFrame.current = requestAnimationFrame(() => {
-      const box = target.getBoundingClientRect();
-      target.style.setProperty('--sb-mx', `${clientX - box.left}px`);
-      target.style.setProperty('--sb-my', `${clientY - box.top}px`);
-    });
-  }
-
   async function reset() {
     if (!confirmReset) {
       setConfirmReset(true);
@@ -210,16 +192,8 @@ export function DashboardTwo() {
   const viewKey = `${module}:${module === 'locate' ? step : module === 'design' ? designStep : typeof deployView === 'object' ? deployView.id : deployView}`;
 
   return (
-    <div
-      className="d2-shell sb"
-      style={hydrated ? undefined : { visibility: 'hidden' }}
-      onPointerMove={glow}
-    >
-      <div className="sb-ambient" aria-hidden="true">
-        <i className="sb-orb sb-orb-amber" />
-        <i className="sb-orb sb-orb-blue" />
-        <i className="sb-orb sb-orb-white" />
-      </div>
+    <div className="d2-shell sb" style={hydrated ? undefined : { visibility: 'hidden' }}>
+      <div className="sb-ambient" aria-hidden="true"></div>
       <Sidebar
         active={module}
         complete={completed[2]}
