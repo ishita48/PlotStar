@@ -96,3 +96,20 @@ def test_graph_answers_without_a_model_and_returns_a_preview():
 def test_dropped_pin_has_no_costar_record():
     out = C.t_costar_property(ctx())
     assert out["ok"] is False and "dropped pin" in out["headline"]
+
+
+def test_costar_data_never_enters_graph_state():
+    """LangGraph checkpoints and LangSmith traces record the state; CoStar fields must stay in the per-run vault."""
+    from app.db import db_ready, session
+    if not db_ready():
+        pytest.skip("CoStar parcel store not loaded")
+    with session() as c:
+        row = c.execute("SELECT parcel_id, address FROM parcels WHERE address IS NOT NULL AND market = 'Houston' LIMIT 1").fetchone()
+    pid, address = row["parcel_id"], row["address"]
+    r = req()
+    r["site"] = {**SITE, "id": pid, "name": "Secret Building"}
+    out = C.ask("Tell me about this CoStar property", r, "vault-thread", lambda: GRID)
+    assert address in out["answer"] and out["tools"][0]["output"]["record"]["address"] == address  # the user sees it
+    state = C._GRAPH.get_state({"configurable": {"thread_id": "vault-thread"}}).values
+    dumped = repr(state)
+    assert address not in dumped and "Secret Building" not in dumped and pid not in repr(state.get("req"))

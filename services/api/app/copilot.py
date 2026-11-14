@@ -118,6 +118,8 @@ class Ctx:
 
     def __init__(self, req: dict[str, Any], grid_fn: Callable[[], dict]):
         self.req, self._grid_fn, self._base, self._grid = req, grid_fn, None, None
+        # CoStar tool outputs live here, never in the LangGraph state, so checkpoints and LangSmith traces hold no kit data
+        self.vault: dict[int, dict[str, Any]] = {}
         self.concept_id: str | None = req.get("concept_id")
         self.selected: str | None = req.get("selected")
         self.stage: str = req.get("stage") or "Explore"
@@ -627,17 +629,23 @@ def n_act(state: State) -> dict:
 
     with ThreadPoolExecutor(max_workers=4) as ex:
         results = list(ex.map(one, state["calls"]))
+    for i, r in enumerate(results):
+        if r["output"].get("costar"):
+            cx.vault[i] = r["output"]
+            r["output"] = dict(ok=r["output"].get("ok", False), costar=True, vault=i, headline="[CoStar record held outside the trace]")
     return dict(results=results, trace=[dict(node="act", ms=round((time.time() - t0) * 1000),
                                              tools=[f"{r['name']} ({r['ms']} ms{'' if r['output'].get('ok') else ', no result'})" for r in results])])
 
 
-def _flatten(results: list[dict], allow_costar: bool) -> dict[str, Any]:
+def _flatten(results: list[dict], allow_costar: bool, vault: dict[int, dict] | None = None) -> dict[str, Any]:
     facts: dict[str, Any] = {}
     for r in results:
         o = r["output"]
         if o.get("costar") and not allow_costar:
             facts[r["name"]] = "A CoStar record is shown to the user next to this answer; refer to it without quoting its figures."
             continue
+        if o.get("costar"):
+            o = (vault or {}).get(o.get("vault"), o)
         keep = {k: v for k, v in o.items() if k in ("headline", "facts", "why", "checks", "note", "table", "ranking_note",
                                                     "items", "record", "records", "total", "filters")}
         if r["name"] == "WhatIf" and o.get("ok"):
@@ -665,7 +673,7 @@ def n_verify(state: State) -> dict:
                 if not k["after"]:
                     flags.append(f"New failed check after the change: {k['name']}.")
             proposal = dict(patch=o["patch"], concept_id=cons["concept_id"], consequences=cons)
-    facts = _flatten(state["results"], LLM_COSTAR)
+    facts = _flatten(state["results"], LLM_COSTAR, _ctx(state).vault)
     return dict(facts=facts, flags=flags, proposal=proposal,
                 trace=[dict(node="verify", ms=round((time.time() - t0) * 1000), flags=len(flags))])
 
@@ -679,7 +687,7 @@ def _numbers(text: str) -> set[str]:
 
 def n_respond(state: State) -> dict:
     t0 = time.time()
-    fallback = " ".join(r["output"].get("headline", "") for r in state["results"]).strip()
+    fallback = " ".join(r["output"].get("headline", "") for r in state["results"] if not r["output"].get("costar")).strip()
     if state.get("flags"):
         fallback += " Note: " + " ".join(state["flags"])
     answer, by = fallback, "Built from the computed numbers (no model)."
@@ -687,7 +695,7 @@ def n_respond(state: State) -> dict:
     held = [] if LLM_COSTAR else [r for r in state["results"] if r["output"].get("costar") and r["output"].get("ok")]
     rest = [r for r in state["results"] if r not in held]
     if held and not rest:
-        return dict(answer=fallback, written_by="Quoted from the CoStar Data Extract (CoStar fields are not sent to the model).",
+        return dict(answer=fallback, written_by="Quoted from the CoStar Data Extract (CoStar fields are not sent to the model or traces).",
                     trace=[dict(node="respond", by="CoStar record", ms=round((time.time() - t0) * 1000))])
     if llm_ready() and rest:
         try:
@@ -701,7 +709,6 @@ def n_respond(state: State) -> dict:
             if text and not stray:
                 answer, by = text, f"Written by Claude ({MODEL}) from the computed facts; every figure was checked against them."
                 if held:
-                    answer += " " + " ".join(r["output"]["headline"] for r in held)
                     by += " The CoStar summary is quoted from the record."
             elif stray:
                 by += f" A model draft was discarded because it used numbers that were not computed ({', '.join(stray[:4])})."
@@ -739,24 +746,31 @@ def ask(question: str, req: dict[str, Any], thread_id: str, grid_fn: Callable[[]
     if _GRAPH is None:
         _GRAPH = build_graph()
     run = uuid.uuid4().hex
-    _CTX[run] = Ctx(req, grid_fn)
-    cfg = {"configurable": {"thread_id": thread_id}, "run_name": "plotstar-copilot", "tags": ["plotstar", "studio"]}
+    cx = _CTX[run] = Ctx(req, grid_fn)
+    trace_id = uuid.uuid4()  # the LangSmith root run id, so the UI can name the exact trace
+    cfg = {"configurable": {"thread_id": thread_id}, "run_name": "plotstar-copilot", "tags": ["plotstar", "studio"],
+           "run_id": trace_id}
     prev = _GRAPH.get_state(cfg).values if thread_id else {}
     history = list(prev.get("history") or [])
     seen = len(prev.get("trace") or [])  # the checkpointed trace accumulates; report only this turn
     t0 = time.time()
     try:
-        out = _GRAPH.invoke({"question": question, "req": {**req, "_run": run}, "history": history, "trace": [],
+        out = _GRAPH.invoke({"question": question, "req": {"_run": run}, "history": history, "trace": [],
                              "calls": [], "results": [], "flags": [], "proposal": None}, cfg)
     finally:
         _CTX.pop(run, None)
-    history.append({"q": question, "a": out["answer"]})
+    history.append({"q": question, "a": out["answer"]})  # no CoStar text, so later turns' traces stay clean
     _GRAPH.update_state(cfg, {"history": history[-8:]})
-    return dict(answer=out["answer"], written_by=out["written_by"], planned_by=out["planned_by"],
+    results = [{**r, "output": cx.vault.get(r["output"].get("vault"), r["output"])} if r["output"].get("costar") else r
+               for r in out["results"]]
+    costar_text = " ".join(r["output"]["headline"] for r in results if r["output"].get("costar") and r["output"].get("headline"))
+    answer = " ".join(x for x in (out["answer"], costar_text) if x).strip()
+    return dict(answer=answer, written_by=out["written_by"], planned_by=out["planned_by"],
                 tools=[dict(name=r["name"], args=r["args"], ms=r["ms"], ok=bool(r["output"].get("ok")),
-                            output={k: v for k, v in r["output"].items() if k not in ("consequences",)}) for r in out["results"]],
+                            output={k: v for k, v in r["output"].items() if k not in ("consequences",)}) for r in results],
                 proposal=out.get("proposal"), flags=out.get("flags") or [], trace=out["trace"][seen:],
-                ms=round((time.time() - t0) * 1000), thread_id=thread_id)
+                ms=round((time.time() - t0) * 1000), thread_id=thread_id,
+                langsmith=dict(run_id=str(trace_id), project=os.getenv("LANGSMITH_PROJECT") or "default") if TRACING else None)
 
 
 def status() -> dict[str, Any]:

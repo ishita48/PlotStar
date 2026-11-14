@@ -6,7 +6,7 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import {
   ArrowLeft, ArrowRight, Box as BoxIcon, Check, CircleAlert, CircleCheck, Coins, Columns2, Download, Droplets, Leaf, Lock,
-  MapPin, Move, RotateCcw, RotateCw, Sparkles, Square, Star, Trash2, Users,
+  FileUp, MapPin, Move, RotateCcw, RotateCw, Sparkles, Square, Star, Trash2, Users,
 } from 'lucide-react';
 import { Brand } from '../brand';
 import { matterportEmbedUrl, PUBLIC_DATA_API, siteDetailUrl, vexcel3dRootUrl, vexcelMetaUrl, vexcelOrthoUrl } from '@/lib/plotstar-api';
@@ -17,6 +17,8 @@ import type { MapMode } from '../explore/explore-map';
 import { Plan2D, type Layers } from './plan2d';
 import type { MoveEdit, ViewPreset } from './model3d';
 import { Copilot, type BriefPatch } from './copilot';
+import { Guide } from './guide/guide';
+import { ImportDesign, type NotePreview } from './import/import-design';
 import type { AddedType, Brief, Concept, ConceptEdit, Edits, Factor, Room, StudioResult } from './types';
 import { COOLING_LABEL, ROUTE_COLOR, TYPE_STYLE, WHY, download, money, num, pct, toDxf } from './types';
 
@@ -93,6 +95,7 @@ export function Studio() {
   const [cam, setCam] = useState<ViewPreset>({ preset: 'iso', n: 0 });
   const [tours, setTours] = useState<string[]>([]);
   const [decidedBy, setDecidedBy] = useState('');
+  const [importing, setImporting] = useState(false);
   const [projectId, setProjectId] = useState(() => `p-${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`);
   const [store, setStore] = useState<{ available: boolean; reason: string | null } | null>(null);
   const [saved, setSaved] = useState<SavedProject[]>([]);
@@ -334,6 +337,7 @@ export function Studio() {
         <Brand />
         <div className="st-top-title"><b>Studio</b><span>{brief.name} · {brief.mw} MW IT{site ? ` · ${siteLabel(site)}` : ''}</span></div>
         <nav className="st-top-nav">
+          <Link href="/studio/agent">How the AI works</Link>
           <Link href="/explore">Live operations</Link>
           <Link href="/">Home</Link>
         </nav>
@@ -466,7 +470,7 @@ export function Studio() {
                           <Field label="Land kept open"><div className="st-unit"><input type="number" value={brief.expansion} onChange={(e) => set('expansion', Math.max(0, Math.min(80, +e.target.value || 0)))} /><em>%</em></div></Field>
                         </div>
                         <p className="st-muted st-small">{num(brief.siteW * brief.siteD)} m² ({num((brief.siteW * brief.siteD) / 4046.86, 1)} acres). Pre-filled from the lot size as a rectangle; the true parcel shape is not in the data. <Tag label="Estimated" /></p>
-                        <div className="st-form-foot"><button className="st-btn" onClick={() => setSiteId(null)}>Change site</button><button className="st-btn primary" onClick={() => setSub(2)}>Next: Review brief <ArrowRight size={14} /></button></div>
+                        <div className="st-form-foot"><button className="st-btn" onClick={() => setSiteId(null)}>Change site</button><button className="st-btn" onClick={() => setImporting(true)}><FileUp size={13} /> Import your design</button><button className="st-btn primary" onClick={() => setSub(2)}>Next: Review brief <ArrowRight size={14} /></button></div>
                       </>
                     )}
                   </div>
@@ -666,6 +670,11 @@ export function Studio() {
 
       {result && <Copilot body={body(brief)} conceptId={concept?.id ?? null} selected={sel} stage={STEPS[step].key} market={brief.market}
         onApply={applyPatch} onSelectSite={(id) => { const s = sites.find((x) => x.id === id); if (s) void pickSite(id); }} busy={busy} />}
+      <Guide body={result ? body(brief) : null} conceptId={concept?.id ?? null} selected={sel} stage={STEPS[step].key} market={brief.market}
+        hasSite={!!site} onApply={applyPatch} />
+      {importing && <ImportDesign body={body(brief)} onClose={() => setImporting(false)}
+        onResult={(r, _notes: NotePreview[]) => { setResult(r); setBase(r); setEdits({}); setPreferred(null); setDecidedAt(null);
+          setSel(null); setActiveId(r.concepts.find((c) => c.rank === 1)!.id); setImporting(false); setStep(2); }} />}
       <footer className="st-foot">
         <button className="st-btn" onClick={() => (step === 0 && sub > 0 ? setSub(sub - 1) : setStep(Math.max(0, step - 1)))} disabled={step === 0 && sub === 0}><ArrowLeft size={14} /> Back</button>
         <span className="st-foot-note">{busy ? 'Working…' : step === 0 && !site ? 'Choose a site to continue.' : step === 0 && sub < 2 ? 'Review the brief to continue.' : step === 5 && !canNext ? 'Select a concept and give a reason.' : result?.note ?? ''}</span>
