@@ -91,6 +91,15 @@ test('HAVEN command: team reports advance in order and stop at the last step', (
   assert.equal(state.team!.security.status, 'on_scene');
 });
 
+test('HAVEN command: a second hazard keeps the team progress already reported', () => {
+  let state = run(deployed(), { action: 'trigger', kind: 'leak' }, { action: 'team-update', team: 'maintenance' });
+  const workOrder = state.team!.workOrder;
+  state = run(state, { action: 'trigger', kind: 'fire' });
+  assert.equal(state.team!.workOrder, workOrder);
+  assert.equal(state.team!.maintenance.status, 'in_progress');
+  assert.equal(state.team!.incidentId, primaryIncident(state)!.id);
+});
+
 test('HAVEN command: the emergency call is simulated, once per incident, and cleared on reset', () => {
   let state = run(deployed(), { action: 'trigger', kind: 'fire' }, { action: 'emergency-call' });
   assert.equal(state.call?.mode, 'simulated');

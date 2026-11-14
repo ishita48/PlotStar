@@ -28,27 +28,36 @@ import {
 function Camera({
   floor,
   command,
+  focus,
 }: {
   floor: number | null;
   command: { sequence: number; action: string };
+  /** Hazard point to frame closely while an incident on this floor is in view. */
+  focus: Point3 | null;
 }) {
   const { camera, invalidate } = useThree();
   const controls = useRef<ComponentRef<typeof OrbitControls>>(null);
   const previousFloor = useRef(floor);
+  const focusX = focus?.[0] ?? null;
+  const focusZ = focus?.[2] ?? null;
   useEffect(() => {
-    const target = new Vector3(0, floor ? floorY(floor) + 0.2 : 4.2, 0);
+    const framed = focusX !== null && focusZ !== null && floor !== null;
+    const target = framed
+      ? new Vector3(focusX, floorY(floor) + 0.4, focusZ)
+      : new Vector3(0, floor ? floorY(floor) + 0.2 : 4.2, 0);
     if (previousFloor.current === floor && (command.action === 'in' || command.action === 'out'))
       camera.position
         .sub(target)
         .multiplyScalar(command.action === 'in' ? 0.8 : 1.2)
         .add(target);
+    else if (framed) camera.position.copy(target).add(new Vector3(6.2, 5.4, 7.4));
     else camera.position.set(16, (floor ? floorY(floor) : 4) + 11, 18);
     controls.current?.target.copy(target);
     camera.lookAt(target);
     controls.current?.update();
     previousFloor.current = floor;
     invalidate();
-  }, [camera, floor, command, invalidate]);
+  }, [camera, floor, command, focusX, focusZ, invalidate]);
   return (
     <OrbitControls
       ref={controls}
@@ -109,12 +118,13 @@ function Model({
       STATIC_BUILDING_PARTS.filter((p) => floor === null || (p.floor === floor && !p.roof)).map(
         (p) => ({
           ...p,
-          // Rooms and corridor in the affected east half of Level 4 take the hazard's colour.
+          // Rooms in the affected east half of Level 4 take the hazard's colour. The corridor
+          // stays neutral so the flames and the puddle read clearly against it.
           color:
             (fire || leak) &&
             p.floor === 4 &&
             p.position[0] > 1 &&
-            (p.entity.startsWith('room') || p.entity.startsWith('corridor'))
+            p.entity.startsWith('room')
               ? fire
                 ? '#f0937f'
                 : '#a9c7f5'
@@ -235,6 +245,14 @@ export default function TwinCanvas({
 }) {
   const [ready, setReady] = useState(false);
   const still = useReducedMotion();
+  const kinds = new Set(activeIncidents(state).map((i) => i.kind));
+  // Frame the configured hazard point when a fire or leak is shown on its floor (Level 4).
+  const focus: Point3 | null =
+    operational && floor === 4 && (kinds.has('fire') || kinds.has('leak'))
+      ? kinds.has('fire') && kinds.has('leak')
+        ? [2.6, 0, 0.55]
+        : (kinds.has('fire') ? demoScenarios.fire : demoScenarios.leak).hazardPosition
+      : null;
   useEffect(() => {
     const canvas = document.createElement('canvas');
     const context = canvas.getContext('webgl2');
@@ -268,7 +286,7 @@ export default function TwinCanvas({
             still={still}
             onPick={onPick}
           />
-          <Camera floor={floor} command={command} />
+          <Camera floor={floor} command={command} focus={focus} />
         </Canvas>
       ) : (
         <div className="hv-model-loading">Preparing the 3D renderer…</div>

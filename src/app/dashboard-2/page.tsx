@@ -3,6 +3,7 @@ import { DashboardTwo } from '@/components/dashboard-2/dashboard';
 import './dashboard.css';
 import './protection.css';
 import './smart-blocks.css';
+import './command.css';
 
 export const metadata: Metadata = {
   title: 'Smart Blocks',

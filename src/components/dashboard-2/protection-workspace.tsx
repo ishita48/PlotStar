@@ -30,7 +30,6 @@ import {
 } from '@/lib/haven/config';
 import {
   activeIncidents,
-  buildingHealth,
   effectivePlan,
   routeAvailability,
   type ProtectionAction,
@@ -39,6 +38,12 @@ import {
 } from '@/lib/haven/engine';
 import { PrimaryCard, StepNavigation } from './shell';
 import { FacilityTwin } from './facility-twin';
+import {
+  BuildingOverview,
+  IncidentCommand,
+  ResponseCoordination,
+  StatusStrip,
+} from './incident-command';
 
 type Act = (action: ProtectionAction) => Promise<ProtectionState | null>;
 // Alerts in the order people think about them: hazards first, then usage limits.
@@ -366,8 +371,6 @@ export function ProtectModule({
   const [plan, setPlan] = useState<PlanId>(state.plan);
   const available = routeAvailability(state);
   const choice = available[plan] ? plan : effectivePlan(state) || 'north';
-  const health = buildingHealth(state);
-  const healthClass = health === 'Critical incident' ? 'critical' : health.toLowerCase();
   const selectedAlerts = definitions.filter((d) => draft[d.id].enabled);
   const skippedAlerts = definitions.filter((d) => !draft[d.id].enabled);
   const anySelected = selectedAlerts.length > 0;
@@ -462,37 +465,7 @@ export function ProtectModule({
             <Settings2 size={15} /> Edit protections
           </button>
         </div>
-        <div
-          className={`hv-health-banner ${healthClass}`}
-          role={health === 'Critical incident' || health === 'Warning' ? 'alert' : 'status'}
-        >
-          <span>
-            {health === 'Critical incident' ? (
-              <Flame size={22} />
-            ) : health === 'Warning' ? (
-              <Bell size={22} />
-            ) : health === 'Recovering' ? (
-              <RotateCcw size={22} />
-            ) : (
-              <ShieldCheck size={22} />
-            )}
-          </span>
-          <div>
-            <b>{health}</b>
-            <p>
-              {health === 'Healthy'
-                ? 'The enabled demo sensors report normal conditions.'
-                : health === 'Recovering'
-                  ? 'Simulated readings have reset. Complete the recovery review to return to healthy.'
-                  : 'HAVEN detected a simulated incident. Review affected areas and the configured response below.'}
-            </p>
-          </div>
-          {state.recovering && !activeIncidents(state).length && (
-            <button disabled={busy} onClick={() => void act({ action: 'finish-recovery' })}>
-              Complete recovery <Check size={14} />
-            </button>
-          )}
-        </div>
+        <StatusStrip state={state} busy={busy} act={act} />
         <div className="hv-metrics">
           <Metric
             icon={Zap}
@@ -553,23 +526,16 @@ export function ProtectModule({
         </div>
         <div className="hv-command-grid">
           <div className="sb-command-main">
-            <PrimaryCard className="hv-live-model">
-              <div className="hv-section-heading">
-                <div>
-                  <span className="d2-overline">THE FACILITY, AT A GLANCE</span>
-                  <h2>Operational digital twin</h2>
-                </div>
-                <span className="d2-sample-tag">Sample model</span>
-              </div>
-              <FacilityTwin state={state} operational initialFloor={null} />
+            <BuildingOverview state={state}>
               <RouteSummary state={state} />
-            </PrimaryCard>
+            </BuildingOverview>
+            <ResponseCoordination state={state} busy={busy} act={act} />
             <Timeline state={state} />
           </div>
           <div className="sb-command-side">
-            <PrimaryCard className="hv-response-panel">
+            <IncidentCommand state={state} busy={busy} act={act}>
               <IncidentSummary state={state} act={act} busy={busy} />
-            </PrimaryCard>
+            </IncidentCommand>
             <SimulationControls state={state} act={act} busy={busy} />
           </div>
         </div>

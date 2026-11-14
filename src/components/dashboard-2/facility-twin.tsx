@@ -1,7 +1,7 @@
 'use client';
 import dynamic from 'next/dynamic';
 import { Component, useCallback, useState, type ReactNode } from 'react';
-import { Expand, Minus, Plus, RotateCcw } from 'lucide-react';
+import { Crosshair, Expand, Minus, Plus, RotateCcw } from 'lucide-react';
 import { evacuationPlans, monitoringPoints, MODEL_ID, levelY } from '@/lib/haven/config';
 import {
   activeIncidents,
@@ -140,6 +140,18 @@ export function FacilityTwin({
   );
   const [command, setCommand] = useState({ sequence: 0, action: 'reset' });
   const [selected, setSelected] = useState('');
+  // When a fire or leak starts, the live twin cuts away to Level 4 so the hazard is in view
+  // (HAVEN's "focus active incident"). Users can still pick any level afterwards.
+  const hazardKey = activeIncidents(state)
+    .filter((i) => i.kind === 'fire' || i.kind === 'leak')
+    .map((i) => i.kind)
+    .sort()
+    .join('+');
+  const [seenHazards, setSeenHazards] = useState(hazardKey);
+  if (hazardKey !== seenHazards) {
+    setSeenHazards(hazardKey);
+    if (operational && hazardKey) setFloor(4);
+  }
   const unavailable = useCallback(() => setView('plan'), []);
   const send = (action: string) => setCommand((c) => ({ sequence: c.sequence + 1, action }));
   const enabled = monitoringPoints.filter((s) => state.config[s.protection].enabled);
@@ -186,6 +198,19 @@ export function FacilityTwin({
           <button aria-label="Reset camera" disabled={view !== '3d'} onClick={() => send('reset')}>
             <RotateCcw size={14} />
           </button>
+          {operational && (
+            <button
+              aria-label="Focus active incident"
+              title="Focus active incident"
+              disabled={view !== '3d' || !hazardKey}
+              onClick={() => {
+                setFloor(4);
+                send('reset');
+              }}
+            >
+              <Crosshair size={14} />
+            </button>
+          )}
         </div>
       </div>
       {view === '3d' ? (

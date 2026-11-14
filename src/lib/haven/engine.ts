@@ -391,7 +391,10 @@ function syncCommand(state: ProtectionState, now: string) {
       now,
     );
   }
-  if (state.team?.incidentId !== primary.id)
+  // One work order and security response per response: a new hazard joins it rather than
+  // wiping progress. The record follows the current primary incident.
+  if (state.team) state.team.incidentId = primary.id;
+  else
     state.team = {
       incidentId: primary.id,
       workOrder: `WO-${pad(++state.sequence)}`,
