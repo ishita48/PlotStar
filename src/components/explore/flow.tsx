@@ -7,7 +7,10 @@ import { ArrowLeft, ArrowRight, Check } from 'lucide-react';
 import { Brand } from '../brand';
 import { PUBLIC_DATA_API } from '@/lib/plotstar-api';
 import { DecisionView } from './decision-view';
+import { DesignStep, type DesignSite } from './design-step';
+import type { MapMode } from './explore-map';
 import { AssumptionsDrawer } from './drawers';
+import { AgentDrawer } from './agent-drawer';
 import type { OptimizeResult } from './optimize-types';
 import { SiteDetail } from './site-detail';
 import type { ExploreSite } from './types';
@@ -18,7 +21,7 @@ const Site3D = dynamic(() => import('./site-3d'), { ssr: false, loading: () => <
 const Meters = dynamic(() => import('./meters').then((m) => m.Meters), { ssr: false });
 
 interface SearchResult { count: number; counts: { Pass: number; 'Needs review': number; Fail: number }; sites: Omit<ExploreSite, 'letter'>[] }
-const STEPS = ['Your project', 'Sites', 'Recommendation', 'What if', 'Live test'];
+const STEPS = ['Your project', 'Sites', 'Recommendation', 'Design', 'What if', 'Live test'];
 
 async function post<T>(path: string, body: unknown): Promise<T> {
   const r = await fetch(`${PUBLIC_DATA_API}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -37,6 +40,7 @@ export function Flow() {
   const [advanced, setAdvanced] = useState(false);
   const [overrides, setOverrides] = useState<Record<string, number>>({});
   const [showAssump, setShowAssump] = useState(false);
+  const [showAgent, setShowAgent] = useState(false);
   // data
   const [result, setResult] = useState<SearchResult | null>(null);
   const [baseRun, setBaseRun] = useState<OptimizeResult | null>(null);
@@ -47,6 +51,11 @@ export function Flow() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [show, setShow] = useState<'all' | 'good' | 'bad'>('all');
   const [view3d, setView3d] = useState(false);
+  const [mode, setMode] = useState<MapMode>('browse');
+  const [ring, setRing] = useState<[number, number][] | null>(null);
+  const [pinAcres, setPinAcres] = useState(20);
+  const [custom, setCustom] = useState<ExploreSite[]>([]);
+  const [accepted, setAccepted] = useState<DesignSite | null>(null);
   // step 3
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState<string | null>(null);
@@ -76,7 +85,7 @@ export function Flow() {
   // step 4: every toggle re-runs the optimizer from the original run
   const basePick = baseRun?.optimized?.site_id;
   useEffect(() => {
-    if (!baseRun || step !== 3) return;
+    if (!baseRun || step !== 4) return;
     if (!firm70 && !noFlex && !price30) { setRun(baseRun); return; }
     let alive = true;
     setBusy(true);
@@ -90,17 +99,48 @@ export function Flow() {
 
   useEffect(() => { if (run?.run_id) void post('/livegrid/plan', { run_id: run.run_id }).catch(() => {}); }, [run?.run_id]);
 
-  const sites: ExploreSite[] = useMemo(() => (result?.sites ?? []).map((s, i) => ({ ...s, letter: String(i + 1) }) as ExploreSite), [result]);
+  const sites: ExploreSite[] = useMemo(() => [...custom, ...(result?.sites ?? []).map((s, i) => ({ ...s, letter: String(i + 1) }) as ExploreSite)], [result, custom]);
   const selected = sites.find((s) => s.id === selectedId) ?? null;
   const listed = sites.filter((s) => show === 'all' || (show === 'bad' ? s.screen?.status === 'Fail' : s.screen?.status !== 'Fail'));
   const c = result?.counts;
+
+  // a location the user picked or drew: screened with the same gates as CoStar properties
+  async function addCustom(lat: number, lng: number, acres: number, label: string) {
+    setMode('browse'); setBusy(true);
+    try {
+      const d = await post<{ id: string; screen: ExploreSite['screen'] }>('/sites/evaluate', { lat, lon: lng, acres, market, thresholds, name: label });
+      const s = { id: d.id, name: label, area: `${lat.toFixed(4)}, ${lng.toFixed(4)}`, lat, lng, lotAcres: acres, landCost: 0, screen: d.screen, letter: '★', source: 'user',
+        pillars: { money: 0, people: 0, planet: 0, overall: 0 }, supportableMw: acres, width: 0, depth: 0, metrics: {}, risks: [], context: '', provenance: 'Location chosen by the user; no CoStar record.', amenities: { schools: 0, restaurants: 0, parks: 0, transit: 0, population: 0 } } as unknown as ExploreSite;
+      setCustom((c) => [s, ...c.filter((x) => x.id !== s.id)]); setSelectedId(s.id);
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
+  function onRing(r: [number, number][] | null) {
+    setRing(r); setMode('browse');
+    if (!r || r.length < 3) return;
+    const lat0 = r.reduce((a, p) => a + p[1], 0) / r.length, lng0 = r.reduce((a, p) => a + p[0], 0) / r.length;
+    const pts = r.map(([lo, la]) => [(lo - lng0) * 111320 * Math.cos((lat0 * Math.PI) / 180), (la - lat0) * 110540]);
+    let a2 = 0;
+    pts.forEach(([x, y], i) => { const [x2, y2] = pts[(i + 1) % pts.length]; a2 += x * y2 - x2 * y; });
+    void addCustom(lat0, lng0, Math.max(0.5, Math.abs(a2) / 2 / 4046.86), 'My drawn area');
+  }
+  function accept(s: ExploreSite | null) {
+    const pick = s ?? sites.find((x) => x.id === baseRun?.optimized?.site_id) ?? null;
+    if (!pick) return;
+    setAccepted({ id: pick.id, name: pick.name, lat: pick.lat, lng: pick.lng, acres: pick.lotAcres ?? 10, aerialId: pick.parcelId ?? `pt:${pick.lat.toFixed(6)},${pick.lng.toFixed(6)}`, screen: pick.screen });
+    setStep(3);
+  }
+  const planFor = (id: string | undefined) => {
+    const mine = (run?.combinations ?? []).filter((x) => x.site_id === id);
+    return mine.length ? mine.reduce((a, b2) => (a.cost <= b2.cost ? a : b2)) : null;
+  };
 
   async function ask() {
     if (!run) return;
     setAsking(true); setAnswer(null);
     try {
-      const r = await post<{ answer: string }>('/agent/explain', { run_id: run.run_id, question: question || null });
-      setAnswer(r.answer);
+      const r = await post<{ answer: string; model: string; trace: { tool: string; args?: unknown }[] }>('/agent/explain', { run_id: run.run_id, question: question || null });
+      const used = r.trace.map((t) => (t.tool === 'run_what_if' ? `re-ran the optimizer (${JSON.stringify((t.args as { changes_json?: string })?.changes_json ?? t.args)})` : t.tool)).join(' → ');
+      setAnswer(`${r.answer}\n\n— ${r.model === 'deterministic' ? 'Built from the optimizer outputs (no model).' : `LangChain agent (${r.model}).`} Tools used: ${used || 'none'}`);
     } catch { setAnswer('The explainer is not reachable.'); } finally { setAsking(false); }
   }
 
@@ -119,6 +159,7 @@ export function Flow() {
           ))}
         </ol>
         <Link href="/dashboard-2" className="ws-btn">Open Dashboard 2</Link>
+        <button className="ws-btn primary" onClick={() => setShowAgent(true)}>Ask the agent</button>
       </header>
       {error && <div className="fl-error">{error}</div>}
 
@@ -163,15 +204,34 @@ export function Flow() {
               {view3d && selected?.parcelId ? (
                 <Site3D key={selected.id} parcelId={selected.parcelId} lat={selected.lat} lng={selected.lng} mw={mw} acres={selected.lotAcres ?? null} />
               ) : (
-                <ExploreMap market={market} sites={sites} selectedId={selectedId} pickId={run?.optimized?.site_id ?? null} onSelect={(id) => (setSelectedId(id), setView3d(false))} mode="browse" polygon={null} onPolygon={() => {}} onPin={() => {}} basemap="map" />
+                <ExploreMap market={market} sites={sites} selectedId={selectedId} pickId={run?.optimized?.site_id ?? null} onSelect={(id) => (setSelectedId(id), setView3d(false))} mode={mode} polygon={ring} onPolygon={onRing} onPin={(lng, lat) => void addCustom(lat, lng, pinAcres, 'My chosen spot')} basemap="map" />
               )}
-              <div className="ws-legend"><span><i style={{ background: 'var(--ws-ok)' }} />Could work</span><span><i style={{ background: 'var(--ws-warn)' }} />Needs a closer look</span><span><i style={{ background: 'var(--ws-bad)' }} />Ruled out</span></div>
+              <div className="fl-own">
+                <b>Or choose your own:</b>
+                <button className={mode === 'pin' ? 'on' : ''} onClick={() => (setView3d(false), setMode(mode === 'pin' ? 'browse' : 'pin'))}>Click a spot</button>
+                <label>of <input type="number" min={1} max={500} value={pinAcres} onChange={(e) => setPinAcres(+e.target.value || 1)} /> acres</label>
+                <button className={mode === 'draw' ? 'on' : ''} onClick={() => (setView3d(false), setMode(mode === 'draw' ? 'browse' : 'draw'))}>Draw an area</button>
+              </div>
+              <div className="ws-legend" style={{ top: 'auto', bottom: 34 }}><span><i style={{ background: 'var(--ws-ok)' }} />Could work</span><span><i style={{ background: 'var(--ws-warn)' }} />Needs a closer look</span><span><i style={{ background: 'var(--ws-bad)' }} />Ruled out</span></div>
             </div>
             <aside className="fl-side">
               {selected ? (
                 <>
                   <button className="fl-back" onClick={() => (setSelectedId(null), setView3d(false))}><ArrowLeft size={13} /> All properties</button>
-                  <SiteDetail site={selected} mw={mw} run={run} runBusy={busy} onWhatIf={() => {}} onOpen3d={() => setView3d(true)} onClose={() => (setSelectedId(null), setView3d(false))} />
+                  {selected.screen?.status === 'Fail'
+                    ? <div className="fl-accept no">This location fails a check, so it can&apos;t be accepted: {verdict(selected).reason}.</div>
+                    : <button className="fl-next fl-accept" onClick={() => accept(selected)}>Accept this site and design it <ArrowRight size={16} /></button>}
+                  {selected.source === ('user' as unknown) ? (
+                    <div className="fl-custom">
+                      <h2>{selected.name}</h2>
+                      <p>{selected.area} · {fmtNum(selected.lotAcres, 1)} acres · your own location (no CoStar record or price)</p>
+                      {selected.screen?.gates.map((g) => (
+                        <div key={g.gate} className={`ds-check ${g.status === 'Pass' ? 'ok' : g.status === 'Fail' ? 'bad' : 'warn'}`}><i /><div><b>{g.gate}: {g.status}</b><span>{g.reason}</span></div></div>
+                      ))}
+                    </div>
+                  ) : (
+                    <SiteDetail site={selected} mw={mw} run={run} runBusy={busy} onWhatIf={() => {}} onOpen3d={() => setView3d(true)} onClose={() => (setSelectedId(null), setView3d(false))} />
+                  )}
                 </>
               ) : (
                 <>
@@ -202,20 +262,25 @@ export function Flow() {
       {step === 2 && (
         <main className="fl-doc">
           <div className="fl-stage">
-            <DecisionView run={baseRun} sites={sites} mw={mw} busy={busy} changedFrom={null} hideExtras onWhatIf={() => {}} onOpenSite={(id) => (setSelectedId(id), setStep(1))} onLive={() => setStep(4)} />
+            <DecisionView run={baseRun} sites={sites} mw={mw} busy={busy} changedFrom={null} hideExtras onWhatIf={() => {}} onOpenSite={(id) => (setSelectedId(id), setStep(1))} onLive={() => setStep(5)} />
           </div>
           <div className="fl-footer">
             <div className="fl-ask">
               <input placeholder="Ask about this decision, e.g. Why not the cheapest site?" value={question} onChange={(e) => setQuestion(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void ask()} />
               <button className="ws-btn" onClick={() => void ask()} disabled={asking}>{asking ? 'Thinking…' : 'Ask'}</button>
             </div>
-            <button className="fl-next" onClick={() => setStep(3)}>What could change this? <ArrowRight size={16} /></button>
+            <button className="fl-next" onClick={() => accept(null)}>Design this site <ArrowRight size={16} /></button>
           </div>
           {answer && <div className="fl-answer">{answer}</div>}
         </main>
       )}
 
-      {step === 3 && baseRun && (
+      {step === 3 && accepted && (
+        <DesignStep site={accepted} mw={mw} cooling={(planFor(accepted.id)?.cooling ?? 'air') as 'air' | 'hybrid' | 'water'} depth={planFor(accepted.id)?.d || 0.3} onNext={() => setStep(4)} />
+      )}
+      {step === 3 && !accepted && <main className="fl-narrow"><h1>Pick a site first</h1><p className="fl-lede">Accept a site in step 2, or use the recommendation.</p><button className="fl-next" onClick={() => accept(null)}>Use the recommended site</button></main>}
+
+      {step === 4 && baseRun && (
         <main className="fl-narrow wide">
           <h1>What could change this decision?</h1>
           <p className="fl-lede">Switch a condition on. PlotStar recalculates every property and tells you if the recommendation moves.</p>
@@ -240,19 +305,20 @@ export function Flow() {
           </div>
           <p className="fl-lede small">Try this: switch on the 70% limit (the site still works, by easing off). Then also switch on &quot;none of the work can wait&quot;: the site stops working and the recommendation moves. The 70% is a scenario; only the utility can confirm real capacity.</p>
           <div className="fl-footer plain">
-            <button className="fl-back" onClick={() => setStep(2)}><ArrowLeft size={13} /> Recommendation</button>
-            <button className="fl-next" onClick={() => setStep(4)}>Test it on real machines <ArrowRight size={16} /></button>
+            <button className="fl-back" onClick={() => setStep(3)}><ArrowLeft size={13} /> Design</button>
+            <button className="fl-next" onClick={() => setStep(5)}>Test it on real machines <ArrowRight size={16} /></button>
           </div>
         </main>
       )}
 
-      {step === 4 && (
+      {step === 5 && (
         <main className="fl-doc">
           <div className="fl-stage"><Meters priceDate={run?.grid.price_date} /></div>
-          <div className="fl-footer plain"><button className="fl-back" onClick={() => setStep(3)}><ArrowLeft size={13} /> What if</button><span className="ws-note">This test uses the plan from the previous step{o ? ` (${o.site_name})` : ''}.</span></div>
+          <div className="fl-footer plain"><button className="fl-back" onClick={() => setStep(4)}><ArrowLeft size={13} /> What if</button><span className="ws-note">This test uses the plan from the previous step{o ? ` (${o.site_name})` : ''}.</span></div>
         </main>
       )}
 
+      {showAgent && <AgentDrawer runId={run?.run_id ?? null} onClose={() => setShowAgent(false)} />}
       {showAssump && <AssumptionsDrawer overrides={overrides} onApply={(v) => (setOverrides(v), setShowAssump(false))} onClose={() => setShowAssump(false)} />}
     </div>
   );
