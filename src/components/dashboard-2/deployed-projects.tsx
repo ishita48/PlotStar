@@ -17,6 +17,7 @@ import type { DeployedProject } from '@/lib/haven/portfolio';
 import { PrimaryCard } from './shell';
 import { ProtectModule } from './protection-workspace';
 import { useProtection } from './use-protection';
+import { LiveHardware } from './live-hardware';
 
 const typeIcon = (type: string) => {
   const t = type.toLowerCase();
@@ -258,6 +259,8 @@ export function ProjectCommandCenter({
           </div>
         </PrimaryCard>
       ) : (
+        <>
+        <LiveHardware facility={facility} />
         <ProtectModule
           key={facility.id}
           state={protection.state}
@@ -267,6 +270,7 @@ export function ProjectCommandCenter({
           live
           onBack={onBack}
         />
+        </>
       )}
     </>
   );

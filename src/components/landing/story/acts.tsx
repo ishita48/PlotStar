@@ -7,6 +7,8 @@ import Link from 'next/link';
 import { Component, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { ArrowRight, Box, Check, Droplets, FileCode2, Flame, Lock, RotateCcw, ScanEye, ShieldCheck, Waves, Zap } from 'lucide-react';
 import { AGENTS, ALERTS, SENSORS, TYPES, score, type Audience, type Sensor, type TypeStory } from './data';
+import { LivePanel, useHardware } from './live';
+import liveCss from './live.module.css';
 
 const ConceptModel = dynamic(() => import('@/components/dashboard-2/concepts/concept-model'), {
   ssr: false,
@@ -278,7 +280,39 @@ export function Protect() {
     setSim('leak');
     timers.current = [setTimeout(() => setSim('alert'), 2200), setTimeout(() => setSim('safe'), 5200)];
   };
-  const moisture = { idle: 12, leak: 46, alert: 68, safe: 21 }[sim];
+
+  // Live hardware: when the physical model on the demo table is connected, the cutaway follows its
+  // real leak sensor and valve instead of the scripted simulation, and the panel below shows every reading.
+  const [hw, reloadHw] = useHardware();
+  const online = hw?.online === true;
+  const wet = online && hw?.live?.leak_wet === true;
+  const valveShut = online && hw?.live?.valve_open === false;
+  const waiting = (hw?.agent?.pending?.length ?? 0) > 0;
+  const wetAt = useRef<number | null>(null);
+  const [liveSim, setLiveSim] = useState<Sim>('idle');
+  useEffect(() => {
+    if (!online) return;
+    if (wet && wetAt.current === null) { wetAt.current = Date.now(); setPick(SENSORS[0]); }
+    if (!wet) wetAt.current = null;
+    const age = wetAt.current ? Date.now() - wetAt.current : 0;
+    setLiveSim(wet ? (age < 1500 ? 'leak' : age < 4000 || !valveShut ? 'alert' : 'safe') : valveShut ? 'safe' : 'idle');
+  }, [hw, online, wet, valveShut]);
+  const shown: Sim = online ? liveSim : sim;
+  const adc = typeof hw?.live?.leak_adc === 'number' ? hw.live.leak_adc : 0;
+  const moisture = online ? Math.min(100, Math.round(adc / 16)) : { idle: 12, leak: 46, alert: 68, safe: 21 }[sim];
+  const TOAST: Record<Sim, [string, string]> = online
+    ? {
+        idle: ['Monitor · Live: every sensor on the model reads normal', 'Drip water on the leak sensor on the table and watch this building react.'],
+        leak: ['Guardian · Water at the coolant loop', 'A real sensor on the model just got wet. Checking it against its dry baseline.'],
+        alert: ['Guardian · Leak confirmed at the coolant loop', 'The valve is closing in firmware. No AI sits in the safety loop.'],
+        safe: ['Operator · Valve closed, leak contained', waiting ? 'Waiting for the manager’s card tap before anyone is dispatched or the valve reopens.' : 'The valve stays shut until the sensor is dry and the manager approves.'],
+      }
+    : {
+        idle: ['Monitor · All seven sensors reading normal', 'Hover a sensor to see what it watches for.'],
+        leak: ['Guardian · Something is changing on Level 3', 'Wall moisture is climbing. Checking it is not condensation.'],
+        alert: ['Guardian · Leak behind the Level 3 riser', 'Moisture up 18% in six hours. Maintenance paged.'],
+        safe: ['Operator · Valve closed, leak contained', 'Damage stopped at one wall. Recovery is watching the dry-out.'],
+      };
 
   return (
     <section id="protect" data-chapter className="ps-act ps-act-protect" aria-labelledby="protect-title">
@@ -292,7 +326,7 @@ export function Protect() {
         />
 
         <div className="ps-protect">
-          <div className="ps-cut" data-sim={sim} data-reveal>
+          <div className="ps-cut" data-sim={shown} data-reveal>
             <Cutaway />
             {SENSORS.map((s) => {
               const K = KIND[s.kind].icon;
@@ -300,7 +334,7 @@ export function Protect() {
                 <button
                   key={s.id}
                   type="button"
-                  className={`ps-sensor k-${s.kind} ${pick.id === s.id ? 'on' : ''} ${sim !== 'idle' && s.id === 'w1' ? 'hot' : ''}`}
+                  className={`ps-sensor k-${s.kind} ${pick.id === s.id ? 'on' : ''} ${shown !== 'idle' && s.id === 'w1' ? 'hot' : ''}`}
                   style={{ left: `${s.x}%`, top: `${s.y}%` }}
                   onClick={() => setPick(s)}
                   onMouseEnter={() => setPick(s)}
@@ -312,12 +346,12 @@ export function Protect() {
                 </button>
               );
             })}
-            {sim !== 'idle' && <span className="ps-drip" style={{ left: '30%', top: '33%' }} aria-hidden="true"><i /><i /><i /></span>}
-            <div className={`ps-toast ps-glass-dark ${sim}`} role="status">
-              <span className={`ps-ava ${sim === 'safe' ? 'p' : sim === 'idle' ? 'b' : 'g'}`}>{sim === 'safe' ? 'O' : sim === 'idle' ? 'M' : 'G'}</span>
-              <div key={sim}>
-                <b>{{ idle: 'Monitor · All seven sensors reading normal', leak: 'Guardian · Something is changing on Level 3', alert: 'Guardian · Leak behind the Level 3 riser', safe: 'Operator · Valve closed, leak contained' }[sim]}</b>
-                <span>{{ idle: 'Hover a sensor to see what it watches for.', leak: 'Wall moisture is climbing. Checking it is not condensation.', alert: 'Moisture up 18% in six hours. Maintenance paged.', safe: 'Damage stopped at one wall. Recovery is watching the dry-out.' }[sim]}</span>
+            {shown !== 'idle' && <span className="ps-drip" style={{ left: '30%', top: '33%' }} aria-hidden="true"><i /><i /><i /></span>}
+            <div className={`ps-toast ps-glass-dark ${shown}`} role="status">
+              <span className={`ps-ava ${shown === 'safe' ? 'p' : shown === 'idle' ? 'b' : 'g'}`}>{shown === 'safe' ? 'O' : shown === 'idle' ? 'M' : 'G'}</span>
+              <div key={`${online}-${shown}`}>
+                <b>{TOAST[shown][0]}</b>
+                <span>{TOAST[shown][1]}</span>
               </div>
             </div>
           </div>
@@ -328,8 +362,8 @@ export function Protect() {
               <h3>{pick.label}</h3>
               <p>{pick.why}</p>
               {pick.id === 'w1' && (
-                <div className="ps-meter" aria-label={`Wall moisture ${moisture}%`}>
-                  <span>Wall moisture</span>
+                <div className="ps-meter" aria-label={`${online ? 'Leak sensor' : 'Wall moisture'} ${moisture}%`}>
+                  <span>{online ? 'Leak sensor · live' : 'Wall moisture'}</span>
                   <i><b style={{ width: `${moisture}%` }} className={moisture > 40 ? 'hi' : ''} /></i>
                   <em>{moisture}%</em>
                 </div>
@@ -341,11 +375,20 @@ export function Protect() {
                 return <li key={k} className={`k-${k}`}><K size={15} /><span><b>{KIND[k].label}</b><small>{KIND[k].line}</small></span></li>;
               })}
             </ul>
-            <button type="button" className="ps-btn ps-btn-lime" onClick={run} disabled={sim === 'leak' || sim === 'alert'}>
-              {sim === 'safe' ? <><RotateCcw size={15} /> Run it again</> : <><Droplets size={15} /> Simulate a hidden leak</>}
-            </button>
+            {online ? (
+              <div className={`ps-glass-dark ${liveCss.liveChip}`} role="status">
+                <Droplets size={16} aria-hidden="true" />
+                <span><b>Live hardware connected.</b> No simulation needed: drip water on the model’s leak sensor.</span>
+              </div>
+            ) : (
+              <button type="button" className="ps-btn ps-btn-lime" onClick={run} disabled={sim === 'leak' || sim === 'alert'}>
+                {sim === 'safe' ? <><RotateCcw size={15} /> Run it again</> : <><Droplets size={15} /> Simulate a hidden leak</>}
+              </button>
+            )}
           </aside>
         </div>
+
+        <LivePanel hw={hw} reload={reloadHw} />
       </div>
     </section>
   );

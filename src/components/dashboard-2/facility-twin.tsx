@@ -249,12 +249,16 @@ export function FacilityTwin({
           <span>
             <i className="hv-dot sensor" /> {enabled.length} monitoring points
           </span>
-          <span>
-            <i className="hv-dot clear" /> Scenario-clear route
-          </span>
-          <span>
-            <i className="hv-dot hazard" /> Affected area
-          </span>
+          {hazardKey && (
+            <>
+              <span>
+                <i className="hv-dot clear" /> Scenario-clear route
+              </span>
+              <span>
+                <i className="hv-dot hazard" /> Affected area
+              </span>
+            </>
+          )}
         </div>
       )}
       {selected && (

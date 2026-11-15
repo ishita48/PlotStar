@@ -39,7 +39,8 @@ export interface DemoIncident {
   status: 'active' | 'acknowledged' | 'resolved';
   message: string;
   recommendation: string;
-  source: 'simulation';
+  /** 'hardware' = raised by a live sensor on the physical model (SiteStar PROTECT bridge). */
+  source: 'simulation' | 'hardware';
   createdAt: string;
 }
 export interface Activity {
@@ -121,7 +122,12 @@ export const actionSchema = z.discriminatedUnion('action', [
   }),
   z.object({ action: z.literal('deploy') }),
   z.object({ action: z.literal('reconfigure') }),
-  z.object({ action: z.literal('trigger'), kind: z.enum(['leak', 'fire', 'usage']) }),
+  z.object({
+    action: z.literal('trigger'),
+    kind: z.enum(['leak', 'fire', 'usage']),
+    /** true when a real sensor on the physical model raised it (not a demo button). */
+    live: z.boolean().optional(),
+  }),
   z.object({ action: z.literal('acknowledge'), incidentId: z.string().max(100) }),
   z.object({ action: z.literal('reset') }),
   z.object({ action: z.literal('finish-recovery') }),
@@ -443,7 +449,7 @@ function activity(state: ProtectionState, agent: string, message: string, at: st
   state.timeline.unshift({ id: `event-${++state.sequence}`, agent, message, at });
   state.timeline = state.timeline.slice(0, 80);
 }
-function evaluate(state: ProtectionState, now: string) {
+function evaluate(state: ProtectionState, now: string, live = false) {
   const checks = [
     {
       kind: 'electricity' as const,
@@ -501,7 +507,7 @@ function evaluate(state: ProtectionState, now: string) {
         check.kind === 'waterUsage'
           ? 'Maintenance: inspect the flow meter and unexpected consumption before adjusting the limit.'
           : response.recommendation,
-      source: 'simulation',
+      source: live ? 'hardware' : 'simulation',
       createdAt: now,
     };
     state.incidents.unshift(incident);
@@ -509,7 +515,9 @@ function evaluate(state: ProtectionState, now: string) {
     activity(
       state,
       'Building Monitor',
-      `${check.name} · ${check.value} ≥ ${check.threshold}. Simulated reading.`,
+      live
+        ? `${check.name} · live sensor on the physical model (real hardware event).`
+        : `${check.name} · ${check.value} ≥ ${check.threshold}. Simulated reading.`,
       now,
     );
     const plan = effectivePlan(state);
@@ -613,7 +621,21 @@ export function transitionProtection(
         state.readings.waterUsage = 75;
       } else state.readings[action.kind] = demoScenarios[action.kind].value;
       state.recovering = false;
-      evaluate(state, now);
+      evaluate(state, now, action.live === true);
+      // A water leak seen by a real sensor on the physical model places the (simulated)
+      // emergency-services call straight away, without waiting for the operator button.
+      if (action.live === true && action.kind === 'leak' && state.deployed) {
+        const primary = primaryIncident(state);
+        if (primary && state.call?.incidentId !== primary.id) {
+          state.call = emergencyCall(state, primary, now);
+          activity(
+            state,
+            'Dispatch',
+            `Live leak sensor: simulated emergency-services call ${state.call.id} placed automatically. No real call was made.`,
+            now,
+          );
+        }
+      }
       break;
     case 'acknowledge': {
       const incident = state.incidents.find(

@@ -187,7 +187,9 @@ function Model({
               </PulseGroup>
             );
           })}
+      {/* The evacuation route is guidance for an active fire or leak; with the building healthy it stays hidden. */}
       {operational &&
+        (fire || leak) &&
         segments.map((points, i) => <RouteSegment key={i} points={points} flowing={animating} />)}
       {operational &&
         Object.entries(evacuationPlans).map(([id, route]) => (
