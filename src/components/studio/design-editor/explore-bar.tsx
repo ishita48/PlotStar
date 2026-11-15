@@ -24,10 +24,10 @@ function Tick({ on, label, onChange, swatch, hint, disabled }: { on: boolean; la
   );
 }
 
-export function ExploreBar({ layers, setLayers, cam, setCam, concepts, activeId, onPick, cooling, hasContext, onExportDxf, onExportGlb, canGlb, view3d, compassRef }: {
+export function ExploreBar({ layers, setLayers, cam, setCam, concepts, activeId, onPick, cooling, hasContext, onExportDxf, onExportGlb, canGlb, view3d, compassRef, hasSite = true }: {
   layers: Layers; setLayers: (l: Layers) => void; cam: ViewPreset; setCam: (v: ViewPreset) => void;
   concepts: Concept[]; activeId: string; onPick: (id: string) => void; cooling: string; hasContext: boolean;
-  onExportDxf: () => void; onExportGlb: () => void; canGlb: boolean; view3d: boolean; compassRef: React.RefObject<HTMLSpanElement | null>;
+  onExportDxf: () => void; onExportGlb: () => void; canGlb: boolean; view3d: boolean; compassRef: React.RefObject<HTMLSpanElement | null>; hasSite?: boolean;
 }) {
   const [menu, setMenu] = useState<Menu>(null);
   const ref = useRef<HTMLDivElement>(null);
@@ -49,7 +49,7 @@ export function ExploreBar({ layers, setLayers, cam, setCam, concepts, activeId,
   return (
     <div className="xb" ref={ref} onPointerDown={(e) => e.stopPropagation()}>
       <div className="xb-group">
-        <button className={menu === 'layers' ? 'on' : ''} onClick={() => toggle('layers')} aria-expanded={menu === 'layers'}><LayersIcon size={14} /> Layers</button>
+        <button className={menu === 'layers' ? 'on' : ''} onClick={() => toggle('layers')} aria-expanded={menu === 'layers'} title="Layers"><LayersIcon size={14} /> <span className="xb-lbl">Layers</span></button>
         <Pop open={menu === 'layers'} wide>
           <div className="xb-cols">
             <section><h5>Structure</h5>
@@ -78,14 +78,15 @@ export function ExploreBar({ layers, setLayers, cam, setCam, concepts, activeId,
               <h5>Context</h5>
               <Tick on={L.aerial} label="Vexcel aerial" onChange={(v) => set({ aerial: v })} />
               <Tick on={L.context} label="Vexcel 3D surroundings" disabled={!hasContext} hint={hasContext ? undefined : 'No Vexcel 3D mesh here'} onChange={(v) => set({ context: v })} />
+              <Tick on={!!L.comps} label="CoStar neighbours" disabled={!hasSite} hint={view3d ? 'Properties within 900 m, in the 3D model' : 'Shown in the 3D model'} onChange={(v) => set({ comps: v })} />
               <Tick on={L.site} label="Whole site in plan" onChange={(v) => set({ site: v })} />
             </section>
           </div>
         </Pop>
       </div>
-      <button className={L.dims ? 'on' : ''} onClick={() => set({ dims: !L.dims })} title="Building size, setback and envelope with measure lines"><Ruler size={14} /> Dimensions</button>
+      <button className={L.dims ? 'on' : ''} onClick={() => set({ dims: !L.dims })} title="Building size, setback and envelope with measure lines"><Ruler size={14} /> <span className="xb-lbl">Dimensions</span></button>
       <div className="xb-group">
-        <button className={menu === 'views' ? 'on' : ''} onClick={() => toggle('views')} disabled={!view3d} title={view3d ? undefined : 'Open the 3D model'}><Scan size={14} /> {viewName} <ChevronDown size={12} /></button>
+        <button className={menu === 'views' ? 'on' : ''} onClick={() => toggle('views')} disabled={!view3d} title={view3d ? 'Camera view' : 'Open the 3D model'}><Scan size={14} /> <span className="xb-lbl">{viewName}</span> <ChevronDown size={12} /></button>
         <Pop open={menu === 'views'}>
           {([['iso', 'Angle (isometric)'], ['top', 'Top'], ['front', 'Front, from the south'], ['section', 'Section through the building']] as const).map(([k, label]) => (
             <button key={k} className="xb-item" onClick={() => go(k)}>{cam.preset === k ? <Check size={13} /> : <span className="xb-sp" />}{label}</button>
@@ -101,7 +102,7 @@ export function ExploreBar({ layers, setLayers, cam, setCam, concepts, activeId,
         <button onClick={() => go('zoomIn')} aria-label="Zoom in" disabled={!view3d}><Plus size={14} /></button>
       </span>
       <div className="xb-group">
-        <button className={`xb-model ${menu === 'model' ? 'on' : ''}`} onClick={() => toggle('model')} title={active?.why}><BoxIcon size={14} /> <span>{active?.name ?? 'Model'}</span> <ChevronDown size={12} /></button>
+        <button className={`xb-model ${menu === 'model' ? 'on' : ''}`} onClick={() => toggle('model')} title={active?.why}><BoxIcon size={14} /> <span className="xb-name">{active?.name ?? 'Model'}</span> <ChevronDown size={12} /></button>
         <Pop open={menu === 'model'} wide>
           {concepts.map((c) => (
             <button key={c.id} className="xb-item xb-concept" onClick={() => { onPick(c.id); setMenu(null); }}>

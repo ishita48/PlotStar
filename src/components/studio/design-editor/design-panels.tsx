@@ -60,8 +60,14 @@ export function DesignSidePanel({ ui }: { ui: DesignUi }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
   const box = useRef<HTMLTextAreaElement>(null);
+  const card = useRef<HTMLDivElement>(null);
   const { proposal } = ui;
-  useEffect(() => { if (proposal) setOpen(true); }, [proposal]);
+  useEffect(() => {
+    if (!proposal) return;
+    setOpen(true);
+    const t = setTimeout(() => card.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 80);
+    return () => clearTimeout(t);
+  }, [proposal]);
   const ask = () => { if (text.trim().length > 1) void ui.propose(text); };
   return (
     <aside className={`de-side ${open ? 'open' : ''}`} aria-label="Add to the site">
@@ -91,7 +97,7 @@ export function DesignSidePanel({ ui }: { ui: DesignUi }) {
           </form>
           {ui.askError && <p className="de-err">{ui.askError}</p>}
           {proposal && (
-            <div className="de-proposal">
+            <div className="de-proposal" ref={card}>
               <p className="de-proposal-head"><span className="de-chip">Proposal</span> {proposal.source}</p>
               <p>{proposal.reason}</p>
               <ul>{proposal.objects.map((x) => (
@@ -111,6 +117,19 @@ export function DesignSidePanel({ ui }: { ui: DesignUi }) {
         </button>
       )}
     </aside>
+  );
+}
+
+/** Accept / Reject drawn on the proposal itself in the 3D model. */
+export function ProposalBar({ ui }: { ui: DesignUi }) {
+  const n = ui.proposal?.objects.length ?? 0;
+  if (!n) return null;
+  return (
+    <div className="de-float de-ghostbar" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+      <span className="de-chip">Proposal</span>
+      <button className="de-ghost-yes" onClick={ui.accept} title={`Add ${n > 1 ? `these ${n} objects` : 'it'} to the layout; the engine then checks and costs ${n > 1 ? 'them' : 'it'}`}><CircleCheck size={13} /> Accept</button>
+      <button onClick={() => ui.setProposal(null)} title="Discard the proposal"><X size={13} /> Reject</button>
+    </div>
   );
 }
 

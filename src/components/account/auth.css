@@ -1,0 +1,162 @@
+/* Sign-in / sign-up pages and the account controls in the top bars. GeoStar palette, Geist when loaded. */
+.gs-auth {
+  min-height: 100svh;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  background: #f3f2ee;
+  color: #101411;
+  font-family: var(--ps-sans, -apple-system), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+.gs-auth-story {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 32px;
+  padding: 36px 48px;
+  color: #eef3ec;
+  background:
+    radial-gradient(900px 520px at 85% 0%, rgba(201, 236, 122, 0.22), transparent 60%),
+    linear-gradient(160deg, #1f4a36 0%, #13261c 55%, #0b100e 100%);
+  overflow: hidden;
+}
+.gs-auth-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #fff;
+  text-decoration: none;
+  font-size: 19px;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+}
+.gs-auth-mark b {
+  font-weight: 700;
+}
+.gs-auth-mark-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: #c9ec7a;
+}
+.gs-auth-mark-icon svg {
+  width: 18px;
+  height: 18px;
+  color: #101411;
+  --brand-center: #c9ec7a;
+}
+.gs-auth-copy {
+  max-width: 520px;
+}
+.gs-auth-eyebrow {
+  margin: 0 0 14px;
+  font-family: var(--ps-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #c9ec7a;
+}
+.gs-auth h1 {
+  margin: 0;
+  font-size: clamp(34px, 4vw, 52px);
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+  font-weight: 650;
+  color: #fff;
+}
+.gs-auth-lede {
+  margin: 16px 0 28px;
+  font-size: 16px;
+  line-height: 1.55;
+  color: rgba(238, 243, 236, 0.82);
+}
+.gs-auth-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 12px;
+}
+.gs-auth-steps li {
+  padding: 14px 16px;
+  border: 1px solid rgba(201, 236, 122, 0.18);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 14.5px;
+  line-height: 1.45;
+  color: rgba(238, 243, 236, 0.86);
+}
+.gs-auth-steps b {
+  color: #c9ec7a;
+  margin-right: 4px;
+}
+.gs-auth-foot {
+  margin: 0;
+  font-size: 12.5px;
+  color: rgba(238, 243, 236, 0.6);
+}
+.gs-auth-form {
+  display: grid;
+  place-items: center;
+  padding: 40px 24px;
+  background:
+    radial-gradient(700px 420px at 100% 0%, rgba(201, 236, 122, 0.18), transparent 60%),
+    linear-gradient(180deg, #f3f8ea, #ffffff 70%);
+}
+@media (max-width: 900px) {
+  .gs-auth {
+    grid-template-columns: 1fr;
+  }
+  .gs-auth-story {
+    padding: 24px 16px 28px;
+    gap: 20px;
+  }
+  .gs-auth-steps,
+  .gs-auth-foot {
+    display: none;
+  }
+  .gs-auth-form {
+    padding: 24px 16px 40px;
+  }
+}
+
+/* account controls in the top bars */
+.gs-account {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.gs-account-link,
+.gs-account-cta {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 550;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.gs-account-link {
+  color: #101411;
+  border: 1px solid rgba(16, 20, 17, 0.14);
+  background: rgba(255, 255, 255, 0.7);
+}
+.gs-account-link:hover {
+  background: #fff;
+}
+.gs-account-cta {
+  color: #fff;
+  background: #101411;
+}
+.gs-account-cta:hover {
+  background: #1f4a36;
+}
+.gs-account-dark .gs-account-link {
+  color: #eef3ec;
+  border-color: rgba(238, 243, 236, 0.25);
+  background: transparent;
+}

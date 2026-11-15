@@ -21,8 +21,14 @@ const CONTROL =
   'button, a[href], [role="button"], [role="tab"], [role="link"], [role="menuitem"], [role="option"]';
 const STRUCTURE = "h1, h2, h3, h4, label, p, li, td, th, figcaption, pre, code, blockquote, dt, dd";
 const MEDIA = "video, img[alt], iframe, canvas, svg[aria-label]";
+/** Small rows and chips that apps build from plain divs: gate results, checks, stats, verdicts, metric tiles. */
+const ROWS =
+  '[class*="gate"], [class*="check"], [class*="stat"], [class*="metric"], [class*="verdict"], [class*="kpi"], [class*="score"], [class*="finding"], [class*="row"], [class*="tile"], [class*="badge"], dl > div, tr';
 
-const MAX_ELEMENTS = 160;
+const MAX_ELEMENTS = 190;
+/** Crowds of look-alike controls (map markers, plan objects): keep some, so they can't push the panels' text out. */
+const CROWD = ".ws-marker, .maplibregl-marker, [data-code]";
+const MAX_CROWD = 45;
 const MAX_VISIBLE_TEXT = 5500;
 
 function roleOf(el: Element): string {
@@ -218,12 +224,29 @@ export function collectScreenContext(opts: {
     }
   };
 
-  root.querySelectorAll(INTERACTIVE).forEach((el) => consider(el, "interactive"));
+  // Controls first (map markers and plan objects wait their turn), then media and text, then a capped share of the crowd.
+  const crowd: Element[] = [];
+  root.querySelectorAll(INTERACTIVE).forEach((el) => (el.matches(CROWD) ? crowd.push(el) : consider(el, "interactive")));
   root.querySelectorAll("li").forEach((el) => {
     if (!el.matches(".st-rail li") && getComputedStyle(el).cursor === "pointer") consider(el, "interactive");
   });
+  const afterControls = elements.length;
   root.querySelectorAll(MEDIA).forEach((el) => consider(el, "media"));
-  root.querySelectorAll(STRUCTURE).forEach((el) => consider(el, "structure"));
+  root.querySelectorAll(STRUCTURE).forEach((el) => {
+    // Leave room for the crowd: text may use what is left of the budget minus that share.
+    if (elements.length < MAX_ELEMENTS - Math.min(MAX_CROWD, crowd.length) || elements.length < afterControls + 40) consider(el, "structure");
+  });
+  root.querySelectorAll(ROWS).forEach((el) => {
+    if (elements.length >= MAX_ELEMENTS - Math.min(MAX_CROWD, crowd.length)) return;
+    const r = el.getBoundingClientRect();
+    const t = ((el as HTMLElement).innerText || "").trim();
+    // Rows, not whole panels: a line or three of text, no taller than a card row.
+    if (r.height > 150 || t.length < 3 || t.length > 260) return;
+    consider(el, "structure");
+  });
+  // Selected / highlighted ones first, then the rest in document order.
+  crowd.sort((a, b) => Number(/\b(sel|pick|on|selected)\b/.test(b.getAttribute("class") ?? "")) - Number(/\b(sel|pick|on|selected)\b/.test(a.getAttribute("class") ?? "")));
+  crowd.slice(0, MAX_CROWD).forEach((el) => consider(el, "interactive"));
 
   // Page outline beyond the viewport: headings Hey Geo can scroll to.
   const vis = new Set(elements.map((e) => registry.get(e.id)));
@@ -286,12 +309,42 @@ export function collectScreenContext(opts: {
       title: document.title.slice(0, 200),
       viewport: { w: vw, h: vh, dpr: window.devicePixelRatio || 1, scrollX: Math.round(scrollX), scrollY: Math.round(scrollY) },
       elements,
-      visibleText: textBits.join("\n").slice(0, MAX_VISIBLE_TEXT),
+      visibleText: readVisibleText(root, vw, vh) || textBits.join("\n").slice(0, MAX_VISIBLE_TEXT),
       ...(readSelection() ? { selection: readSelection() } : {}),
       ...(pointedId ? { pointed: pointedId } : {}),
       ...(opts.app ? { app: opts.app } : {}),
     },
   };
+}
+
+/**
+ * The text a person can read in the viewport, block by block, regardless of markup (divs, spans, table cells).
+ * Field values are never read: only rendered text nodes. Hey Geo's own UI and the other assistants are skipped.
+ */
+function readVisibleText(root: ParentNode, vw: number, vh: number): string {
+  const start = root === document ? document.body : (root as Node);
+  if (!start) return "";
+  const walker = document.createTreeWalker(start, NodeFilter.SHOW_TEXT);
+  const lines: string[] = [];
+  let lastBlock: Element | null = null;
+  let len = 0;
+  for (let node = walker.nextNode(); node && len < MAX_VISIBLE_TEXT; node = walker.nextNode()) {
+    const text = (node.nodeValue || "").replace(/\s+/g, " ").trim();
+    if (text.length < 1) continue;
+    const el = node.parentElement;
+    if (!el || el.closest("[data-geo-ui], [data-guide-ui], script, style, noscript, textarea, select, option, svg text, .ws-marker, .maplibregl-marker, .maplibregl-ctrl")) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2 || r.bottom < 0 || r.right < 0 || r.top > vh || r.left > vw) continue;
+    const anyEl = el as any;
+    if (typeof anyEl.checkVisibility === "function" && !anyEl.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) continue;
+    // Text nodes of one block (a row, a paragraph, a card line) share a line.
+    const block = el.closest("p, li, tr, h1, h2, h3, h4, h5, label, button, a, dt, dd, figcaption, summary, div") ?? el;
+    if (block === lastBlock && lines.length) lines[lines.length - 1] += ` ${text}`;
+    else lines.push(text);
+    lastBlock = block;
+    len += text.length + 1;
+  }
+  return lines.join("\n").slice(0, MAX_VISIBLE_TEXT);
 }
 
 /** Human-readable description of an element (for walkthrough observations). */

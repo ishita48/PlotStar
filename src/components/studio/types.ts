@@ -38,7 +38,8 @@ export interface Concept {
     payback_years: number | null; months_to_power: number; analysis_years: number;
     energy_per_year_flat: number; opex_per_year: number; water_per_year: number; ten_year: number;
   };
-  people: { noise_at_boundary_dba: number; noise_at_home_dba: number | null; generator_to_boundary_m: number; home_distance_m: number | null; noise_wall: boolean };
+  /** noise and generator distance are null when the generator yard has been removed */
+  people: { noise_at_boundary_dba: number | null; noise_at_home_dba: number | null; generator_to_boundary_m: number | null; home_distance_m: number | null; noise_wall: boolean };
   planet: {
     co2_t_per_year: number; co2_t_per_year_flat: number; embodied_t: number; roof_solar_kwp: number; canopy_solar_kwp: number; roof_solar_mwh: number;
     roof_solar_share: number; solar_avoided_t: number;

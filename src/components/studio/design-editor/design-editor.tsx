@@ -20,7 +20,7 @@ import { NO_EDIT, addItem, codesOf, duplicate, moveBy, remove, restore, rotate90
 import { faultsOf } from './faults';
 import type { DesignEditor } from './use-design-editor';
 import { downloadDxf, downloadGlb } from './export';
-import { SelectionToolbar } from './design-panels';
+import { ProposalBar, SelectionToolbar } from './design-panels';
 
 export interface Proposal { objects: (AddedItem & { notes?: string[]; estimate?: string | null })[]; reason: string; source: string; notes?: string[]; conceptId: string }
 
@@ -209,13 +209,14 @@ export function useDesignUi({ editor, siteW, siteD, setback, selected, onSelect,
   const placingAsset = placing ? { w: ASSET[placing].w, d: ASSET[placing].d, label: ASSET[placing].label } : null;
 
   const onScene = useCallback((s: THREE.Scene) => { scene.current = s; }, []);
-  /** props for the 3D model: export hook always, editing only in edit mode */
-  const model3d = (edit: boolean): Editor3D => (!edit ? { onScene } : {
+  /** props for the 3D model: failing objects and the export hook always, editing only in edit mode */
+  const model3d = (edit: boolean): Editor3D => (!edit ? { onScene, bad: shownFaults } : {
     bad: shownFaults, ghosts, placing: placingAsset, onPlace, onScene, toolbar: selRoom ? <SelectionToolbar ui={ui} /> : null,
+    ghostBar: proposal ? <ProposalBar ui={ui} /> : null,
     resizable: (code) => !!c?.yard.find((y) => y.code === code)?.added,
     onResize: (code, r) => act.rect(code, r), onRotate: (code) => act.rotate(code),
   });
-  const plan2d = (edit: boolean, withToolbar: boolean): Editor2D | undefined => (!edit ? undefined : {
+  const plan2d = (edit: boolean, withToolbar: boolean): Editor2D => (!edit ? { bad: shownFaults } : {
     bad: shownFaults, ghosts, placing: placingAsset, onPlace, onMove: (code, dx, dy) => act.move(code, dx, dy), toolbar: withToolbar && selRoom ? <SelectionToolbar ui={ui} /> : null,
   });
 

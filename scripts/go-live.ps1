@@ -27,6 +27,7 @@ function WaitFor($url, $seconds) {
   return $false
 }
 function TunnelUrl($log) {
+  if (-not (Test-Path $log)) { return $null }
   $m = Select-String -Path $log -Pattern "https://[a-z0-9-]+\.trycloudflare\.com" -ErrorAction SilentlyContinue |
     Select-Object -First 1
   if ($m) { $m.Matches[0].Value }
@@ -101,7 +102,10 @@ cmd /c "cd /d `"$repo`" && git archive HEAD | tar -x -C `"$deploy`""
 if (Test-Path (Join-Path $deploy ".env")) { "Refusing to deploy: a .env file is in the deploy copy."; exit 1 }
 
 $vars = @{ NEXT_PUBLIC_API_URL = $url }
-foreach ($name in "NEXT_PUBLIC_MATTERPORT_SDK_KEY", "NEXT_PUBLIC_MAP_TILE_URL") {   # browser-side values, safe to ship
+# Browser-side values only, safe to ship. The Clerk secret key stays on this laptop: the live site forwards
+# /api/account (which needs it) here.
+foreach ($name in "NEXT_PUBLIC_MATTERPORT_SDK_KEY", "NEXT_PUBLIC_MAP_TILE_URL", "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
+                  "NEXT_PUBLIC_CLERK_SIGN_IN_URL", "NEXT_PUBLIC_CLERK_SIGN_UP_URL") {
   $value = PublicEnv $name
   if ($value) { $vars[$name] = $value }
 }

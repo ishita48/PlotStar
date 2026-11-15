@@ -32,12 +32,12 @@ import {
 import { initialWalk, isWalkActive, looksLikeWalkthroughRequest, walkReducer } from "@/lib/hey-geo/walkthrough";
 import { authorizeAction, explicitlyAskedToAct, type ActionDecision } from "@/lib/hey-geo/actions";
 import { checkAct, describeAct, performAct, realClick } from "@/lib/hey-geo/automation";
-import { isInstant, isReadOnly, needsStrongConfirm, runTask, taskLabel, type TaskStore, type TrackedTask } from "@/lib/hey-geo/tasks";
+import { findControl, isInstant, isReadOnly, needsStrongConfirm, runTask, taskLabel, type TaskStore, type TrackedTask } from "@/lib/hey-geo/tasks";
 import { performScroll } from "@/lib/hey-geo/scroll";
 import { AUTO_HIDE_MS, FIRST_DELAY_MS, NUDGE_KEY, canNudge, markDismissed, markShown, markUsed, parseNudge, pickNudge, type Nudge, type NudgeState } from "@/lib/hey-geo/nudge";
 import { forgetAll, loadMessages, logTask, recentReports, saveMessages, saveReport } from "@/lib/hey-geo/memory";
 import { appContext, facilityOnScreen, loadProtection, studioStep } from "@/lib/hey-geo/page";
-import { implementDesign, planRect, proposalSummary, proposeDesign, showInEditor, type DesignProposal, type StudioLink } from "@/lib/hey-geo/design-loop";
+import { designEditorOn, implementDesign, planRect, proposalSummary, proposeDesign, showInEditor, type DesignProposal, type StudioLink } from "@/lib/hey-geo/design-loop";
 import { PUBLIC_DATA_API } from "@/lib/plotstar-api";
 import { AudioLines, Maximize2 } from "lucide-react";
 import { RunTimeline, type RunView } from "./run-timeline";
@@ -50,8 +50,14 @@ type GuideState = { open: boolean; status: string; speaking: boolean; error: str
 const stripMd = (t: string) => t.replace(/[*_`#>]+/g, "").replace(/\[(\d+)\]/g, "").replace(/\s+/g, " ").trim();
 const firstSentences = (t: string, n = 2) => (stripMd(t).match(/[^.!?]+[.!?]+/g) ?? [stripMd(t)]).slice(0, n).join(" ").trim();
 const DEICTIC = /\b(this|that|these|those|here|it)\b/i;
-/** Questions about the project itself go straight to the Deep Agents team (site evaluation, money, risks, CoStar evidence, what-ifs). */
-const PROJECT = /\b(what if|viab|financ|npv|payback|irr|capex|opex|build cost|risks?\b|neighbou?rs?|which concept|should we build|recommend|costar|comps\b|dossier|land (?:price|value|cost)|market\b|evaluate|evaluation|carbon|emissions|water use|air cooling|liquid cooling)/i;
+/**
+ * Analysis questions about the project (money, risks, which concept, what-ifs) go straight to the Deep Agents team.
+ * Anything that asks Geo to do or show something on screen ("open…", "draw…", "explain this…") stays with Geo, which
+ * can still hand a question to the team itself (the ask_agents task).
+ */
+const PROJECT = /\b(what if|viab|financ|npv|payback|irr\b|capex|opex|build cost|risks?\b|neighbou?rs?\b|which concept|should we build|recommend)/i;
+const UI_REQUEST = /^\s*(?:hey geo[,!. ]*)?(?:please\s+)?(?:open|go|take|show|click|press|draw|sketch|point|circle|scroll|start|stop|make|implement|walk|explain (?:this|that|these|the screen)|what is this|what's this|write)\b/i;
+const forAgents = (q: string) => PROJECT.test(q) && !UI_REQUEST.test(q);
 const agentRunning = (s: RunState | undefined) => !!s && (s.status === "starting" || s.status === "running" || s.status === "awaiting_approval");
 const liveView = (s: RunState): RunView => ({
   status: s.status,
@@ -743,6 +749,13 @@ export function HeyGeo({ studio }: { studio?: StudioLink } = {}) {
           return (async () => {
             const p = designRef.current;
             if (!p) return { ok: false, detail: "Ask me for a better design first" };
+            // The design editor is showing this proposal: press its own Accept, like a person would (one undoable step).
+            const accept = designEditorOn(p.conceptId) && /Proposed by Geo/i.test(document.body.innerText) ? findControl(/^Accept$/i) : null;
+            if (accept) {
+              await flyAndClick(accept);
+              setDesignProposal(null);
+              return { ok: true, detail: "Accepted in the design editor; the engine is checking and costing it" };
+            }
             const how = implementDesign(link ?? null, p);
             if (!how) return { ok: false, detail: "Nothing on this page can apply design edits" };
             setDesignProposal(null);
@@ -753,7 +766,7 @@ export function HeyGeo({ studio }: { studio?: StudioLink } = {}) {
           return null;
       }
     },
-    [addMessage, sayLocal]
+    [addMessage, sayLocal, flyAndClick]
   );
 
   const executeTask = useCallback(
@@ -866,7 +879,7 @@ export function HeyGeo({ studio }: { studio?: StudioLink } = {}) {
       }
       // Project questions go straight to the agent team; everything about the screen goes to Geo.
       const link = studioRef.current;
-      if (PROJECT.test(said) && link?.agent && link.body && !agentRunning(link.agent.state)) {
+      if (forAgents(said) && link?.agent && link.body && !agentRunning(link.agent.state)) {
         addMessage({ role: "user", text: said });
         showCaption({ kind: "thinking", text: "Asking GeoStar's agent team…" });
         void executeTaskRef.current({ type: "ask_agents", question: said });

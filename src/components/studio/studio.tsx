@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
+import { AccountControls } from '../account/account-controls';
 import {
   ArrowLeft, ArrowRight, Box as BoxIcon, LoaderCircle, Check, CircleAlert, CircleCheck, Coins, Columns2, Droplets, Leaf, Lock,
   Briefcase, Building2, FileText, FileUp, MapPin, Move, RotateCcw, Sparkles, Square, Star, Users,
@@ -355,8 +356,8 @@ export function Studio() {
   const refreshSaved = useCallback(() => {
     api<{ projects: SavedProject[] }>('/studio/projects').then((d) => {
       setSaved(d.projects);
-      d.projects.forEach((p) => {
-        const id = p.site?.id;
+      // one lookup per distinct site (many saved projects share a site)
+      [...new Set(d.projects.map((p) => p.site?.id))].forEach((id) => {
         if (id && id.startsWith('costar:')) fetch(siteDetailUrl(id)).then((r) => (r.ok ? r.json() : null)).then((x) => {
           const pr = x?.parcel ?? {};
           if (pr.name || pr.address) setSiteNames((n) => ({ ...n, [id]: [pr.address || pr.name, pr.city].filter(Boolean).join(', ') }));
@@ -496,6 +497,7 @@ export function Studio() {
           <button type="button" onClick={() => setDealDesk(true)}><Briefcase size={12} /> Deal desk</button>
           <Link href="/explore">Live operations</Link>
           <Link href="/">Home</Link>
+          <AccountControls />
           <button type="button" className="st-reset" onClick={resetStudio} title="Clear the brief, site and layouts and start again"><RotateCcw size={12} /> Reset</button>
         </nav>
       </header>
@@ -707,11 +709,12 @@ export function Studio() {
                   {view === 'existing' && parcelId && <div className="st-view st-view-existing"><ExistingVsProposed parcelId={parcelId} mwIt={brief.mw} rackKw={brief.rackKw} onNote={setInspection}
                     conceptSlot={<Model3D concept={concept} siteW={result.brief.site_w} siteD={result.brief.site_d} setback={result.brief.setback_m} layers={layers} selected={sel} onSelect={setSel} aerialId={aerialId} edit={false} onMove={applyMove} view={cam} context={null} />} /></div>}
                   {view !== '2d' && view !== 'existing' && <div className="st-view"><Model3D concept={concept} siteW={result.brief.site_w} siteD={result.brief.site_d} setback={result.brief.setback_m} layers={layers} selected={sel} onSelect={setSel} aerialId={aerialId} edit={editMode} onMove={applyMove} view={cam} context={layers.context ? ctx : null} editor={designUi.model3d(editMode)}
-                    cooling={result.brief.cooling} compassRef={designUi.compassRef} envelope={{ w: result.brief.env_w, d: result.brief.env_d }} /></div>}
+                    cooling={result.brief.cooling} compassRef={designUi.compassRef} envelope={{ w: result.brief.env_w, d: result.brief.env_d }}
+                    comps={layers.comps && site ? { parcelId, lat: site.lat, lon: site.lng } : null} /></div>}
                   {view !== '3d' && view !== 'existing' && <div className="st-view st-view-plan"><Plan2D concept={concept} siteW={result.brief.site_w} siteD={result.brief.site_d} setback={result.brief.setback_m} layers={layers} selected={sel} onSelect={setSel} aerialId={aerialId} editor={designUi.plan2d(editMode, view === '2d')} /></div>}
                   {view !== 'existing' && <ExploreBar layers={layers} setLayers={setLayers} cam={cam} setCam={setCam} concepts={result.concepts} activeId={concept.id}
                     onPick={(id) => { setActiveId(id); setSel(null); }} cooling={result.brief.cooling} hasContext={!!ctx} onExportDxf={designUi.exportDxf}
-                    onExportGlb={() => void designUi.exportGlb()} canGlb={view !== '2d'} view3d={view !== '2d'} compassRef={designUi.compassRef} />}
+                    onExportGlb={() => void designUi.exportGlb()} canGlb={view !== '2d'} view3d={view !== '2d'} compassRef={designUi.compassRef} hasSite={!!site} />}
                 </div>
                 <ElementInspector concept={concept} sel={sel} edit={edits[concept.id]} faults={designUi.shownFaults} cooling={COOLING_LABEL[result.brief.cooling as Brief['cooling']] ?? result.brief.cooling} />
               </div>
@@ -968,7 +971,8 @@ function Analysis({ c, r, base }: { c: Concept; r: StudioResult; base: Concept |
           <h3><Users size={16} /> People</h3>
           <Stat label="Nearest home" value={c.people.home_distance_m != null ? `${num(c.people.home_distance_m)} m` : 'Unknown'} sub={homes?.status === 'Pass' ? 'Clear of the limit' : homes?.reason} tag={homes?.label ?? 'Unknown'} />
           <Stat label="Generator noise at that home" value={c.people.noise_at_home_dba != null ? `${c.people.noise_at_home_dba} dBA` : 'Unknown'} sub="During tests and outages only" tag={c.people.noise_at_home_dba != null ? 'Estimated' : 'Unknown'} />
-          <Stat label="Noise at the site boundary" value={`${c.people.noise_at_boundary_dba} dBA`} sub={`Generators ${c.people.generator_to_boundary_m} m from the boundary`} tag="Estimated" />
+          <Stat label="Noise at the site boundary" value={c.people.noise_at_boundary_dba != null ? `${c.people.noise_at_boundary_dba} dBA` : 'No generators'}
+            sub={c.people.generator_to_boundary_m != null ? `Generators ${c.people.generator_to_boundary_m} m from the boundary` : 'The generator yard was removed from this layout'} tag={c.people.noise_at_boundary_dba != null ? 'Estimated' : 'Unknown'} />
           <Stat label="Local jobs" value="Unknown" sub="No sourced jobs figure is loaded" tag="Unknown" />
         </div>
         <div className="st-card st-factor">
@@ -1019,7 +1023,7 @@ function CompareTable({ r }: { r: StudioResult }) {
     ['Room for future racks', (c) => c.resources.spare_positions, (n) => num(n), false],
     ['Power route length', (c) => c.metrics.power_route_m, (n) => `${num(n)} m`, true],
     ['Cooling route length', (c) => c.metrics.cooling_route_m, (n) => `${num(n)} m`, true],
-    ['Noise at the boundary', (c) => c.people.noise_at_boundary_dba, (n) => `${n} dBA`, true],
+    ['Noise at the boundary', (c) => c.people.noise_at_boundary_dba ?? NaN, (n) => (Number.isNaN(n) ? 'No generators' : `${n} dBA`), true],
     ['Carbon to build the shell', (c) => c.planet.embodied_t, (n) => `${num(n)} t`, true],
     ['Solar potential', (c) => c.planet.roof_solar_kwp, (n) => `${num(n)} kWp`, false],
     ['Site left open', (c) => c.resources.open_land_share, (n) => pct(n), false],

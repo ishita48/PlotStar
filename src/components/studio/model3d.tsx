@@ -16,6 +16,7 @@ import { ROUTE_COLOR } from './types';
 import type { Layers } from './plan2d';
 
 const VexcelContext = lazy(() => import('../sponsors/vexcel/vexcel-context'));
+const CostarComps3D = lazy(() => import('../sponsors/costar/comps-3d'));
 
 const WALL = 4.2;
 const FLOOR: Record<RoomType, string> = {
@@ -48,6 +49,8 @@ export interface Editor3D {
   onScene?: (scene: THREE.Scene) => void;
   /** small toolbar drawn next to the selected object */
   toolbar?: ReactNode;
+  /** Accept / Reject, drawn on the first proposal */
+  ghostBar?: ReactNode;
 }
 export type ViewPreset = { preset: 'iso' | 'top' | 'front' | 'section' | 'fit' | 'zoomIn' | 'zoomOut'; n: number };
 /** What buildBuilding draws, from Explore's Layers popover. */
@@ -256,8 +259,10 @@ function buildYard(r: Room, c: Concept) {
   return { solid, cyl, cones, shadows };
 }
 
-function Boxes({ boxes, cx, cz, kind = 'solid', onPick, onDown }: {
+function Boxes({ boxes, cx, cz, kind = 'solid', onPick, onDown, clip = null }: {
   boxes: B[]; cx: number; cz: number; kind?: 'solid' | 'glass' | 'glow'; onPick?: (code: string | null) => void;
+  /** section cut: only what is on the kept side of these planes is drawn */
+  clip?: THREE.Plane[] | null;
   onDown?: (e: ThreeEvent<PointerEvent>, code: string | undefined) => void;
 }) {
   const ref = useRef<THREE.InstancedMesh>(null);
@@ -281,9 +286,9 @@ function Boxes({ boxes, cx, cz, kind = 'solid', onPick, onDown }: {
       onClick={onPick ? (e) => { e.stopPropagation(); onPick(boxes[e.instanceId ?? 0]?.code ?? null); } : undefined}
       onPointerDown={onDown ? (e) => onDown(e, boxes[e.instanceId ?? 0]?.code) : undefined}>
       <boxGeometry args={[1, 1, 1]} />
-      {kind === 'glow' ? <meshBasicMaterial toneMapped={false} />
-        : kind === 'glass' ? <meshStandardMaterial transparent opacity={0.26} roughness={0.15} depthWrite={false} />
-          : <meshStandardMaterial roughness={0.8} metalness={0.05} />}
+      {kind === 'glow' ? <meshBasicMaterial toneMapped={false} clippingPlanes={clip} />
+        : kind === 'glass' ? <meshStandardMaterial transparent opacity={0.26} roughness={0.15} depthWrite={false} clippingPlanes={clip} />
+          : <meshStandardMaterial roughness={0.8} metalness={0.05} clippingPlanes={clip} side={clip ? THREE.DoubleSide : THREE.FrontSide} />}
     </instancedMesh>
   );
 }
@@ -349,7 +354,7 @@ function Aerial({ id, half }: { id: string; half: number }) {
   );
 }
 
-function Rig({ view, target, span, cut }: { view: ViewPreset; target: [number, number, number]; span: number; cut: number }) {
+function Rig({ view, target, span, sec }: { view: ViewPreset; target: [number, number, number]; span: number; sec: { x: number; z: number; w: number } }) {
   const { camera, controls, gl } = useThree();
   useEffect(() => {
     const c = controls as unknown as { target: THREE.Vector3; update: () => void } | null;
@@ -359,15 +364,20 @@ function Rig({ view, target, span, cut }: { view: ViewPreset; target: [number, n
       c?.update();
       return;
     }
+    gl.localClippingEnabled = true; // the section cut clips the building's own materials, not the whole scene
+    if (view.preset === 'section') { // look north at the cut face, from just south of it
+      camera.position.set(sec.x, Math.max(10, sec.w * 0.2), sec.z + sec.w * 1.3 + 24);
+      c?.target.set(sec.x, 3, sec.z);
+      c?.update();
+      return;
+    }
     if (view.preset === 'top') camera.position.set(target[0], span * 1.7, target[2] + 0.01);
-    else if (view.preset === 'front' || view.preset === 'section') camera.position.set(target[0], span * 0.32, target[2] + span * 1.25);
+    else if (view.preset === 'front') camera.position.set(target[0], span * 0.32, target[2] + span * 1.25);
     else camera.position.set(target[0] + span * 0.62, span * 0.72, target[2] + span * 0.86);
     c?.target.set(...target);
     c?.update();
-    // a section keeps the south half of the model: three's z is the site's -y, so keep z >= the cut line
-    gl.clippingPlanes = view.preset === 'section' ? [new THREE.Plane(new THREE.Vector3(0, 0, 1), -cut)] : [];
-  }, [view, camera, controls, target, span, gl, cut]);
-  useEffect(() => () => { gl.clippingPlanes = []; }, [gl]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, camera, controls, target, span, gl]);
   return null;
 }
 
@@ -449,12 +459,14 @@ function Handles({ r, cx, cz, h, onGrab, onRotate }: { r: EditRect; cx: number; 
   );
 }
 
-export default function Model3D({ concept, siteW, siteD, setback, layers, selected, onSelect, aerialId, edit, onMove, view, context, editor, cooling = 'liquid', compassRef, envelope }: {
+export default function Model3D({ concept, siteW, siteD, setback, layers, selected, onSelect, aerialId, edit, onMove, view, context, editor, cooling = 'liquid', compassRef, envelope, comps }: {
   concept: Concept; siteW: number; siteD: number; setback: number; layers: Layers; selected: string | null;
   onSelect: (code: string | null) => void; aerialId: string | null; edit: boolean; onMove: (m: MoveEdit) => void; view: ViewPreset;
   context: { url: string; lat: number; lon: number } | null; editor?: Editor3D;
   /** brief cooling type (draws CDUs or CRAHs), the toolbar's north arrow, and the brief's building envelope size */
   cooling?: string; compassRef?: React.RefObject<HTMLElement | null>; envelope?: { w: number; d: number };
+  /** CoStar properties around the site, drawn as blocks (Layers > Context) */
+  comps?: { parcelId: string | null; lat: number; lon: number } | null;
 }) {
   const cx = siteW / 2, cz = siteD / 2;
   const b = concept.building;
@@ -474,6 +486,12 @@ export default function Model3D({ concept, siteW, siteD, setback, layers, select
     isolate: !!layers.isolate, units: layers.units ?? true, equipment: layers.equipment ?? true, cooling }),
   [layers.racks, layers.walls, layers.columns, layers.slabs, layers.isolate, layers.units, layers.equipment, cooling]);
   const building = useMemo(() => buildBuilding(concept, draw, only, zOf), [concept, draw, only, zOf]);
+  // section: cut the building through its middle (east-west) and drop the half nearer the camera. Three's z is the
+  // site's -y, so the kept (north) half is z <= the cut line. Zooming keeps the cut; any other view clears it.
+  const [section, setSection] = useState(false);
+  useEffect(() => { if (view.preset === 'section') setSection(true); else if (view.preset !== 'zoomIn' && view.preset !== 'zoomOut') setSection(false); }, [view]);
+  const cutZ = cz - (b.y + b.d / 2);
+  const clip = useMemo(() => (section ? [new THREE.Plane(new THREE.Vector3(0, 0, -1), cutZ)] : null), [section, cutZ]);
   const exits = useMemo(() => (layers.tags && layers.labelMode === 'all' && !layers.isolate && only !== 1 && only !== 2 ? exitsOf(concept) : []), [concept, layers.tags, layers.labelMode, layers.isolate, only]);
   const roofPanels = useMemo(() => (layers.roof > 0 && only === null ? buildRoof(concept, top + 1.1) : []), [concept, layers.roof, only, top]);
   const yard = useMemo(() => concept.yard.map((r) => ({ r, ...buildYard(r, concept) })), [concept]);
@@ -569,7 +587,7 @@ export default function Model3D({ concept, siteW, siteD, setback, layers, select
       <hemisphereLight args={['#ffffff', '#a4b09d', 0.8]} />
       <directionalLight position={[reach * 0.9, reach * 1.25, reach * 0.55]} intensity={2.0} />
       <directionalLight position={[-reach * 0.6, reach * 0.5, -reach * 0.8]} intensity={0.35} />
-      <Rig view={view} target={frame.target} span={frame.span} cut={cz - (b.y + b.d / 2)} />
+      <Rig view={view} target={frame.target} span={frame.span} sec={{ x: b.x + b.w / 2 - cx, z: cutZ, w: b.w }} />
       <CompassSync el={compassRef} />
 
       {/* ground: the real aerial of the site, or the Vexcel 3D mesh of the surroundings */}
@@ -579,6 +597,7 @@ export default function Model3D({ concept, siteW, siteD, setback, layers, select
       </mesh>
       {showAerial && <group userData={{ noExport: true }}><Safe><Suspense fallback={null}><Aerial id={aerialId!} half={half} /></Suspense></Safe></group>}
       {context && <group userData={{ noExport: true }}><Safe><Suspense fallback={null}><VexcelContext url={context.url} lat={context.lat} lon={context.lon} /></Suspense></Safe></group>}
+      {comps && <group userData={{ noExport: true }}><Safe><Suspense fallback={null}><CostarComps3D parcelId={comps.parcelId} lat={comps.lat} lon={comps.lon} radiusM={900} /></Suspense></Safe></group>}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.04, 0]}>
         <planeGeometry args={[siteW, siteD]} />
         <meshStandardMaterial color={showAerial || context ? '#f4f6f1' : '#d5dece'} transparent opacity={showAerial ? 0.18 : context ? 0.5 : 1} roughness={1} />
@@ -601,16 +620,16 @@ export default function Model3D({ concept, siteW, siteD, setback, layers, select
           </mesh>
         )}
         <GroundShadow r={{ x: b.x - 0.45, y: b.y - 0.45, w: b.w + 0.9, d: b.d + 0.9 }} h={top + 1} cx={cx} cz={cz} />
-        <Boxes boxes={building.solid} cx={cx} cz={cz} onPick={onSelect} onDown={down} />
-        <Boxes boxes={building.glow} cx={cx} cz={cz} kind="glow" />
-        <Boxes boxes={building.glass} cx={cx} cz={cz} kind="glass" />
+        <Boxes boxes={building.solid} cx={cx} cz={cz} onPick={onSelect} onDown={down} clip={clip} />
+        <Boxes boxes={building.glow} cx={cx} cz={cz} kind="glow" clip={clip} />
+        <Boxes boxes={building.glass} cx={cx} cz={cz} kind="glass" clip={clip} />
         {layers.roof > 0 && only === null && (
           <>
             <mesh position={pos(b, top + 0.95)}>
               <boxGeometry args={[b.w + 0.9, 0.3, b.d + 0.9]} />
-              <meshStandardMaterial color="#f1f3ee" transparent opacity={layers.roof} depthWrite={layers.roof > 0.95} roughness={0.9} />
+              <meshStandardMaterial color="#f1f3ee" transparent opacity={layers.roof} depthWrite={layers.roof > 0.95} roughness={0.9} clippingPlanes={clip} />
             </mesh>
-            <Boxes boxes={roofPanels} cx={cx} cz={cz} />
+            <Boxes boxes={roofPanels} cx={cx} cz={cz} clip={clip} />
           </>
         )}
         {sel && !isYard(sel.code) && shown(sel) && (
@@ -619,14 +638,14 @@ export default function Model3D({ concept, siteW, siteD, setback, layers, select
             <meshStandardMaterial color="#2f7fd0" transparent opacity={0.24} depthWrite={false} />
           </mesh>
         )}
-        <Boxes boxes={building.cols} cx={cx} cz={cz} />
+        <Boxes boxes={building.cols} cx={cx} cz={cz} clip={clip} />
         {editor?.bad?.BUILDING && (
           <>
             <Shell r={b} h={top + 1.4} color="#d2483b" opacity={0.2} cx={cx} cz={cz} outline="#b3362b" />
             <Tag text={editor.bad.BUILDING[0]} at={pos(b, top + 9)} tone="bad" />
           </>
         )}
-        {(layers.tags || selected) && concept.rooms.filter((r) => shown(r) && r.type !== 'corridor' && (r.code === selected || (layers.tags && (layers.labelMode === 'all' || TAGGED.includes(r.type))))).map((r) => {
+        {(layers.tags || selected) && concept.rooms.filter((r) => shown(r) && r.type !== 'corridor' && (r.code === selected || (layers.tags && !layers.isolate && (layers.labelMode === 'all' || TAGGED.includes(r.type))))).map((r) => {
           const z0 = zOf(r.level ?? 0) + WALL, z1 = z0 + (layers.labelMode === 'all' ? 3 : 6);
           return (
             <group key={r.code} userData={{ noExport: true }}>
@@ -682,10 +701,28 @@ export default function Model3D({ concept, siteW, siteD, setback, layers, select
         );
       })()}
       {editor?.toolbar && sel && !drag && !size && concept.yard.some((y) => y.code === sel.code) && (
-        <Html position={[sel.x + sel.w / 2 - cx, Math.max(4, (sel.h ?? SHADOW_H[sel.type] ?? 3) + 3), cz - sel.y - sel.d / 2]} zIndexRange={[40, 0]} style={{ pointerEvents: 'auto' }}>
+        <Html position={[sel.x + sel.w / 2 - cx, Math.max(4, (sel.h ?? SHADOW_H[sel.type] ?? 3) + 3), cz - sel.y - sel.d / 2]} zIndexRange={[40, 0]} style={{ pointerEvents: 'auto' }}
+          calculatePosition={(el, camera, size) => { // keep the toolbar inside the view
+            const v = new THREE.Vector3().setFromMatrixPosition(el.matrixWorld).project(camera);
+            const x = (v.x * 0.5 + 0.5) * size.width, y = (-v.y * 0.5 + 0.5) * size.height;
+            return [Math.max(126, Math.min(size.width - 126, x)), Math.max(215, Math.min(size.height - 70, y))];
+          }}>
           <div style={{ transform: 'translate(-50%, calc(-100% - 14px))' }}>{editor.toolbar}</div>
         </Html>
       )}
+      {editor?.ghostBar && editor.ghosts?.[0] && (() => {
+        const g = editor.ghosts[0];
+        return (
+          <Html position={[g.x + g.w / 2 - cx, Math.max(4, (g.h ?? 3) + 5), cz - g.y - g.d / 2]} zIndexRange={[40, 0]} style={{ pointerEvents: 'auto' }}
+            calculatePosition={(el, camera, size) => {
+              const v = new THREE.Vector3().setFromMatrixPosition(el.matrixWorld).project(camera);
+              const x = (v.x * 0.5 + 0.5) * size.width, y = (-v.y * 0.5 + 0.5) * size.height;
+              return [Math.max(110, Math.min(size.width - 110, x)), Math.max(40, Math.min(size.height - 120, y))];
+            }}>
+            <div style={{ transform: 'translate(-50%, 14px)' }}>{editor.ghostBar}</div>
+          </Html>
+        );
+      })()}
       {editor?.ghosts?.map((g) => (
         <group key={g.code}>
           <Shell r={g} h={Math.max(1.5, g.h ?? SHADOW_H[g.type] ?? 3)} color="#c9ec7a" opacity={0.42} cx={cx} cz={cz} outline="#6fa24e" />

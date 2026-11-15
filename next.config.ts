@@ -5,7 +5,7 @@ import type { NextConfig } from 'next';
 // which owns the SQLite workspace (projects, HAVEN protection) and the server-side AI and voice keys.
 // Drone and phone-app routes are never forwarded: they stay local to the demo laptop.
 const laptop = (process.env.GEOSTAR_WEB_ORIGIN || '').replace(/\/$/, '');
-const FORWARDED = ['protection', 'projects', 'telemetry', 'hey-geo', 'voice'];
+const FORWARDED = ['protection', 'projects', 'telemetry', 'hey-geo', 'voice', 'account'];
 
 const config: NextConfig = {
   devIndicators: false,

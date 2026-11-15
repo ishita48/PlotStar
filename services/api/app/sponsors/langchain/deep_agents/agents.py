@@ -229,12 +229,12 @@ How you work:
 5. Specialists return JSON findings with evidence ids (E1, E2, ...). Cite those ids.
 
 Site evaluation (when asked to evaluate or score a site):
- a. property-intelligence first.
- b. Then financial-feasibility, resource-infrastructure and community-sustainability together, in one message.
- c. Call compute_site_score.
- d. If it reports conflicts, or gaps a specialist's tool can close, re-delegate once with a targeted task, then call
-    compute_site_score again.
- e. Answer.
+ a. Delegate property-intelligence, financial-feasibility, resource-infrastructure and community-sustainability ALL
+    together in ONE message (each task names the parcel id and the brief; none needs another's output to start).
+ b. Call compute_site_score.
+ c. Only if it reports a CONFLICT between specialists, re-delegate once with one targeted task, then call
+    compute_site_score again. Do not re-delegate for gaps: report them as gaps.
+ d. Answer.
 
 What-ifs about the design (cooling, capacity, redundancy, storeys, setback): delegate in parallel to the specialists whose
 metrics change (resource-infrastructure for power and water, financial-feasibility for money, design-simulation for the

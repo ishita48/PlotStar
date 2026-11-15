@@ -80,13 +80,38 @@ def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * EARTH_R_M * math.asin(math.sqrt(a))
 
 
+_M_PER_DEG = math.pi / 180 * EARTH_R_M
+
+
+def _flat2(lat: float, lon: float, c: float, p: dict[str, Any]) -> float:
+    """Squared flat-map distance in degrees: a cheap pre-filter, within a fraction of a percent of haversine here."""
+    dx, dy = (p["lon"] - lon) * c, p["lat"] - lat
+    return dx * dx + dy * dy
+
+
 def nearest(lat: float, lon: float, points: list[dict[str, Any]]) -> tuple[dict[str, Any] | None, float | None]:
+    """Nearest point by great-circle distance. A flat-map pass finds the near candidates; haversine decides among them,
+    so the answer and the distance are the same as a full haversine scan."""
+    if not points:
+        return None, None
+    c = math.cos(math.radians(lat))
+    flat = [(_flat2(lat, lon, c, p), p) for p in points]
+    best2 = min(f for f, _ in flat)
+    cut = (math.sqrt(best2) * 1.01 + 50 / _M_PER_DEG) ** 2  # keep anything that could still be nearest
     best, best_d = None, None
-    for p in points:
-        d = haversine_m(lat, lon, p["lat"], p["lon"])
-        if best_d is None or d < best_d:
-            best, best_d = p, d
+    for f, p in flat:
+        if f <= cut:
+            d = haversine_m(lat, lon, p["lat"], p["lon"])
+            if best_d is None or d < best_d:
+                best, best_d = p, d
     return best, best_d
+
+
+def count_within(lat: float, lon: float, points: list[dict[str, Any]], radius_m: float) -> int:
+    """How many points lie within `radius_m` (great-circle), with the same flat-map pre-filter."""
+    c = math.cos(math.radians(lat))
+    cut = (radius_m * 1.01 / _M_PER_DEG + 50 / _M_PER_DEG) ** 2
+    return sum(1 for p in points if _flat2(lat, lon, c, p) <= cut and haversine_m(lat, lon, p["lat"], p["lon"]) <= radius_m)
 
 
 def service_capacity_mw(amps: int | None, volts: int | None) -> tuple[float | None, str | None]:
@@ -136,7 +161,7 @@ def screen_parcel(parcel: dict[str, Any], homes: list[dict[str, Any]], subs: dic
 
     # 1. Residential proximity (hard gate) + count within one mile (noise exposure context)
     home, d_home = nearest(lat, lon, homes)
-    within_mile = sum(1 for h in homes if haversine_m(lat, lon, h["lat"], h["lon"]) <= 1609.344)
+    within_mile = count_within(lat, lon, homes, 1609.344)
     if home is None:
         gates.append(Gate("Residential proximity", "Needs review", None, t.min_home_distance_m, "m", "Unknown",
                           "No residential locations loaded for this market", "CoStar Data Extract"))
@@ -161,7 +186,7 @@ def screen_parcel(parcel: dict[str, Any], homes: list[dict[str, Any]], subs: dic
             gates.append(Gate("Sensitive places", "Needs review", None, t.min_sensitive_distance_m, "m", "Unknown",
                               "No schools, places of worship or hospitals are mapped in this market.", sensitive["source"]))
         else:
-            near = sum(1 for p in places if haversine_m(lat, lon, p["lat"], p["lon"]) <= 500)
+            near = count_within(lat, lon, places, 500)
             gates.append(Gate(
                 "Sensitive places", "Pass" if d_place >= t.min_sensitive_distance_m else "Fail", round(d_place),
                 t.min_sensitive_distance_m, "m", "Estimated",

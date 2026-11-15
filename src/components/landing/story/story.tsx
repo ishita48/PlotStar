@@ -4,6 +4,7 @@
 // engine woven between them (real.tsx), then HAVEN, the sources, and the close.
 // The light shifts from day (Find) to dusk (Design) to night (Protect), because that is when HAVEN works.
 import Link from 'next/link';
+import { AccountControls } from '@/components/account/account-controls';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { ArrowRight, Command, CornerDownLeft, MapPin, PencilRuler, Search, ShieldCheck, Sparkles } from 'lucide-react';
 import { Star } from '@/components/brand';
@@ -111,6 +112,7 @@ function TopBar({ chapter, onPalette }: { chapter: ChapterId | null; onPalette: 
       <button type="button" className="ps-kbd-btn" onClick={onPalette} aria-label="Open the command menu">
         <Search size={14} /><span>Jump to…</span><kbd>Ctrl K</kbd>
       </button>
+      <AccountControls />
       <Link href="/studio" className="ps-btn ps-btn-ink ps-btn-sm">Start a project <ArrowRight size={14} /></Link>
       <i className="ps-read" aria-hidden="true" />
     </header>

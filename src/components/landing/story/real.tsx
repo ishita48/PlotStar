@@ -178,7 +178,7 @@ export function LiveNumbers({ live }: { live: Live }) {
               <thead><tr><th>Concept</th><th>Build</th><th>NPV P50</th><th>Noise at edge</th></tr></thead>
               <tbody>{r.concepts.map((c) => (
                 <tr key={c.id} className={c.rank === 1 ? 'lead' : ''}><td>{c.rank === 1 && <Check size={12} />}{c.name}</td><td>{m$(c.money.capex)}</td>
-                  <td>{m$(c.money.npv_p50)}</td><td>{c.people.noise_at_boundary_dba.toFixed(0)} dBA</td></tr>
+                  <td>{m$(c.money.npv_p50)}</td><td>{c.people.noise_at_boundary_dba != null ? `${c.people.noise_at_boundary_dba.toFixed(0)} dBA` : '—'}</td></tr>
               ))}</tbody>
             </table>
           ) : <p className="ps-dim">{live.down ? 'API offline' : 'Computing…'}</p>}

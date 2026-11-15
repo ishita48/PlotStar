@@ -20,10 +20,8 @@ export type RunView = {
   error: string | null;
 };
 
-const dur = (n: AgentNode, now: number) => {
-  const ms = n.ms ?? (n.status === "running" ? now - n.start * (n.start < 1e12 ? 1000 : 1) : null);
-  return ms == null || !Number.isFinite(ms) || ms < 0 ? "" : ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`;
-};
+/** How long a finished node took (the server reports it); running nodes show their spinner instead. */
+const dur = (n: AgentNode) => (n.ms == null || !Number.isFinite(n.ms) || n.ms < 0 ? "" : n.ms < 1000 ? `${Math.round(n.ms)} ms` : `${(n.ms / 1000).toFixed(1)} s`);
 
 function Status({ s }: { s: string }) {
   if (s === "running" || s === "starting") return <Loader2 size={11} className="hg-spin" aria-label="running" />;
@@ -41,7 +39,6 @@ function keyNumbers(out: string | null): string {
 }
 
 export function RunTimeline({ run, onDecide, onOpenGraph }: { run: RunView; onDecide?: (approve: boolean) => void; onOpenGraph?: () => void }) {
-  const now = Date.now();
   const byId = new Map(run.nodes.map((n) => [n.id, n]));
   const root = run.nodes.find((n) => n.parent === null && n.kind === "agent") ?? run.nodes.find((n) => n.parent === null);
   const agents = run.nodes.filter((n) => n.kind === "agent" && n.parent !== null);
@@ -69,7 +66,7 @@ export function RunTimeline({ run, onDecide, onOpenGraph }: { run: RunView; onDe
         <div className="hg-run-row hg-run-root" data-status={root.status}>
           <Status s={root.status} />
           <b>{root.label || "Orchestrator"}</b>
-          <span>{dur(root, now)}</span>
+          <span>{dur(root)}</span>
         </div>
       )}
       {agents.map((a) => {
@@ -81,7 +78,7 @@ export function RunTimeline({ run, onDecide, onOpenGraph }: { run: RunView; onDe
               <b>{a.label || a.name}</b>
               <span>
                 {ts.length ? `${ts.length} tool${ts.length === 1 ? "" : "s"} · ` : ""}
-                {dur(a, now)}
+                {dur(a)}
               </span>
             </summary>
             {a.objective && <p className="hg-run-obj">{a.objective.slice(0, 160)}</p>}
@@ -89,7 +86,7 @@ export function RunTimeline({ run, onDecide, onOpenGraph }: { run: RunView; onDe
               <div key={t.id} className="hg-run-tool" data-status={t.status}>
                 <Status s={t.status} />
                 <code>{t.name}</code>
-                <span>{keyNumbers(t.output) || dur(t, now)}</span>
+                <span>{keyNumbers(t.output) || dur(t)}</span>
               </div>
             ))}
             {a.error && <p className="hg-run-err">{a.error.slice(0, 200)}</p>}

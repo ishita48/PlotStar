@@ -27,6 +27,8 @@ export interface Layers {
   equipIds?: boolean;
   dims?: boolean; // measure lines
   compass?: boolean;
+  /** 3D: CoStar properties around the site as blocks (off by default) */
+  comps?: boolean;
 }
 
 /** Design editor hooks into the plan; all optional. */
@@ -72,7 +74,9 @@ export function Plan2D({
   const half = Math.min(600, Math.round(Math.max(siteW, siteD) / 2 + 90));
 
   // editing: drag in plan metres (svg y points south, so north = -svg dy)
-  const [drag, setDrag] = useState<{ code: string; sx: number; sy: number; dx: number; dy: number } | null>(null);
+  // `pick` is what a press without movement selects: the pointer is captured by the svg, so the click never reaches the room
+  const [drag, setDrag] = useState<{ code: string; pick: string | null; sx: number; sy: number; dx: number; dy: number } | null>(null);
+  const swallowClick = useRef(false);
   const [hover, setHover] = useState<{ x: number; y: number } | null>(null);
   const toSvg = (e: { clientX: number; clientY: number }) => {
     const el = ref.current, m = el?.getScreenCTM();
@@ -82,13 +86,13 @@ export function Plan2D({
     const q = pt.matrixTransform(m.inverse());
     return { x: q.x, y: q.y };
   };
-  const startDrag = (code: string) => (e: React.PointerEvent) => {
+  const startDrag = (code: string, pick: string | null = code) => (e: React.PointerEvent) => {
     if (!editor?.onMove || e.button !== 0) return;
     const q = toSvg(e);
     if (!q) return;
     e.stopPropagation();
     ref.current?.setPointerCapture(e.pointerId);
-    setDrag({ code, sx: q.x, sy: q.y, dx: 0, dy: 0 });
+    setDrag({ code, pick, sx: q.x, sy: q.y, dx: 0, dy: 0 });
   };
   const onPointerMove = (e: React.PointerEvent) => {
     if (!editor) return;
@@ -101,6 +105,9 @@ export function Plan2D({
     if (!editor) return;
     if (drag) {
       if (drag.dx || drag.dy) editor.onMove?.(drag.code, drag.dx, drag.dy);
+      else onSelect?.(drag.pick);
+      swallowClick.current = true; // the click that follows this release lands on the svg and would clear the selection
+      setTimeout(() => { swallowClick.current = false; }, 0);
       setDrag(null);
       return;
     }
@@ -135,7 +142,7 @@ export function Plan2D({
     const fits = dpx > 18 && wpx > label.length * 6.2 + 10;
     return (
       <g key={r.code} data-code={r.code} onClick={(e) => { e.stopPropagation(); onSelect?.(r.code); }} transform={yard ? shift(r.code) : undefined}
-        onPointerDown={yard ? startDrag(r.code) : editor?.onMove ? startDrag('BUILDING') : undefined}
+        onPointerDown={yard ? startDrag(r.code) : editor?.onMove ? startDrag('BUILDING', r.code) : undefined}
         style={{ cursor: editor?.onMove ? (drag ? 'grabbing' : 'grab') : onSelect ? 'pointer' : 'default' }}>
         <rect x={r.x} y={fy(r.y, r.d)} width={r.w} height={r.d} fill={isBad ? '#f6d5d0' : sel ? '#cfe3d3' : st.fill} stroke={isBad ? '#b3362b' : sel ? '#173626' : st.stroke}
           strokeWidth={sel || isBad ? sw * 2.2 : sw} strokeDasharray={r.type === 'reserve' ? `${px * 5} ${px * 4}` : undefined} fillOpacity={yard && aerial ? 0.85 : 1} />
@@ -162,7 +169,7 @@ export function Plan2D({
   return (
     <>
     <svg ref={ref} className="st-plan" viewBox={`${vb.x} ${fy(vb.y, vb.h)} ${vb.w} ${vb.h}`} preserveAspectRatio="xMidYMid meet"
-      onClick={() => { if (!editor?.placing) onSelect?.(null); }} role="img" aria-label={`Plan of ${concept.name}`}
+      onClick={() => { if (!editor?.placing && !swallowClick.current) onSelect?.(null); }} role="img" aria-label={`Plan of ${concept.name}`}
       onPointerMove={editor ? onPointerMove : undefined} onPointerUp={editor ? onPointerUp : undefined}
       style={editor?.placing ? { cursor: 'copy' } : undefined}>
       {aerial && <image href={vexcelOrthoUrl(aerialId, half)} x={siteW / 2 - half} y={siteD / 2 - half} width={half * 2} height={half * 2} preserveAspectRatio="none" />}
@@ -171,7 +178,7 @@ export function Plan2D({
         strokeWidth={sw} strokeDasharray={`${px * 6} ${px * 5}`} />
       <g transform={shift('BUILDING')}>
       <rect x={b.x} y={fy(b.y, b.d)} width={b.w} height={b.d} fill="#fff" stroke={bad.BUILDING ? '#b3362b' : '#1f2a24'} strokeWidth={sw * (bad.BUILDING ? 3 : 2)}
-        onPointerDown={editor?.onMove ? startDrag('BUILDING') : undefined} />
+        onPointerDown={editor?.onMove ? startDrag('BUILDING', null) : undefined} />
       {rooms.map((r) => room(r))}
       </g>
       {L.yard && concept.yard.map((r) => room(r, true))}
@@ -248,7 +255,7 @@ export function Plan2D({
         );
       })()}
       {!mini && (() => {
-        const len = niceLength(vb.w * 0.16), x0 = vb.x + px * 14, y0 = fy(vb.y) - px * 14;
+        const len = niceLength(vb.w * 0.16), x0 = vb.x + px * 14, y0 = fy(vb.y) - px * 66; // clear of the bottom toolbar
         const nx = vb.x + vb.w - px * 22, ny = fy(vb.y, vb.h) + px * 16;
         return (
           <g style={{ pointerEvents: 'none' }} fill={aerial ? '#ffffff' : '#1f2a24'} stroke={aerial ? '#1f2a24' : 'none'} paintOrder="stroke" strokeWidth={px * 2.5}>

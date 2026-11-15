@@ -7,7 +7,7 @@ const slug = (s: string) => s.replace(/\W+/g, '-').replace(/^-|-$/g, '').toLower
 const clean = (s: string) => s.replace(/[\r\n]+/g, ' ').slice(0, 120);
 
 /** ASCII DXF (R12 entities, metres, site frame: x east, y north, origin at the site's south-west corner). Layers:
- * SITE, SETBACK, BUILDING, ROOM_<TYPE>[_L<n>], YARD_<TYPE> (generated), ADDED_<TYPE> (placed by the user or an
+ * SITE, SETBACK, BUILDING, ROOM_<TYPE>[_L<n>], YARD_<TYPE> (generated, e.g. YARD_SUB), ADDED_<TYPE> (placed by the user or an
  * accepted proposal), RACK_ROWS, GENERATORS, ROUTE_<KIND>, LABELS. */
 export function conceptDxf(c: Concept, siteW: number, siteD: number, setback: number): string {
   const out: string[] = [
@@ -32,7 +32,7 @@ export function conceptDxf(c: Concept, siteW: number, siteD: number, setback: nu
     for (const row of r.rows ?? []) rect('RACK_ROWS', row.x, row.y, row.v ? row.w : (row.w * row.n) / row.cap, row.v ? (row.d * row.n) / row.cap : row.d);
   }
   for (const y of c.yard) {
-    rect(`${y.added ? 'ADDED' : 'YARD'}_${y.type.toUpperCase()}`, y.x, y.y, y.w, y.d);
+    rect(`${y.added ? 'ADDED' : 'YARD'}_${y.type.replace(/^yard_/, '').toUpperCase()}`, y.x, y.y, y.w, y.d);
     text(y.x + 0.3, y.y + 0.3, Math.min(1.5, Math.max(0.3, Math.min(y.w, y.d) / 4)), `${y.code} ${y.name}${y.source ? ` (${y.source})` : ''}`);
   }
   for (const e of c.equipment) rect('GENERATORS', e.x, e.y, e.w, e.d);

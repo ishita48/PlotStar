@@ -97,7 +97,7 @@ export function CompareSystems({ r }: { r: StudioResult }) {
                 <p className="st-small"><b>Advantage.</b> {c.advantage}</p>
                 <p className="st-small"><b>Trade-off.</b> {c.tradeoff}</p>
                 <p className={`st-small cs-checks ${bad.length ? 'bad' : 'ok'}`}>{bad.length ? <CircleAlert size={13} /> : <CircleCheck size={13} />} {bad.length ? `${bad.length} check${bad.length > 1 ? 's' : ''} failing: ${bad.map((k) => k.name).join(', ')}` : `All ${c.checks.length} checks pass`}</p>
-                <p className="st-small st-muted">{money(c.money.capex)} to build · NPV {money(c.money.npv)} · {c.people.noise_at_boundary_dba} dBA at the boundary{(c.money.uncosted ?? []).length ? ` · not costed: ${c.money.uncosted!.join(', ')}` : ''}</p>
+                <p className="st-small st-muted">{money(c.money.capex)} to build · NPV {money(c.money.npv)} · {c.people.noise_at_boundary_dba != null ? `${c.people.noise_at_boundary_dba} dBA at the boundary` : 'no generator yard'}{(c.money.uncosted ?? []).length ? ` · not costed: ${c.money.uncosted!.join(', ')}` : ''}</p>
               </article>
             );
           })}
