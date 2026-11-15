@@ -1,0 +1,320 @@
+<!doctype html>
+<!-- Source for the README graphics. Render with: node scripts/readme-graphics.mjs -->
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=block" rel="stylesheet">
+<style>
+  :root {
+    --green: #1f4a36; --green-2: #2f6a4c; --deep: #10271c; --lime: #c9ec7a; --lime-2: #e7f5c8;
+    --bg: #f3f8ea; --card: #ffffff; --ink: #14261c; --muted: #5b6b61; --hair: #dbe6d0;
+    --amber: #f2b84b; --red: #e0644f; --violet: #7a5af0;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Geist, system-ui, sans-serif; color: var(--ink); background: #ddd; }
+  .g { width: 1600px; position: relative; overflow: hidden; margin: 0 0 40px; }
+  .mono { font-family: 'Geist Mono', ui-monospace, monospace; }
+  .serif { font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; }
+  .eyebrow { font-family: 'Geist Mono', monospace; font-size: 15px; letter-spacing: .18em; text-transform: uppercase; color: var(--green-2); }
+  .wash { background:
+      radial-gradient(900px 500px at 92% -10%, rgba(201,236,122,.55), transparent 60%),
+      radial-gradient(700px 500px at -10% 110%, rgba(111,162,78,.18), transparent 60%),
+      linear-gradient(180deg, #f1f7e8, #fbfdf7); }
+  .dark { background:
+      radial-gradient(900px 600px at 85% 0%, rgba(201,236,122,.22), transparent 60%),
+      radial-gradient(800px 600px at 0% 100%, rgba(47,106,76,.6), transparent 60%),
+      linear-gradient(160deg, #0f2419, #17382a); color: #eef6e4; }
+  .grid-bg::before { content: ''; position: absolute; inset: 0; pointer-events: none;
+      background-image: linear-gradient(rgba(201,236,122,.07) 1px, transparent 1px), linear-gradient(90deg, rgba(201,236,122,.07) 1px, transparent 1px);
+      background-size: 48px 48px; mask-image: radial-gradient(circle at 60% 40%, #000 30%, transparent 80%); }
+  .star { width: 64px; height: 64px; border-radius: 18px; display: grid; place-items: center; background: #fff; box-shadow: 0 10px 30px -12px rgba(0,0,0,.4); }
+  .chip { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; font-size: 15px; font-weight: 500; }
+
+  /* ---------- banner ---------- */
+  #banner { height: 820px; }
+  #banner .left { position: absolute; left: 90px; top: 92px; width: 720px; z-index: 2; }
+  #banner .brand { display: flex; align-items: center; gap: 18px; margin-bottom: 46px; }
+  #banner .brand b { font-size: 34px; letter-spacing: -.03em; font-weight: 700; }
+  #banner .brand small { display: block; font-family: 'Geist Mono'; font-size: 13px; letter-spacing: .2em; color: var(--lime); opacity: .85; margin-top: 4px; }
+  #banner h1 { font-size: 104px; line-height: .95; letter-spacing: -.055em; font-weight: 700; }
+  #banner h1 .serif { color: var(--lime); letter-spacing: -.02em; font-size: 112px; }
+  #banner p { margin-top: 34px; font-size: 25px; line-height: 1.5; color: #cfe0c8; max-width: 640px; }
+  #banner .chips { margin-top: 38px; display: flex; flex-wrap: wrap; gap: 10px; max-width: 700px; }
+  #banner .chip { background: rgba(201,236,122,.12); border: 1px solid rgba(201,236,122,.3); color: #e4f3cf; }
+  #banner .shots { position: absolute; right: -60px; top: 70px; width: 820px; height: 640px; }
+  #banner .shot { position: absolute; border-radius: 18px; overflow: hidden; border: 1px solid rgba(255,255,255,.25); box-shadow: 0 40px 80px -30px rgba(0,0,0,.7); background: #fff; }
+  #banner .shot img { display: block; width: 100%; }
+  #banner .s1 { width: 700px; left: 120px; top: 0; transform: rotate(2deg); }
+  #banner .s2 { width: 520px; left: 0; top: 300px; transform: rotate(-4deg); }
+  #banner .s3 { width: 470px; left: 420px; top: 330px; transform: rotate(5deg); }
+  #banner .tag { position: absolute; z-index: 3; font-family: 'Geist Mono'; font-size: 14px; letter-spacing: .14em; text-transform: uppercase; padding: 9px 14px; border-radius: 999px; background: var(--lime); color: var(--deep); font-weight: 600; box-shadow: 0 10px 24px -10px rgba(0,0,0,.6); }
+
+  /* ---------- three acts ---------- */
+  #acts { padding: 80px 90px; }
+  #acts h2, #arch h2, #agents h2, #numbers h2, #flow h2 { font-size: 58px; letter-spacing: -.045em; line-height: 1.02; font-weight: 700; margin-top: 14px; }
+  #acts h2 .serif, #arch h2 .serif, #agents h2 .serif, #numbers h2 .serif, #flow h2 .serif { color: var(--green-2); font-size: 64px; }
+  .acts { margin-top: 50px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px; position: relative; }
+  .act { background: #fff; border: 1px solid var(--hair); border-radius: 26px; overflow: hidden; box-shadow: 0 30px 60px -40px rgba(31,74,54,.55); }
+  .act .img { height: 250px; overflow: hidden; border-bottom: 1px solid var(--hair); background: #eef3e8; }
+  .act .img img { width: 100%; display: block; }
+  .act .body { padding: 26px 30px 30px; }
+  .act .n { display: flex; align-items: center; gap: 12px; }
+  .act .n i { font-style: normal; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--green); color: var(--lime); font-family: 'Geist Mono'; font-weight: 600; font-size: 17px; }
+  .act h3 { font-size: 34px; letter-spacing: -.035em; }
+  .act p { margin-top: 12px; color: var(--muted); font-size: 18px; line-height: 1.5; }
+  .act ul { margin-top: 16px; list-style: none; display: grid; gap: 8px; }
+  .act li { font-size: 16px; display: flex; gap: 10px; align-items: baseline; }
+  .act li::before { content: ''; width: 8px; height: 8px; border-radius: 3px; background: var(--lime); border: 1px solid var(--green-2); flex: none; transform: translateY(-1px); }
+  .arrow { position: absolute; top: 120px; width: 54px; height: 54px; border-radius: 50%; background: var(--lime); display: grid; place-items: center; z-index: 2; box-shadow: 0 10px 24px -10px rgba(31,74,54,.8); font-size: 26px; color: var(--deep); font-weight: 700; }
+
+  /* ---------- workflow ---------- */
+  #flow { padding: 70px 90px; }
+  .steps { margin-top: 56px; display: flex; align-items: stretch; gap: 0; }
+  .step { flex: 1; position: relative; padding: 0 10px; }
+  .step .dot { width: 64px; height: 64px; border-radius: 50%; background: #fff; border: 2px solid var(--green-2); display: grid; place-items: center; font-family: 'Geist Mono'; font-weight: 600; font-size: 20px; color: var(--green); position: relative; z-index: 2; }
+  .step.hl .dot { background: var(--green); color: var(--lime); border-color: var(--green); }
+  .step::after { content: ''; position: absolute; left: 74px; right: -10px; top: 31px; height: 3px; background: repeating-linear-gradient(90deg, var(--green-2) 0 10px, transparent 10px 18px); z-index: 1; }
+  .step:last-child::after { display: none; }
+  .step h4 { margin-top: 22px; font-size: 26px; letter-spacing: -.03em; }
+  .step p { margin-top: 8px; font-size: 16px; color: var(--muted); line-height: 1.45; padding-right: 18px; }
+  .step .sub { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .step .sub span { font-family: 'Geist Mono'; font-size: 12px; letter-spacing: .06em; padding: 5px 9px; border-radius: 8px; background: var(--lime-2); color: var(--green); border: 1px solid #cfe3a6; }
+
+  /* ---------- architecture ---------- */
+  #arch { padding: 76px 90px; }
+  .layer { margin-top: 22px; border-radius: 24px; padding: 22px 26px 26px; position: relative; }
+  .layer > .lt { display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px; }
+  .layer > .lt b { font-size: 24px; letter-spacing: -.02em; }
+  .layer > .lt span { font-family: 'Geist Mono'; font-size: 14px; color: var(--muted); letter-spacing: .04em; }
+  .l-ui { background: #fff; border: 1px solid var(--hair); }
+  .l-api { background: var(--green); color: #eaf5df; }
+  .l-api > .lt span { color: #b9d3ad; }
+  .l-ext { background: #fff; border: 1px solid var(--hair); }
+  .l-hw { background: var(--deep); color: #eaf5df; }
+  .l-hw > .lt span { color: #9fbb98; }
+  .boxes { display: grid; gap: 12px; }
+  .box { border-radius: 16px; padding: 14px 16px; font-size: 15px; line-height: 1.35; }
+  .box b { display: block; font-size: 17px; margin-bottom: 4px; letter-spacing: -.01em; }
+  .box small { font-size: 13.5px; opacity: .78; }
+  .l-ui .box, .l-ext .box { background: #f4f8ee; border: 1px solid var(--hair); }
+  .l-api .box { background: rgba(255,255,255,.08); border: 1px solid rgba(201,236,122,.25); }
+  .l-api .box.hl { background: var(--lime); color: var(--deep); border-color: var(--lime); }
+  .l-hw .box { background: rgba(255,255,255,.06); border: 1px solid rgba(201,236,122,.2); }
+  .conn { display: flex; justify-content: center; gap: 220px; height: 26px; margin-top: 0; }
+  .conn i { width: 3px; height: 26px; background: repeating-linear-gradient(180deg, var(--green-2) 0 6px, transparent 6px 10px); position: relative; top: 0; margin-top: 22px; }
+  .sp { display: inline-block; font-family: 'Geist Mono'; font-size: 11.5px; padding: 3px 7px; border-radius: 6px; background: var(--lime-2); color: var(--green); border: 1px solid #cfe3a6; margin: 6px 4px 0 0; letter-spacing: .03em; }
+  .l-api .sp { background: rgba(201,236,122,.16); color: var(--lime); border-color: rgba(201,236,122,.35); }
+  .rule { position: absolute; right: 26px; top: 20px; font-family: 'Geist Mono'; font-size: 13px; padding: 7px 12px; border-radius: 999px; background: var(--lime); color: var(--deep); font-weight: 600; letter-spacing: .04em; }
+
+  /* ---------- agents ---------- */
+  #agents { padding: 76px 90px; }
+  #agents p.lede { margin-top: 18px; font-size: 21px; color: #c6d9be; max-width: 1100px; line-height: 1.5; }
+  .orch { margin: 46px auto 0; width: 620px; background: var(--lime); color: var(--deep); border-radius: 26px; padding: 24px 30px; text-align: center; position: relative; box-shadow: 0 30px 60px -30px rgba(201,236,122,.5); }
+  .orch b { font-size: 30px; letter-spacing: -.03em; }
+  .orch .mono { display: block; font-size: 14px; margin-top: 6px; letter-spacing: .08em; }
+  .orch .tools { margin-top: 12px; display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
+  .orch .tools span { font-family: 'Geist Mono'; font-size: 12.5px; background: rgba(16,39,28,.1); border-radius: 8px; padding: 5px 9px; }
+  .fan { position: relative; height: 70px; }
+  .fan svg { position: absolute; inset: 0; }
+  .specs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .spec { border-radius: 20px; padding: 18px 20px 20px; background: rgba(255,255,255,.06); border: 1px solid rgba(201,236,122,.22); }
+  .spec .top { display: flex; align-items: center; justify-content: space-between; }
+  .spec b { font-size: 19px; letter-spacing: -.02em; }
+  .spec .m { font-family: 'Geist Mono'; font-size: 11.5px; color: var(--lime); opacity: .8; }
+  .spec p { margin-top: 8px; font-size: 14.5px; line-height: 1.45; color: #c6d9be; }
+  .spec.ap { border-color: var(--amber); }
+  .spec.ap .badge { color: var(--amber); }
+  .badge { font-family: 'Geist Mono'; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; margin-top: 10px; display: inline-block; }
+  .base { margin-top: 26px; display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 16px; }
+  .base div { border-radius: 18px; padding: 18px 22px; font-size: 16px; line-height: 1.45; }
+  .base b { display: block; font-size: 18px; margin-bottom: 4px; }
+  .base .det { background: #fff; color: var(--ink); }
+  .base .hum { background: rgba(242,184,75,.14); border: 1px solid rgba(242,184,75,.55); color: #f6e2b8; }
+  .base .ls { background: rgba(122,90,240,.16); border: 1px solid rgba(160,140,255,.45); color: #ddd4ff; }
+
+  /* ---------- numbers ---------- */
+  #numbers { padding: 76px 90px; }
+  .nums { margin-top: 48px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+  .num { background: #fff; border: 1px solid var(--hair); border-radius: 24px; padding: 26px 28px; box-shadow: 0 24px 50px -40px rgba(31,74,54,.6); }
+  .num b { font-size: 64px; letter-spacing: -.05em; line-height: 1; color: var(--green); display: block; }
+  .num b small { font-size: 30px; letter-spacing: -.02em; }
+  .num span { display: block; margin-top: 10px; font-size: 17px; line-height: 1.4; color: var(--muted); }
+  .num.dk { background: var(--green); border-color: var(--green); }
+  .num.dk b { color: var(--lime); }
+  .num.dk span { color: #cfe0c8; }
+</style>
+</head>
+<body>
+
+<!-- ================= BANNER ================= -->
+<section class="g dark grid-bg" id="banner">
+  <div class="left">
+    <div class="brand">
+      <div class="star"><svg width="34" height="34" viewBox="0 0 24 24"><path d="M12 1.5 14.2 9.8 22.5 12 14.2 14.2 12 22.5 9.8 14.2 1.5 12 9.8 9.8Z" fill="#1f4a36"/><circle cx="12" cy="12" r="2.2" fill="#c9ec7a"/></svg></div>
+      <div><b>GeoStar</b><small>FIND · DESIGN · PROTECT</small></div>
+    </div>
+    <h1>Find it.<br>Design it.<br><span class="serif">Protect it.</span></h1>
+    <p>Site intelligence for what America is building fastest: data centers, energy and housing. From the right parcel, to the right plan, to the leak nobody saw yet.</p>
+    <div class="chips">
+      <span class="chip">CoStar MCP · 15 tools</span><span class="chip">9 agents · Claude + Gemini</span><span class="chip">Gemini on Vexcel aerials</span><span class="chip">Live ESP32 hardware</span><span class="chip">HAVEN command center</span>
+    </div>
+  </div>
+  <div class="shots">
+    <div class="shot s1"><img src="../screenshots/studio-concept-model.png"></div>
+    <div class="shot s2"><img src="../screenshots/landing-find.png"></div>
+    <div class="shot s3"><img src="../screenshots/haven-leak.png"></div>
+    <span class="tag" style="left:150px;top:-18px">Design · 3D concept</span>
+    <span class="tag" style="left:-10px;top:286px">Find · ranked sites</span>
+    <span class="tag" style="left:520px;top:612px">Protect · HAVEN</span>
+  </div>
+</section>
+
+<!-- ================= THREE ACTS ================= -->
+<section class="g wash" id="acts">
+  <div class="eyebrow">One product, a building's whole life</div>
+  <h2>Three jobs that used to need three tools. <span class="serif">Now one.</span></h2>
+  <div class="acts">
+    <div class="arrow" style="left:calc(33.33% - 27px - 9px)">→</div>
+    <div class="arrow" style="left:calc(66.66% - 27px + 9px)">→</div>
+    <div class="act">
+      <div class="img"><img src="../screenshots/landing-find.png" style="margin-top:-60px"></div>
+      <div class="body">
+        <div class="n"><i>01</i><h3>Find</h3></div>
+        <p>Rank real CoStar parcels for what you are building. Hard gates first, then the score.</p>
+        <ul><li>158 Houston + LA parcels screened</li><li>Flood, homes, water, power gates</li><li>Every number labelled by its source</li></ul>
+      </div>
+    </div>
+    <div class="act">
+      <div class="img"><img src="../screenshots/studio-concept-model.png" style="margin-top:-150px"></div>
+      <div class="body">
+        <div class="n"><i>02</i><h3>Design</h3></div>
+        <p>Generate concepts on the parcel, edit them in 3D, and export what an engineer can open.</p>
+        <ul><li>24 measured layout variants, best 3 shown</li><li>Gemini maps obstacles on the aerial</li><li>DXF · GLB · IFC exports</li></ul>
+      </div>
+    </div>
+    <div class="act">
+      <div class="img"><img src="../screenshots/haven-leak.png" style="margin-top:-40px"></div>
+      <div class="body">
+        <div class="n"><i>03</i><h3>Protect</h3></div>
+        <p>Sensors where buildings really fail. Agents explain; a person approves; HAVEN responds.</p>
+        <ul><li>Live ESP32 data hall + operator console</li><li>Manager badge tap approves the response</li><li>Geo calls the emergency contact</li></ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= WORKFLOW ================= -->
+<section class="g wash" id="flow" style="background:#fff">
+  <div class="eyebrow">The Studio, step by step</div>
+  <h2>From a sentence to a <span class="serif">deployed, watched building.</span></h2>
+  <div class="steps">
+    <div class="step hl"><div class="dot">1</div><h4>Define</h4><p>Say what you are building and where.</p><div class="sub"><span>brief</span><span>site</span><span>zoning PDF Q&amp;A</span></div></div>
+    <div class="step"><div class="dot">2</div><h4>Discover</h4><p>Fly the Tello drone over the site.</p><div class="sub"><span>live feed</span><span>Gemini hazards</span></div></div>
+    <div class="step"><div class="dot">3</div><h4>Explore</h4><p>Plans on the Vexcel aerial and in 3D.</p><div class="sub"><span>obstacles</span><span>comps in 3D</span></div></div>
+    <div class="step"><div class="dot">4</div><h4>Analyze</h4><p>Agents compare, score and debate.</p><div class="sub"><span>NPV</span><span>grid</span><span>community</span></div></div>
+    <div class="step"><div class="dot">5</div><h4>Deliver</h4><p>Exports and the decision record.</p><div class="sub"><span>DXF</span><span>GLB</span><span>IFC</span></div></div>
+    <div class="step hl"><div class="dot">6</div><h4>Design &amp; deploy</h4><p>Model, protect, go live.</p><div class="sub"><span>HAVEN</span><span>hardware</span></div></div>
+  </div>
+</section>
+
+<!-- ================= ARCHITECTURE ================= -->
+<section class="g wash" id="arch">
+  <div class="eyebrow">How it fits together</div>
+  <h2>Architecture: <span class="serif">models explain, code computes.</span></h2>
+
+  <div class="layer l-ui" style="margin-top:40px">
+    <div class="lt"><b>Web app</b><span>Next.js 16 · React 19 · TypeScript · three.js / R3F · MapLibre · Vercel</span></div>
+    <div class="boxes" style="grid-template-columns:repeat(6,1fr)">
+      <div class="box"><b>Landing</b><small>the story, playable</small></div>
+      <div class="box"><b>Studio</b><small>define → deploy, 3D editor</small></div>
+      <div class="box"><b>Ask GeoStar</b><small>one agent chat</small></div>
+      <div class="box"><b>Hey Geo</b><small>voice, points, draws</small></div>
+      <div class="box"><b>HAVEN</b><small>command center, twin</small></div>
+      <div class="box"><b>Agent Intelligence</b><small>live run graph</small></div>
+    </div>
+    <div><span class="sp">Clerk sign-in</span><span class="sp">Neon Postgres (Prisma)</span><span class="sp">Cartesia voice</span><span class="sp">Claude (Hey Geo)</span></div>
+  </div>
+  <div class="conn"><i></i><i></i><i></i></div>
+
+  <div class="layer l-api">
+    <div class="rule">CoStar fields never leave the machine</div>
+    <div class="lt"><b>GeoStar data API</b><span>Python · FastAPI · SQLite parcel store</span></div>
+    <div class="boxes" style="grid-template-columns:1.25fr 1fr 1fr 1fr">
+      <div class="box hl"><b>Deep Agents</b>Orchestrator + 8 specialists on LangGraph, traced in LangSmith<br><span class="sp" style="background:rgba(16,39,28,.1);color:var(--deep);border-color:rgba(16,39,28,.2)">claude-sonnet-5-5</span><span class="sp" style="background:rgba(16,39,28,.1);color:var(--deep);border-color:rgba(16,39,28,.2)">claude-haiku-5-5</span><span class="sp" style="background:rgba(16,39,28,.1);color:var(--deep);border-color:rgba(16,39,28,.2)">Gemini imagery analyst</span></div>
+      <div class="box"><b>CoStar MCP server</b>15 tools: comps, underwriting, occupancy, submarket, conversion, memo</div>
+      <div class="box"><b>Engines</b>screening gates · siting · layout (24 variants) · optimizer · grid</div>
+      <div class="box"><b>Sponsor routes</b>Vexcel · Gemini · Matterport · ElevenLabs · Cartesia · ChatOverflow</div>
+    </div>
+  </div>
+  <div class="conn"><i></i><i></i><i></i></div>
+
+  <div class="layer l-ext">
+    <div class="lt"><b>Data and services</b><span>every value carries a label: Measured · Sourced · Estimated · Simulated · Unknown</span></div>
+    <div class="boxes" style="grid-template-columns:repeat(5,1fr)">
+      <div class="box"><b>CoStar</b><small>properties, sale comps, tenancy, listings, Matterport refs</small></div>
+      <div class="box"><b>Vexcel</b><small>7 cm orthos, obliques, then/now, DSM − DTM heights, 3D mesh</small></div>
+      <div class="box"><b>Public data</b><small>FEMA flood, WRI Aqueduct, OpenStreetMap, ERCOT, NREL, EIA, Census</small></div>
+      <div class="box"><b>MongoDB Atlas</b><small>projects, decisions, Atlas + Vector Search, change streams, users</small></div>
+      <div class="box"><b>Model APIs</b><small>Anthropic Claude, Google Gemini, ElevenLabs, Cartesia</small></div>
+    </div>
+  </div>
+  <div class="conn"><i></i><i></i><i></i></div>
+
+  <div class="layer l-hw">
+    <div class="lt"><b>Hardware</b><span>PROTECT bridge · serial watchdog · the same incident pipeline as the simulator</span></div>
+    <div class="boxes" style="grid-template-columns:repeat(4,1fr)">
+      <div class="box"><b>ESP32 data hall</b><small>leak probe, coolant valve, hot aisle, PIR, fan, RFID</small></div>
+      <div class="box"><b>UNO R4 console</b><small>4-digit watts, keypad grid events, LED matrix</small></div>
+      <div class="box"><b>Laptop AI job</b><small>measured watts; pauses on a grid event</small></div>
+      <div class="box"><b>Tello drone · iPhone app</b><small>site survey; HAVEN on the go</small></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= AGENTS ================= -->
+<section class="g dark grid-bg" id="agents">
+  <div class="eyebrow" style="color:var(--lime)">The agent team</div>
+  <h2 style="color:#fff">Narrow specialists. <span class="serif" style="color:var(--lime)">Every number from a tool.</span></h2>
+  <p class="lede">One LangChain Deep Agents orchestrator plans, delegates in parallel, and calls a deterministic scoring function. Specialists return structured findings with evidence ids; a conclusion that disagrees with its own evidence is flagged as a conflict.</p>
+  <div class="orch">
+    <b>GeoStar Orchestrator</b><span class="mono">claude-sonnet-5-5 · plans · delegates · scores · answers</span>
+    <div class="tools"><span>write_todos</span><span>task</span><span>compute_site_score</span><span>dispatch_safety_alert ⚑</span></div>
+  </div>
+  <div class="fan"><svg viewBox="0 0 1420 70" preserveAspectRatio="none"><g stroke="#c9ec7a" stroke-opacity=".55" stroke-width="2" fill="none" stroke-dasharray="6 6">
+    <path d="M710 0 C710 40, 177 30, 177 70"/><path d="M710 0 C710 40, 532 30, 532 70"/><path d="M710 0 C710 40, 888 30, 888 70"/><path d="M710 0 C710 40, 1243 30, 1243 70"/></g></svg></div>
+  <div class="specs">
+    <div class="spec"><div class="top"><b>Property Intelligence</b><span class="m">haiku</span></div><p>11 CoStar tools over MCP: the building, land, comps, occupancy, neighbours, data gaps.</p></div>
+    <div class="spec"><div class="top"><b>Financial Feasibility</b><span class="m">haiku</span></div><p>Development economics, underwriting, NPV, grid prices, what-ifs.</p></div>
+    <div class="spec"><div class="top"><b>Resource &amp; Infrastructure</b><span class="m">haiku</span></div><p>Power, water, flood screen, the ERCOT grid day, conversion check.</p></div>
+    <div class="spec"><div class="top"><b>Community &amp; Sustainability</b><span class="m">haiku</span></div><p>Homes nearby, generator noise, carbon and water use.</p></div>
+    <div class="spec"><div class="top"><b>Design &amp; Simulation</b><span class="m">haiku</span></div><p>Generates layouts, compares concepts, inspects objects.</p></div>
+    <div class="spec ap"><div class="top"><b>Design Editor</b><span class="m">haiku</span></div><p>Changes the drawing itself: preview first, then apply.</p><span class="badge">⚑ needs a person's approval</span></div>
+    <div class="spec"><div class="top"><b>Imagery Analyst</b><span class="m">gemini</span></div><p>Reads Vexcel aerials and drone frames for obstacles and hazards.</p></div>
+    <div class="spec ap"><div class="top"><b>Safety &amp; Operations</b><span class="m">haiku</span></div><p>The deployed facility's protection state and playbook.</p><span class="badge">⚑ alerts need approval</span></div>
+  </div>
+  <div class="base">
+    <div class="det"><b>Deterministic score</b>Property 20% · Money 30% · Power &amp; resources 25% · People &amp; planet 25%. Hard gates override. Missing evidence is a gap, not a guess.</div>
+    <div class="hum"><b>Human in the loop</b>Layout edits and safety alerts wait for a yes. On the bench, a manager's badge tap is the yes.</div>
+    <div class="ls"><b>Visible</b>Every box on the live graph is a real LangChain callback, with the same run ids as LangSmith.</div>
+  </div>
+</section>
+
+<!-- ================= NUMBERS ================= -->
+<section class="g wash" id="numbers">
+  <div class="eyebrow">By the numbers</div>
+  <h2>What we built <span class="serif">in one weekend.</span></h2>
+  <div class="nums">
+    <div class="num dk"><b>9</b><span>agents in one Deep Agents graph: Claude orchestrator, Claude and Gemini specialists</span></div>
+    <div class="num"><b>15</b><span>CoStar intelligence tools, served as GeoStar's own MCP server</span></div>
+    <div class="num"><b>158</b><span>Houston and Los Angeles parcels screened through the same hard gates</span></div>
+    <div class="num"><b>24</b><span>measured layout variants per site; the best three are shown, with why</span></div>
+    <div class="num"><b>119→54<small>s</small></b><span>full multi-agent site evaluation, after running specialists in parallel</span></div>
+    <div class="num"><b>~10<small>×</small></b><span>faster site search from a flat-map pre-filter before haversine</span></div>
+    <div class="num"><b>2</b><span>microcontroller boards running a live data hall: ESP32 sensors and an UNO R4 console</span></div>
+    <div class="num dk"><b>56</b><span>ChatOverflow field notes our coding agents searched, used and saved</span></div>
+  </div>
+</section>
+
+</body>
+</html>

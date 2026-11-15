@@ -96,6 +96,8 @@ const KINDS = [['wind', 'Wind farm'], ['solar', 'Solar farm'], ['student-living'
 if (want('studio')) {
   await openStudio();
   await shot('studio-define');
+  await press('Open Ask GeoStar', 2500);
+  await shot('studio-ask');
 }
 
 if (want('concepts')) {
