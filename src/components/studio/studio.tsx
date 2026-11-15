@@ -6,7 +6,7 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import {
   ArrowLeft, ArrowRight, Box as BoxIcon, LoaderCircle, Check, CircleAlert, CircleCheck, Coins, Columns2, Download, Droplets, Leaf, Lock,
-  Briefcase, Building2, Database, FileText, FileUp, House, MapPin, Move, Network, Plus, Radio, RotateCcw, RotateCw, Sparkles, Square, Star, Trash2, Users,
+  Briefcase, Building2, Database, FileText, FileUp, House, LayoutGrid, MapPin, Move, Network, Plus, Radio, RotateCcw, RotateCw, Sparkles, Square, Star, Trash2, Users,
 } from 'lucide-react';
 import { Star as GeoStarMark } from '../brand';
 import { PUBLIC_DATA_API, siteDetailUrl, vexcel3dRootUrl, vexcelMetaUrl, vexcelOrthoUrl } from '@/lib/plotstar-api';
@@ -525,6 +525,7 @@ export function Studio() {
           </ol>
           <small className="st-eyebrow st-rail-sec">Tools</small>
           <nav className="st-rail-nav" aria-label="Tools">
+            <Link href="/studio/deploy"><LayoutGrid size={16} /><span><b>Deployments</b><small>Command centers, live hardware</small></span></Link>
             <Link href="/studio/agent"><Network size={16} /><span><b>How the AI works</b><small>Agents and evidence</small></span></Link>
             <Link href="/studio/data"><Database size={16} /><span><b>Data</b><small>MongoDB Atlas, live</small></span></Link>
             <button type="button" onClick={() => setDealDesk(true)}><Briefcase size={16} /><span><b>Deal desk</b><small>CoStar sites and comps</small></span></button>

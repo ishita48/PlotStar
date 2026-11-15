@@ -59,10 +59,11 @@ export function DeployedProjects({
   onOpen,
   onFinishCurrent,
 }: {
-  current: Facility;
-  currentDeployed: boolean;
+  /** The project being set up in Studio, if any (pinned first; a reminder when not deployed yet). */
+  current?: Facility;
+  currentDeployed?: boolean;
   onOpen: (facility: Facility) => void;
-  onFinishCurrent: () => void;
+  onFinishCurrent?: () => void;
 }) {
   const { projects, error } = useDeployedProjects();
   const [filter, setFilter] = useState('All');
@@ -70,7 +71,7 @@ export function DeployedProjects({
     .slice()
     .sort(
       (a, b) =>
-        Number(b.facility.id === current.id) - Number(a.facility.id === current.id) ||
+        Number(b.facility.id === current?.id) - Number(a.facility.id === current?.id) ||
         attention[a.health] - attention[b.health],
     );
   const types = ['All', ...new Set(list.map((p) => p.facility.type))];
@@ -119,7 +120,7 @@ export function DeployedProjects({
           </div>
         ))}
       </div>
-      {!currentDeployed && (
+      {current && !currentDeployed && onFinishCurrent && (
         <div className="hv-inline-alert dp-current-note">
           <span>
             <b>{current.name}</b> is not deployed yet. Finish Protect and confirm deploy to add it
@@ -159,7 +160,7 @@ export function DeployedProjects({
         <ul className="dp-grid" aria-label="Deployed projects">
           {shown.map((project) => {
             const Icon = typeIcon(project.facility.type);
-            const isCurrent = project.facility.id === current.id;
+            const isCurrent = project.facility.id === current?.id;
             return (
               <li key={project.facility.id}>
                 <button className="dp-card" onClick={() => onOpen(project.facility)}>

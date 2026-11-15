@@ -1,0 +1,15 @@
+/* /studio/deploy: Studio's top bar over one scrolling column of Command Center content. */
+.st.st-deploy .st-top .brand { text-decoration: none; font-weight: 500; letter-spacing: -0.01em; }
+.st.st-deploy .st-top .brand b { display: inline; font-weight: 700; }
+.st.st-deploy .st-top-nav a { display: inline-flex; align-items: center; gap: 6px; }
+.st-deploy-main {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 28px max(16px, 3.5vw) 56px;
+}
+.st-deploy-main > .d2-shell { max-width: 1240px; margin: 0 auto; }
+@media (max-width: 640px) {
+  .st.st-deploy .st-top-title { display: none; }
+  .st-deploy-main { padding: 18px 16px 40px; }
+}
