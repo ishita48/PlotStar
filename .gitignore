@@ -58,3 +58,6 @@ web/data/costar-sites.json
 web/data/media/
 bridge/.cache/
 bridge/.env
+
+# go-live.ps1 logs
+.geostar-live/

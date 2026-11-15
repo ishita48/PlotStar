@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.sponsors.cartesia import dispatch as cartesia
@@ -45,8 +45,20 @@ def status() -> dict[str, Any]:
     return _provider().status()
 
 
+LOCAL = re.compile(r"^https?://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$")
+
+
+def _local_only(request: Request) -> None:
+    """Real phone calls only from the operator's own machine: never through a public tunnel or a hosted page."""
+    origin = request.headers.get("origin") or ""
+    tunnelled = any(h in request.headers for h in ("cf-connecting-ip", "cf-ray", "x-forwarded-for"))
+    if tunnelled or (origin and not LOCAL.match(origin)):
+        raise HTTPException(403, "Live emergency calls can only be placed from the GeoStar app on this computer.")
+
+
 @router.post("/haven/dispatch/call")
-def call(body: IncidentIn) -> dict[str, Any]:
+def call(body: IncidentIn, request: Request) -> dict[str, Any]:
+    _local_only(request)
     try:
         return _provider().place_call(body.model_dump())
     except ERRORS as e:
