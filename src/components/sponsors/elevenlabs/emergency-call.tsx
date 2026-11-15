@@ -125,7 +125,7 @@ export function LiveEmergencyCall({ status, incident }: { status: DispatchStatus
   return (
     <>
       <p className="cc-note">
-        HAVEN rings the emergency contact {status.contact} with a {status.provider} voice and reads out this incident. It
+        Geo, GeoStar’s safety voice, rings the emergency contact {status.contact} through {status.provider} and reads out this incident. It
         does not call 911. The contact is told to call 911 if anyone is in danger.
       </p>
       <button

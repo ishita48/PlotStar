@@ -1,7 +1,7 @@
 """HAVEN dispatch over Cartesia: a real phone call to the facility's emergency contact, from a free Cartesia number.
 
 Cartesia gives every account a free US number that can call any US destination, with no Twilio account or caller
-verification. A managed Cartesia agent ("GeoStar HAVEN Dispatch") speaks the alert with the same prompt as the
+verification. A managed Cartesia agent ("Geo Emergency Call") speaks the alert with the same prompt as the
 ElevenLabs path (app.sponsors.elevenlabs.dispatch), filled per call through dynamic variables.
 
 Needs CARTESIA_API_KEY and HAVEN_EMERGENCY_CONTACT in .env. CARTESIA_PHONE_NUMBER_ID picks the number to call from;
@@ -19,7 +19,7 @@ from typing import Any
 import httpx
 
 from app import config
-from app.sponsors.elevenlabs.dispatch import FIRST_MESSAGE, PLACEHOLDERS, PROMPT, contact, masked
+from app.sponsors.elevenlabs.dispatch import FIRST_MESSAGE, PLACEHOLDERS, PROMPT, VOICEMAIL, contact, masked
 
 API = "https://api.cartesia.ai"
 VERSION = "2026-08-14"
@@ -66,7 +66,7 @@ def _call(method: str, path: str, **kw: Any) -> Any:
 # Cartesia variables must start with a letter or underscore; ours do.
 def agent_config() -> dict[str, Any]:
     return {
-        "name": "GeoStar HAVEN Dispatch",
+        "name": "Geo Emergency Call",
         "description": "Calls the facility's emergency contact with a HAVEN incident alert. Never calls 911.",
         "config": {
             "instructions": PROMPT,
@@ -74,7 +74,12 @@ def agent_config() -> dict[str, Any]:
             "model": {"id": MODEL, "temperature": 0.2},
             "language": {"primary": "en"},
             "audio": {"output": {"voice_id": VOICE_ID}},
-            "system_tools": {"end_call": {}},
+            # "off": no filler speech before a tool runs, which is what made the agent narrate
+            # ("let me leave a message") on voicemail. Voicemail gets a fixed message, then hangs up.
+            "system_tools": {
+                "end_call": {"pre_tool_speech": "off"},
+                "voicemail_detection": {"pre_tool_speech": "off", "message": VOICEMAIL},
+            },
             "dynamic_variable_placeholders": PLACEHOLDERS,
         },
     }
@@ -177,7 +182,7 @@ _STATUS = {"created": "initiated", "started": "in-progress", "completed": "done"
 
 def conversation(call_id: str) -> dict[str, Any]:
     d = _call("GET", f"/agents/calls/{call_id}")
-    turns = [{"speaker": "HAVEN" if t.get("role") == "assistant" else "Contact", "text": t.get("text") or ""}
+    turns = [{"speaker": "Geo" if t.get("role") == "assistant" else "Contact", "text": t.get("text") or ""}
              for t in d.get("transcript") or [] if t.get("role") in ("assistant", "user") and t.get("text")
              and not t.get("ignored")]
     return {"status": _STATUS.get(d.get("status"), d.get("status")), "transcript": turns,

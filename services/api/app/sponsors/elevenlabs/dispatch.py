@@ -45,27 +45,37 @@ PLACEHOLDERS = {
     "incident_id": "",
 }
 
-PROMPT = """You are HAVEN, the automated building-safety voice of GeoStar. You are on a phone call with the
-designated emergency contact for {{facility}} in {{city}}.
+PROMPT = """You are Geo, GeoStar's automated building-safety voice. You are on a phone call with the designated
+emergency contact for {{facility}} in {{city}}.
 
 Incident {{incident_id}}: {{incident}} in {{zone}}. Severity: {{severity}}.
 What the sensors show: {{detail}}
 Recommended actions: {{actions}}
 
 How you speak:
+- Say only the words meant for the listener. Never describe what you are doing or about to do ("let me leave a
+  message", "I'll wait", "I've reached voicemail"), and never offer to call other numbers.
 - Calm, clear, short sentences. This is a phone call: no lists, no markdown.
 - Use only the incident details above. If asked something you do not know, say you do not have that information.
 - Be honest: the readings come from GeoStar's monitoring simulation, and you have not contacted 911, the fire department
   or any responders. If anyone may be in danger, tell the person to call 911 themselves now.
-- Ask them to confirm they received the alert. Once they confirm, or if they ask you to stop, thank them and say goodbye."""
+- Ask them to confirm they received the alert. Once they confirm, or if they ask you to stop, thank them, say goodbye
+  and end the call.
 
-FIRST_MESSAGE = ("This is HAVEN, the automated safety alert for {{facility}}. "
+If you reach voicemail or an answering machine, say exactly this once and then end the call:
+"This is Geo, GeoStar's automated safety alert for {{facility}}. A {{severity}} {{incident}} was detected in {{zone}}.
+Please check the GeoStar Command Center. If anyone may be in danger, call 911. Goodbye."""
+
+VOICEMAIL = ("This is Geo, GeoStar's automated safety alert for {{facility}}. A {{severity}} {{incident}} was detected "
+             "in {{zone}}. Please check the GeoStar Command Center. If anyone may be in danger, call 911. Goodbye.")
+
+FIRST_MESSAGE = ("This is Geo, GeoStar's automated safety alert for {{facility}}. "
                  "We have a {{severity}} {{incident}} in {{zone}}. Can you confirm you received this alert?")
 
 
 def agent_config() -> dict[str, Any]:
     return {
-        "name": "HAVEN Dispatch",
+        "name": "Geo Emergency Call",
         "conversation_config": {
             "agent": {
                 "first_message": FIRST_MESSAGE,
@@ -232,7 +242,7 @@ def conversation(conversation_id: str) -> dict[str, Any]:
     if not re.fullmatch(r"[A-Za-z0-9_-]{6,80}", conversation_id):
         raise GuideError("Unknown conversation id")
     d = _call("GET", f"/convai/conversations/{conversation_id}")
-    turns = [{"speaker": "HAVEN" if t.get("role") == "agent" else "Contact", "text": t.get("message") or ""}
+    turns = [{"speaker": "Geo" if t.get("role") == "agent" else "Contact", "text": t.get("message") or ""}
              for t in d.get("transcript") or [] if t.get("message")]
     return {"status": d.get("status"), "transcript": turns,
             "duration_s": (d.get("metadata") or {}).get("call_duration_secs")}
