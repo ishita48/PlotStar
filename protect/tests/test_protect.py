@@ -454,3 +454,43 @@ def test_manager_card_does_not_silence_smoke(tmp_path):
     c.ingest(reading(beam=200, smoke=True))
     c.on_badge("20111B5C")
     assert c.buzz == 2
+
+
+# ------------------------------------------------- one kit, any deployed project
+def test_physical_model_connects_to_any_project_and_remembers_it(tmp_path):
+    from sitestar_protect.haven_bridge import HavenBridge
+    path = tmp_path / "haven_link.json"
+    h = HavenBridge(None, link_path=path)
+    assert h.facility is None and h.snapshot()["facility_id"] in (None, "")
+    f = h.link({"id": "studio-hempstead-hwy", "name": "14518 Hempstead Hwy", "city": "Houston", "type": "Student housing"})
+    assert f["id"] == "studio-hempstead-hwy"
+    snap = h.snapshot()
+    assert snap["facility_id"] == "studio-hempstead-hwy" and snap["facility_type"] == "Student housing"
+    assert snap["linked_by"] == "dashboard"
+    again = HavenBridge(None, link_path=path)                 # PROTECT restarted
+    assert again.facility["name"] == "14518 Hempstead Hwy" and again.linked_by == "saved"
+    again.link({"id": "portfolio-riverside-compute", "name": "Riverside Compute Hall", "type": "Data center"}, by="deploy")
+    assert HavenBridge(None, link_path=path).facility["id"] == "portfolio-riverside-compute"
+
+
+def test_connect_rejects_a_bad_project(tmp_path):
+    from sitestar_protect.haven_bridge import HavenBridge
+    h = HavenBridge(None, link_path=tmp_path / "link.json")
+    for bad in ({"id": "../etc", "name": "x"}, {"id": "ok-id", "name": "  "}, {"name": "no id"}):
+        with pytest.raises(ValueError):
+            h.link(bad)
+    assert h.facility is None and not (tmp_path / "link.json").exists()
+
+
+def test_connect_endpoint(tmp_path):
+    from fastapi.testclient import TestClient
+    from sitestar_protect.haven_bridge import HavenBridge
+    from sitestar_protect.server import create_app
+    b = load_building(); m = Messenger(None)
+    c = ProtectController(b, NullLink(), m, badges_path=tmp_path / "badges.json",
+                          haven=HavenBridge(None, link_path=tmp_path / "link.json"))
+    client = TestClient(create_app(c))
+    r = client.post("/api/haven/link", json={"id": "studio-wind-1", "name": "Ridgeway Wind", "type": "Wind farm"})
+    assert r.status_code == 200 and r.json()["facility"]["id"] == "studio-wind-1"
+    assert client.get("/api/state").json()["team_app"]["facility_id"] == "studio-wind-1"
+    assert client.post("/api/haven/link", json={"id": "Bad Id", "name": "x"}).status_code == 400

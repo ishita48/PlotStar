@@ -1,9 +1,17 @@
-// Live hardware bridge: the SiteStar PROTECT service (ESP32 data hall + UNO R4 console) runs on the
-// demo laptop. This route reads its state for the Command Center cards and forwards grid controls.
+// Live hardware bridge: the SiteStar PROTECT service (ESP32 + UNO R4 console) runs on the laptop wired
+// to the physical model. This route reads its state for any deployed project's Command Center,
+// forwards grid controls and approvals, and connects the kit to a project ("link").
+import { z } from 'zod';
 import { guardOrigin, HttpError, readJSON, routeError } from '@/lib/http';
+import { linkHardware, PROTECT_BASE as BASE } from '@/lib/hardware/protect';
 
 export const dynamic = 'force-dynamic';
-const BASE = (process.env.PROTECT_URL || 'http://127.0.0.1:8796').replace(/\/$/, '');
+const projectSchema = z.object({
+  id: z.string().regex(/^[a-z0-9-]{1,150}$/),
+  name: z.string().trim().min(1).max(160),
+  city: z.string().max(120).optional(),
+  type: z.string().max(60).optional(),
+});
 
 type Incident = {
   id: string; kind: string; title: string; room_name: string; severity: string; status: string;
@@ -39,6 +47,16 @@ export async function GET() {
         })),
         boards: { esp32: !!s.hardware?.connected, console: !!s.lobby?.alive },
         facilityId: s.team_app?.facility_id ?? null,
+        // The project the physical model is connected to (one kit, one project at a time).
+        linked: s.team_app?.facility_id
+          ? {
+              id: s.team_app.facility_id as string,
+              name: (s.team_app.facility as string | null) ?? s.team_app.facility_id,
+              type: (s.team_app.facility_type as string | null) ?? null,
+              by: (s.team_app.linked_by as string | null) ?? null,
+              error: s.team_app.ok === false ? ((s.team_app.error as string | null) ?? null) : null,
+            }
+          : null,
       },
       { headers: { 'Cache-Control': 'no-store' } },
     );
@@ -57,7 +75,12 @@ const ACTIONS: Record<string, (depth?: number) => [string, unknown]> = {
 export async function POST(req: Request) {
   try {
     guardOrigin(req);
-    const body = (await readJSON(req)) as { action?: string; depth?: number };
+    const body = (await readJSON(req)) as { action?: string; depth?: number; project?: unknown };
+    if (body.action === 'link') {
+      const project = projectSchema.parse(body.project);
+      if (!(await linkHardware(project, 'dashboard'))) throw new HttpError(503, 'Live hardware is offline.');
+      return Response.json({ ok: true });
+    }
     const make = body.action ? ACTIONS[body.action] : undefined;
     if (!make) throw new HttpError(400, 'Unknown hardware action.');
     const depth = Number.isInteger(body.depth) && body.depth! >= 10 && body.depth! <= 90 ? body.depth : undefined;

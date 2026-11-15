@@ -17,7 +17,6 @@ import type { DeployedProject } from '@/lib/haven/portfolio';
 import { PrimaryCard } from './shell';
 import { ProtectModule } from './protection-workspace';
 import { useProtection } from './use-protection';
-import { LiveHardware } from './live-hardware';
 
 const typeIcon = (type: string) => {
   const t = type.toLowerCase();
@@ -228,8 +227,9 @@ export function DeployedProjects({
         </ul>
       )}
       <p className="hv-note">
-        Readings are simulated. Sample projects are illustrative fixtures that run the same HAVEN
-        rules as your own project, each with its own saved state. No hardware is connected.
+        Readings are simulated unless the physical model is connected to a project; deploying a
+        project connects it. Sample projects are illustrative fixtures that run the same HAVEN rules
+        as your own project, each with its own saved state.
       </p>
     </>
   );
@@ -259,8 +259,6 @@ export function ProjectCommandCenter({
           </div>
         </PrimaryCard>
       ) : (
-        <>
-        <LiveHardware facility={facility} />
         <ProtectModule
           key={facility.id}
           state={protection.state}
@@ -270,7 +268,6 @@ export function ProjectCommandCenter({
           live
           onBack={onBack}
         />
-        </>
       )}
     </>
   );

@@ -1,9 +1,12 @@
 'use client';
-// Live hardware for the data-center Command Center: every reading from the physical model
-// (ESP32 data hall + UNO R4 operator console), plus grid-event controls. Data comes from
-// /api/hardware, which reads the SiteStar PROTECT service running on the demo laptop.
+// Live hardware for any deployed project's Command Center. One physical model (ESP32 + UNO R4
+// console) is connected to one project at a time: that project shows every reading and response
+// live; any other project shows where the kit is and a button to connect it there. Deploying a
+// project connects the kit automatically. Data comes from /api/hardware, which reads the SiteStar
+// PROTECT service on the laptop wired to the boards.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Facility } from '@/lib/haven/engine';
+import { hardwareCopy } from '@/lib/hardware/copy';
 import s from './live-hardware.module.css';
 
 type Hw = {
@@ -23,6 +26,7 @@ type Hw = {
   messages?: { t: number; dir: string; text: string }[];
   boards?: { esp32: boolean; console: boolean };
   facilityId?: string | null;
+  linked?: { id: string; name: string; type: string | null; by: string | null; error: string | null } | null;
 };
 
 const fmt = (v: unknown, d = 1) => (typeof v === 'number' ? v.toFixed(d) : '--');
@@ -67,8 +71,10 @@ function Card({ title, tag, children, tone }: { title: string; tag?: string; chi
 export function LiveHardware({ facility }: { facility: Facility }) {
   const [hw, setHw] = useState<Hw | null>(null);
   const [busy, setBusy] = useState('');
+  const [err, setErr] = useState('');
   const [depth, setDepth] = useState(40);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const copy = hardwareCopy(facility.type);
 
   const load = useCallback(async () => {
     try {
@@ -86,34 +92,69 @@ export function LiveHardware({ facility }: { facility: Facility }) {
 
   const act = async (action: string) => {
     setBusy(action);
+    setErr('');
     try {
-      await fetch('/api/hardware', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, depth }) });
+      const project = { id: facility.id, name: facility.name, city: facility.city, type: facility.type };
+      const r = await fetch('/api/hardware', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, depth, project }),
+      });
+      if (!r.ok) setErr(((await r.json().catch(() => ({}))) as { error?: string }).error || 'The hardware did not respond.');
       await load();
+    } catch {
+      setErr('The hardware did not respond.');
     } finally {
       setBusy('');
     }
   };
 
   if (!hw) return null;
-  // Only on the facility the hardware is linked to (or any data center when no link is set).
-  if (hw.online && (hw.facilityId ? hw.facilityId !== facility.id : !/data center/i.test(facility.type))) return null;
-  if (!hw.online) {
-    if (!/data center/i.test(facility.type)) return null;
+
+  if (!hw.online)
     return (
-      <section className={s.panel}>
+      <section className={`${s.panel} ${s.compact}`} aria-label="Live hardware">
         <div className={s.head}><h2>Live hardware</h2><span className={s.offline}>offline</span></div>
-        <p className={s.muted}>The physical model isn’t connected. Start SiteStar PROTECT on the demo laptop to stream its readings here.</p>
+        <p className={s.muted}>
+          The physical model isn’t streaming. Start SiteStar PROTECT on the laptop wired to the boards, and this
+          project’s live readings and responses appear here.
+        </p>
       </section>
     );
-  }
 
-  const L = hw.live ?? {}, P = hw.power!, G = P.grid, active = hw.incidents?.filter((i) => i.status === 'active') ?? [];
+  const here = hw.linked?.id === facility.id;
+  if (!here)
+    return (
+      <section className={`${s.panel} ${s.compact}`} aria-label="Live hardware">
+        <div className={s.head}>
+          <h2>Live hardware</h2>
+          <span className={s.linked}>{hw.linked ? `connected to ${hw.linked.name}` : 'not connected'}</span>
+        </div>
+        <p className={s.muted}>
+          {hw.linked
+            ? `The physical model is streaming into ${hw.linked.name}. Connect it here to run ${facility.name} on the real sensors: leak and valve, temperature and humidity, ventilation, occupancy, card approvals and the AI incident commander.`
+            : `The physical model is online but not connected to a project yet. Connect it to run ${facility.name} on the real sensors.`}
+        </p>
+        <div className={s.controls}>
+          <button onClick={() => void act('link')} disabled={!!busy}>
+            {busy === 'link' ? 'Connecting…' : `Connect the physical model here`}
+          </button>
+          {err && <span className={s.error}>{err}</span>}
+        </div>
+      </section>
+    );
+
+  const L = hw.live ?? {}, P = hw.power, G = P?.grid, active = hw.incidents?.filter((i) => i.status === 'active') ?? [];
+  const dc = copy.dataCenter && !!P && !!G;
+  const fan = typeof P?.fan === 'number' ? P.fan : typeof L.fan === 'number' ? L.fan : 0;
   const leak = L.leak_wet === true, smoke = L.smoke === true;
   const vsw = L.valve_switch_confirms_shut;
   const hot = typeof L.mech_temp_c === 'number' && L.mech_temp_c >= 31;
   const humid = active.some((i) => i.kind === 'humidity_spike');
   const pending = hw.agent?.pending?.filter(Boolean) ?? [];
-  const cooling = P.it_w ? (P.fan_w / P.it_w) * 100 : null;
+  const cooling = P?.it_w ? (P.fan_w / P.it_w) * 100 : null;
+  const fanTag = smoke ? 'fire mode: off' : hot ? 'overheat: full' : humid ? 'drying: full'
+    : dc && G?.state === 'active' ? 'grid: slowed' : 'normal';
 
   return (
     <section className={s.panel} aria-label="Live hardware">
@@ -123,74 +164,80 @@ export function LiveHardware({ facility }: { facility: Facility }) {
       </div>
 
       <div className={s.grid}>
-        <Card title="Data hall power" tag={P.it_measured ? 'measured' : 'no reading'} tone={G.state === 'active' ? 'ok' : undefined}>
-          <div className={s.big}>{fmt(P.total_w)}<span> W</span></div>
-          <Spark points={P.history} />
+        {dc && P && G && (
+          <Card title="Data hall power" tag={P.it_measured ? 'measured' : 'no reading'} tone={G.state === 'active' ? 'ok' : undefined}>
+            <div className={s.big}>{fmt(P.total_w)}<span> W</span></div>
+            <Spark points={P.history} />
+            <div className={s.rows}>
+              <div><span>Servers (laptop)</span><b>{fmt(P.it_w)} W</b></div>
+              <div><span>Cooling fan <i>estimated</i></span><b>{fmt(P.fan_w, 2)} W</b></div>
+            </div>
+          </Card>
+        )}
+
+        {dc && P && G && (
+          <Card title="Grid event" tag={G.state === 'active' ? `cutting ${G.depth}%` : G.state === 'requested' ? 'awaiting approval' : 'grid normal'}
+            tone={G.state === 'active' ? 'alert' : G.state === 'requested' ? 'warn' : undefined}>
+            <div className={s.big}>{G.state === 'normal' ? `${depth}%` : `${G.depth}%`}<span> cut</span></div>
+            <div className={s.rows}>
+              <div><span>Flexible AI jobs running</span><b>{P.jobs_running ?? '--'} / {P.jobs_total ?? '--'}</b></div>
+              {G.result && <div><span>Last event</span><b>{G.result.before_w} → {G.result.during_w} W (−{G.result.cut_pct}%)</b></div>}
+            </div>
+            {G.state === 'normal' && (
+              <div className={s.controls}>
+                <input type="range" min={10} max={90} step={5} value={depth} onChange={(e) => setDepth(Number(e.target.value))} aria-label="Cut depth" />
+                <button onClick={() => void act('grid-start')} disabled={!!busy}>Start grid event</button>
+              </div>
+            )}
+            {G.state === 'requested' && (
+              <div className={s.controls}>
+                <span className={s.hint}>Tap the manager card on the reader, or</span>
+                <button onClick={() => void act('approve')} disabled={!!busy}>Approve</button>
+                <button className={s.ghost} onClick={() => void act('decline')} disabled={!!busy}>Decline</button>
+              </div>
+            )}
+            {G.state === 'active' && (
+              <div className={s.controls}>
+                <span className={s.hint}>Push the joystick to change the cut live</span>
+                <button onClick={() => void act('grid-end')} disabled={!!busy}>End event</button>
+              </div>
+            )}
+          </Card>
+        )}
+
+        <Card title={copy.leak.title} tag={leak ? 'LEAK' : copy.leak.okTag} tone={leak ? 'alert' : 'ok'}>
           <div className={s.rows}>
-            <div><span>Servers (laptop)</span><b>{fmt(P.it_w)} W</b></div>
-            <div><span>Cooling fan <i>estimated</i></span><b>{fmt(P.fan_w, 2)} W</b></div>
+            <div><span>Leak sensor</span><b className={leak ? s.red : s.green}>{leak ? 'WET' : 'dry'}</b></div>
+            <div><span>Shutoff valve</span><b className={L.valve_open ? s.green : s.red}>{L.valve_open ? 'OPEN' : 'SHUT'}</b></div>
+            <div><span>Valve switch</span><b>{vsw === true ? 'confirms shut ✓' : vsw === false && !L.valve_open ? 'NOT SHUT ✗' : L.valve_open ? 'open' : '--'}</b></div>
+            <div><span>Alarm</span><b className={L.buzz ? s.red : undefined}>{L.buzz ? 'sounding' : 'quiet'}</b></div>
+            <div><span>Water saved</span><b>{typeof L.water_saved_l === 'number' && L.water_saved_l >= 1 ? `${Math.round(L.water_saved_l)} L` : '--'}</b></div>
           </div>
         </Card>
 
-        <Card title="Grid event" tag={G.state === 'active' ? `cutting ${G.depth}%` : G.state === 'requested' ? 'awaiting approval' : 'grid normal'}
-          tone={G.state === 'active' ? 'alert' : G.state === 'requested' ? 'warn' : undefined}>
-          <div className={s.big}>{G.state === 'normal' ? `${depth}%` : `${G.depth}%`}<span> cut</span></div>
-          <div className={s.rows}>
-            <div><span>Flexible AI jobs running</span><b>{P.jobs_running ?? '--'} / {P.jobs_total ?? '--'}</b></div>
-            {G.result && <div><span>Last event</span><b>{G.result.before_w} → {G.result.during_w} W (−{G.result.cut_pct}%)</b></div>}
-          </div>
-          {G.state === 'normal' && (
-            <div className={s.controls}>
-              <input type="range" min={10} max={90} step={5} value={depth} onChange={(e) => setDepth(Number(e.target.value))} aria-label="Cut depth" />
-              <button onClick={() => void act('grid-start')} disabled={!!busy}>Start grid event</button>
-            </div>
-          )}
-          {G.state === 'requested' && (
-            <div className={s.controls}>
-              <span className={s.hint}>Tap the manager card on the reader, or</span>
-              <button onClick={() => void act('approve')} disabled={!!busy}>Approve</button>
-              <button className={s.ghost} onClick={() => void act('decline')} disabled={!!busy}>Decline</button>
-            </div>
-          )}
-          {G.state === 'active' && (
-            <div className={s.controls}>
-              <span className={s.hint}>Push the joystick to change the cut live</span>
-              <button onClick={() => void act('grid-end')} disabled={!!busy}>End event</button>
-            </div>
-          )}
-        </Card>
-
-        <Card title="Cooling" tag={smoke ? 'fire mode: off' : hot ? 'hot aisle: full' : humid ? 'drying: full' : G.state === 'active' ? 'grid: slowed' : 'normal'}
-          tone={smoke ? 'alert' : hot || humid ? 'warn' : undefined}>
-          <div className={s.fanRow}>
-            <Fan level={P.fan} />
-            <div className={s.big}>{Math.round(P.fan * 100)}<span>% fan</span></div>
-          </div>
-          <div className={s.bar}><i style={{ width: `${Math.round(P.fan * 100)}%` }} /></div>
-          <div className={s.rows}>
-            <div><span>Cooling vs servers</span><b>{cooling == null ? '--' : `${cooling.toFixed(1)}%`}</b></div>
-          </div>
-        </Card>
-
-        <Card title="Hot aisle" tag="DHT11" tone={hot ? 'alert' : humid ? 'warn' : undefined}>
+        <Card title={copy.climate.title} tag={copy.climate.tag} tone={hot ? 'alert' : humid ? 'warn' : undefined}>
           <div className={s.pair}>
             <div><div className={s.big}>{fmt(L.mech_temp_c)}<span> °C</span></div><span className={s.muted}>temperature · alarm at 31</span></div>
             <div><div className={s.big}>{fmt(L.mech_rh_pct, 0)}<span> %</span></div><span className={s.muted}>humidity · spike +12</span></div>
           </div>
         </Card>
 
-        <Card title="Coolant loop" tag={leak ? 'LEAK' : 'dry'} tone={leak ? 'alert' : 'ok'}>
-          <div className={s.rows}>
-            <div><span>Leak sensor</span><b className={leak ? s.red : s.green}>{leak ? 'WET' : 'dry'}</b></div>
-            <div><span>Shutoff valve</span><b className={L.valve_open ? s.green : s.red}>{L.valve_open ? 'OPEN' : 'SHUT'}</b></div>
-            <div><span>Valve switch</span><b>{vsw === true ? 'confirms shut ✓' : vsw === false && !L.valve_open ? 'NOT SHUT ✗' : L.valve_open ? 'open' : '--'}</b></div>
-            <div><span>Water saved</span><b>{typeof L.water_saved_l === 'number' && L.water_saved_l >= 1 ? `${Math.round(L.water_saved_l)} L` : '--'}</b></div>
+        <Card title={copy.fan.title} tag={fanTag} tone={smoke ? 'alert' : hot || humid ? 'warn' : undefined}>
+          <div className={s.fanRow}>
+            <Fan level={fan} />
+            <div className={s.big}>{Math.round(fan * 100)}<span>% fan</span></div>
           </div>
+          <div className={s.bar}><i style={{ width: `${Math.round(fan * 100)}%` }} /></div>
+          {dc && (
+            <div className={s.rows}>
+              <div><span>Cooling vs servers</span><b>{cooling == null ? '--' : `${cooling.toFixed(1)}%`}</b></div>
+            </div>
+          )}
         </Card>
 
-        <Card title="People in the hall" tag="PIR" tone={L.lounge_occupied ? 'warn' : undefined}>
+        <Card title={copy.people.title} tag="PIR" tone={L.lounge_occupied ? 'warn' : undefined}>
           <div className={s.big}>{L.lounge_occupied ? 'Occupied' : 'Empty'}</div>
-          <span className={s.muted}>{L.lounge_occupied ? 'The AI adds evacuation steps to any alarm.' : 'No one detected near the racks.'}</span>
+          <span className={s.muted}>{L.lounge_occupied ? copy.people.occupied : copy.people.empty}</span>
         </Card>
 
         <Card title="Human approval" tag="RFID" tone={pending.length ? 'warn' : undefined}>
@@ -198,7 +245,7 @@ export function LiveHardware({ facility }: { facility: Facility }) {
             <>
               <div className={s.mid}>Waiting for the manager</div>
               <span className={s.muted}>{pending[pending.length - 1]}</span>
-              {G.state !== 'requested' && (
+              {G?.state !== 'requested' && (
                 <div className={s.controls}>
                   <span className={s.hint}>Tap the manager card, or</span>
                   <button onClick={() => void act('approve')} disabled={!!busy}>Approve</button>
@@ -231,11 +278,18 @@ export function LiveHardware({ facility }: { facility: Facility }) {
         </Card>
       </div>
 
+      {hw.linked?.error && (
+        <div className={s.note}>
+          Readings are live, but the last event didn’t reach this project’s incident timeline: {hw.linked.error}
+        </div>
+      )}
+
       <div className={s.foot}>
-        <span className={hw.boards?.esp32 ? s.on : s.off}>ESP32 data hall</span>
+        <span className={hw.boards?.esp32 ? s.on : s.off}>ESP32 sensors</span>
         <span className={hw.boards?.console ? s.on : s.off}>Operator console</span>
-        <span>Servers: {P.it_source ?? '--'}</span>
-        <span>Fan watts are estimated from its speed (fan law)</span>
+        {dc && <span>Servers: {P?.it_source ?? '--'}</span>}
+        {dc && <span>Fan watts are estimated from its speed (fan law)</span>}
+        {hw.linked?.by === 'deploy' && <span>Connected when this project was deployed</span>}
       </div>
     </section>
   );

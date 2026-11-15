@@ -57,7 +57,10 @@ def cmd_run(a) -> int:
 
     if a.haven_facility:
         os.environ["HAVEN_FACILITY"] = a.haven_facility
-    haven = HavenBridge(None if a.haven == "none" else a.haven)
+    # The project the kit was last connected to from the dashboard wins over --haven-facility.
+    haven = HavenBridge(None if a.haven == "none" else a.haven, link_path=FS_ROOT.parent / "haven_link.json")
+    if haven.facility:
+        print(f"[protect] physical model connected to: {haven.facility['name']} (saved; change it from the dashboard)")
     meter = flex = None
     if a.flex_workers != 0:
         from .power import FlexLoad, PowerMeter
