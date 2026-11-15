@@ -9,9 +9,17 @@ Serves the website plus its live feeds:
 * ERCOT: real Texas grid data (fuel mix, demand, Houston prices), refreshed
   every 5 minutes from ercot.com.
 
-    python bridge/server.py --tello-ip 172.20.10.14   # drone on your hotspot (tello_wifi.py)
-    python bridge/server.py                           # drone on its own TELLO-XXXXXX Wi-Fi
+    python bridge/server.py --drone                   # finds the drone on whatever Wi-Fi this computer is on
+    python bridge/server.py --tello-ip 172.20.10.14   # only ever talk to this address
     python bridge/server.py --mock                    # simulated drone and machines
+
+With --drone the bridge looks for the drone itself, on its own TELLO-XXXXXX Wi-Fi or on your
+hotspot, and follows it when its address changes (a phone hands out a new one now and then).
+
+Add --hotspot NAME --tello-ssid TELLO-XXXXXX to enable the site's "Connect drone to hotspot"
+button, which re-sends the hotspot to a drone that has fallen back to its own Wi-Fi (hotspot.py).
+Those two and the drone's last address are remembered in bridge/.drone.json, so after the first
+run a plain "python bridge/server.py" brings the drone up again (--no-drone turns that off).
 
 Then open http://localhost:8000
 """
@@ -33,6 +41,8 @@ from flask import Flask, Response, jsonify, request, send_from_directory, stream
 import agent
 
 import ercot
+import hotspot
+import tello_wifi
 
 ROOT = Path(__file__).resolve().parent.parent
 WEB_DIR = ROOT / "web"
@@ -41,8 +51,19 @@ MOVE_CM = 30
 TURN_DEG = 45
 FPS = 30
 RECONNECT_SECONDS = 5
+SEARCH_REPLY_S = 1.5         # how long a search waits for the drone to answer
+SEARCH_QUICK_TRIES = 12      # searches at RECONNECT_SECONDS before slowing to SEARCH_SLOW_S
+SEARCH_SLOW_S = 20
 STATE_TIMEOUT_S = 4          # no state packets for this long = drone gone
+KEEPALIVE_S = 8              # a Tello lands itself after 15 s without any command
+VIDEO_IDLE_S = 10            # close a /video stream that has had no frame for this long
+WIFI_POLL_S = 2              # how often the drone is asked for its Wi-Fi signal (wifi?)
+WIFI_CELL_CM = 25            # readings closer than this share one spot on the Wi-Fi map
+WIFI_MAX_SPOTS = 400
+TELEMETRY_FLOOR_HZ = 5      # link scores are relative to the best rate seen, at least this
 TELLO_DEFAULT_IP = "192.168.10.1"
+# Pages allowed to use endpoints that change this computer (switching its Wi-Fi).
+LOCAL_ORIGIN = re.compile(r"^https?://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$")
 GRID_MACHINES = ("baseline", "optimized")
 GRID_HISTORY = 480           # samples kept per machine (4 min at 2 Hz)
 GRID_STALE_S = 5
@@ -64,13 +85,56 @@ ACTIONS = {
 }
 
 
+# ---------------------------------------------------------------- expansion kit
+# The RoboMaster TT kit: a forward ToF distance sensor and an 8x8 dot-matrix display on the
+# drone's open-source controller, both driven with "EXT" SDK commands. Everything here is
+# optional: without the kit (nothing answers "EXT tof?"), the bridge behaves as before.
+GUARD_CM = 50                # a forward move must leave at least this much room ahead
+TOF_EMPTY_MM = 8000          # the sensor reports 8190 mm when nothing is in range
+TOF_FRESH_S = 3.0
+COUNTDOWN_S = 1.0
+
+
+def _pattern(rows, color):
+    """8 rows of 8 characters ('#' lit) -> the 64-character string 'EXT mled g' takes."""
+    return "".join("".join(color if c == "#" else "0" for c in row) for row in rows)
+
+
+# The display faces forward, toward whoever is in front of the drone, so sideways arrows are
+# drawn as those people see them: the drone moving to its left shows an arrow to their right.
+DISPLAY = {
+    "3": _pattern(["..####..", ".#....#.", "......#.", "...###..", "......#.", ".#....#.", "..####..", "........"], "p"),
+    "2": _pattern(["..####..", ".#....#.", "......#.", ".....#..", "...##...", "..#.....", ".######.", "........"], "p"),
+    "1": _pattern(["...##...", "..###...", "...##...", "...##...", "...##...", "...##...", "..####..", "........"], "p"),
+    "up": _pattern(["...##...", "..####..", ".######.", "...##...", "...##...", "...##...", "...##...", "........"], "b"),
+    "down": _pattern(["...##...", "...##...", "...##...", "...##...", ".######.", "..####..", "...##...", "........"], "b"),
+    "left": _pattern(["........", "..#.....", ".##.....", "########", ".##.....", "..#.....", "........", "........"], "b"),
+    "right": _pattern(["........", ".....#..", ".....##.", "########", ".....##.", ".....#..", "........", "........"], "b"),
+    "hover": _pattern(["........", "..####..", ".#....#.", ".#....#.", ".#....#.", ".#....#.", "..####..", "........"], "b"),
+    "toward": _pattern(["...##...", "...##...", "...##...", "...##...", "...##...", "........", "...##...", "........"], "r"),
+    "stop": _pattern(["#......#", ".#....#.", "..#..#..", "...##...", "...##...", "..#..#..", ".#....#.", "#......#"], "r"),
+    "flash": "p" * 64,
+}
+# What the display shows while each command runs (sideways mirrored, see above).
+SHOW_FOR = {"up": "up", "down": "down", "left": "right", "right": "left", "forward": "toward",
+            "back": "hover", "cw": "hover", "ccw": "hover", "land": "down"}
+
+
 # ---------------------------------------------------------------- drone
 
 class Drone:
     """Wraps the Tello connection (or a simulated one in mock mode)."""
 
-    def __init__(self, mock: bool, tello_ip: str = TELLO_DEFAULT_IP, enabled: bool = True):
+    def __init__(self, mock: bool, tello_ip: str | None = None, enabled: bool = True,
+                 last_ip: str | None = None, on_found=None):
+        """tello_ip None: search this computer's network for the drone (last_ip is tried too)."""
         self.mock = mock
+        self.search = tello_ip is None
+        self.last_ip = last_ip
+        self.on_found = on_found or (lambda ip: None)
+        self.paused = False          # set while hotspot.py is switching this computer's Wi-Fi
+        self._misses = 0
+        self._last_report = None
         self.disabled = not enabled and not mock
         self.tello = None
         self.frame_read = None
@@ -80,28 +144,138 @@ class Drone:
         self.mock_flying = False
         self._last_state = None
         self._last_state_at = 0.0
+        self._last_command_at = time.time()
+        self.expansion = mock        # the simulated drone has the kit
+        self.ahead_mm = None
+        self.ahead_at = 0.0
+        self.display = None          # the 64-character pattern on the dot matrix, if any
+        self.mock_ahead_cm = 220
+        # Wi-Fi map: where the drone is (dead reckoning from its moves since take-off, cm:
+        # x right, y forward, yaw clockwise from the take-off heading) and the signal there.
+        self.pos_x = self.pos_y = self.yaw = 0.0
+        self.wifi_lock = threading.Lock()
+        self.wifi_snr = None
+        self.wifi_at = 0.0
+        self.wifi_spots = {}
+        self._wifi_polling = False
+        self.wifi_source = None
+        self.wifi_rate = None
+        self.wifi_best_rate = TELEMETRY_FLOOR_HZ
 
-        if not mock and not self.disabled:
+        if self.disabled:
+            return
+        threading.Thread(target=self._tof_loop, daemon=True).start()
+        threading.Thread(target=self._wifi_loop, daemon=True).start()
+        if not mock:
             from djitellopy import Tello  # imported lazily so --mock works without it
-            self.tello = Tello(host=tello_ip)
+            try:
+                self.tello = Tello(host=tello_ip or last_ip or TELLO_DEFAULT_IP)
+            except OSError as exc:  # djitellopy binds UDP 8889, one program at a time
+                raise SystemExit(f"Can't open the drone's port ({exc}). Another bridge is probably still "
+                                 "running: find it with  lsof -nP -iUDP:8889  and stop it with  kill <PID>.")
             threading.Thread(target=self._connect_loop, daemon=True).start()
+            threading.Thread(target=self._keepalive_loop, daemon=True).start()
+
+    def _search(self):
+        """Finds the drone on this computer's network and points the connection at it.
+
+        Every address is sent "command" from djitellopy's own socket (port 8889): a Tello only
+        listens to the first address and port that spoke to it, so a search from any other
+        socket would make it ignore the bridge until it restarts. Raises LookupError if none answers.
+        """
+        from djitellopy import tello as dj
+        try:
+            net = tello_wifi.local_subnet()
+        except OSError:
+            raise LookupError("This computer isn't on a network.")
+        hosts = dict.fromkeys([str(h) for h in net.hosts()] + [self.last_ip or TELLO_DEFAULT_IP, TELLO_DEFAULT_IP])
+        for host in hosts:
+            # Entries are added but never removed: djitellopy's receiver thread stops for good
+            # if an address disappears from this dict between its check and its lookup.
+            dj.drones.setdefault(host, {"responses": [], "state": {}})["responses"].clear()
+        for host in hosts:
+            try:
+                dj.client_socket.sendto(b"command", (host, dj.Tello.CONTROL_UDP_PORT))
+            except OSError:
+                pass  # e.g. the network's broadcast address
+        deadline = time.time() + SEARCH_REPLY_S
+        found = None
+        while found is None and time.time() < deadline:
+            time.sleep(0.1)
+            found = next((h for h in hosts
+                          if any(r.strip().lower() == b"ok" for r in list(dj.drones[h]["responses"]))), None)
+        if found is None:
+            raise LookupError(f"No drone on this computer's network ({net}). If the drone is on, this "
+                              "computer is on a different Wi-Fi, or the drone is back on its own Wi-Fi.")
+        dj.drones[found]["responses"].clear()
+        if found != self.tello.address[0]:
+            print(f"Tello found at {found}")
+        self.tello.address = (found, dj.Tello.CONTROL_UDP_PORT)
+
+    def _report(self, message):
+        if message != self._last_report:  # the search repeats; say each thing once
+            self._last_report = message
+            print(message)
 
     def _connect_loop(self):
         while True:
-            if not self.connected:
+            wait = RECONNECT_SECONDS
+            if not self.connected and not self.paused:
                 try:
+                    if self.search:
+                        self._search()
                     self.tello.connect()
                     self.tello.streamon()
+                    # djitellopy reuses its frame reader; after the drone power-cycles that
+                    # reader's decoder is dead, so drop it and open a fresh one.
+                    if self.tello.background_frame_read is not None:
+                        self.tello.background_frame_read.stop()
+                        self.tello.background_frame_read = None
                     self.frame_read = self.tello.get_frame_read()
                     self._last_state, self._last_state_at = None, time.time()
+                    self._probe_expansion()
                     self.connected = True
                     self.error = None
-                    print(f"Connected to Tello. Battery {self.tello.get_battery()}%")
+                    self._misses, self._last_report = 0, None
+                    self.last_ip = self.tello.address[0]
+                    print(f"Connected to Tello at {self.last_ip}. Battery {self.tello.get_battery()}%")
+                    self.on_found(self.last_ip)
+                except LookupError as exc:  # the search found nothing
+                    self.error = str(exc)
+                    self._misses += 1
+                    if self._misses > SEARCH_QUICK_TRIES:
+                        wait = SEARCH_SLOW_S
+                    self._report(f"{exc} Still looking.")
                 except Exception as exc:  # drone off, wrong Wi-Fi, etc.
                     self.error = str(exc)
-                    print(f"Tello at {self.tello.address[0]} not reachable ({exc}); "
-                          f"retrying in {RECONNECT_SECONDS}s")
-            time.sleep(RECONNECT_SECONDS)
+                    self._report(f"Tello at {self.tello.address[0]} not reachable ({exc}); "
+                                 f"retrying every {RECONNECT_SECONDS}s")
+            time.sleep(wait)
+
+    def pause(self, paused: bool):
+        """hotspot.py: stop (or go back to) looking for the drone."""
+        self.paused = paused
+        if not paused:
+            self._misses = 0  # the network just changed; search at the quick pace again
+
+    def _keepalive_loop(self):
+        """Without a command every 15 s a hovering Tello lands on its own. A battery query
+        counts as a command and works on every Tello firmware ("keepalive" is SDK 3 only)."""
+        while True:
+            time.sleep(1)
+            if not (self.connected and self.tello.is_flying):
+                continue
+            if time.time() - self._last_command_at < KEEPALIVE_S:
+                continue
+            if not self.command_lock.acquire(blocking=False):
+                continue  # a flight command is running, which already counts
+            try:
+                self.tello.query_battery()
+            except Exception as exc:
+                print(f"Tello keepalive failed ({exc})")
+            finally:
+                self._last_command_at = time.time()
+                self.command_lock.release()
 
     def _alive(self) -> bool:
         """The Tello sends ~10 state packets a second; each one is a new dict."""
@@ -115,8 +289,12 @@ class Drone:
         if self.mock:
             frame = mock_frame(self.mock_flying)
         elif self.connected and self.frame_read is not None and self.frame_read.frame is not None:
+            frame = self.frame_read.frame
+            # djitellopy starts the reader with a black 400x300 placeholder; it is not video.
+            if frame.shape[:2] == (300, 400):
+                return None
             # djitellopy >= 2.5 returns RGB; OpenCV encodes BGR
-            frame = cv2.cvtColor(self.frame_read.frame, cv2.COLOR_RGB2BGR)
+            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
         else:
             return None
         ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
@@ -125,44 +303,291 @@ class Drone:
     def status(self):
         base = {"connected": self.connected, "mock": self.mock, "error": self.error}
         if self.disabled:
-            return {**base, "disabled": True, "battery": None, "height": None, "temp": None, "flying": False}
+            return {**base, "disabled": True, "battery": None, "height": None, "temp": None,
+                    "flying": False, "video": False, "ip": None}
+        base["wifi"] = self._wifi_status()
         if self.mock:
-            return {**base, "battery": 87, "height": 120 if self.mock_flying else 0,
-                    "temp": 41, "flying": self.mock_flying}
+            return {**base, **self._kit_status(), "battery": 87, "height": 120 if self.mock_flying else 0,
+                    "temp": 41, "flying": self.mock_flying, "video": True, "ip": None}
         if self.connected and not self._alive():
             self.connected = False
             self.error = "drone stopped sending telemetry"
             print("Tello went quiet; reconnecting")
         if not self.connected:
             return {**base, "connected": False, "battery": None, "height": None,
-                    "temp": None, "flying": False}
+                    "temp": None, "flying": False, "video": False, "ip": self.tello.address[0]}
         t = self.tello
-        return {**base, "battery": t.get_battery(), "height": t.get_height(),
-                "temp": t.get_temperature(), "flying": t.is_flying}
+        return {**base, **self._kit_status(), "battery": t.get_battery(), "height": t.get_height(),
+                "temp": t.get_temperature(), "flying": t.is_flying,
+                "video": self._has_frame(), "ip": t.address[0]}
+
+    def _has_frame(self) -> bool:
+        frame = self.frame_read.frame if self.frame_read is not None else None
+        return frame is not None and frame.shape[:2] != (300, 400)
 
     def command(self, action):
+        self._last_command_at = time.time()
         if action == "emergency":
             # Never blocked by a running command: motors stop immediately.
             if self.mock:
                 self.mock_flying = False
             else:
                 self.tello.emergency()
+            if self.command_lock.acquire(blocking=False):  # the display only if nothing else is talking
+                try:
+                    self._show("stop")
+                finally:
+                    self.command_lock.release()
             return
         if action not in ACTIONS:
             raise ValueError(f"unknown action '{action}'")
         if not self.command_lock.acquire(blocking=False):
-            raise BlockingIOError("drone is busy with another command")
+            # A Wi-Fi reading takes a moment; wait it out rather than refuse the tap.
+            if not (self._wifi_polling and self.command_lock.acquire(timeout=3.5)):
+                raise BlockingIOError("drone is busy with another command")
         try:
+            if action == "forward":
+                self._guard_forward()
+            if action == "takeoff":
+                for n in "321":  # tells the people nearby what's coming
+                    self._show(n)
+                    time.sleep(COUNTDOWN_S)
+                self._show("up")
+            else:
+                self._show(SHOW_FOR.get(action))
             if self.mock:
                 time.sleep(0.4)
-                if action == "takeoff":
-                    self.mock_flying = True
-                elif action == "land":
-                    self.mock_flying = False
+                self._mock_move(action)
             else:
                 ACTIONS[action](self.tello)
+            self._move_pose(action)
+            self._show(None if action == "land" else "hover")
+            if self.expansion:
+                self._read_tof()  # the view ahead changed; don't wait for the next poll
         finally:
             self.command_lock.release()
+
+    # ---- Wi-Fi map (the drone's own signal, wifi?, at each spot it flies to)
+
+    def _move_pose(self, action):
+        """Dead reckoning: each move is MOVE_CM and each turn TURN_DEG. Take-off starts a new map."""
+        if action == "takeoff":
+            with self.wifi_lock:
+                self.pos_x = self.pos_y = self.yaw = 0.0
+                self.wifi_spots.clear()
+        elif action in ("forward", "back", "left", "right"):
+            d = MOVE_CM if action in ("forward", "right") else -MOVE_CM
+            rad = math.radians(self.yaw)
+            if action in ("forward", "back"):
+                self.pos_x += d * math.sin(rad)
+                self.pos_y += d * math.cos(rad)
+            else:
+                self.pos_x += d * math.cos(rad)
+                self.pos_y -= d * math.sin(rad)
+        elif action == "cw":
+            self.yaw = (self.yaw + TURN_DEG) % 360
+        elif action == "ccw":
+            self.yaw = (self.yaw - TURN_DEG) % 360
+
+    def _height_cm(self) -> float:
+        if self.mock:
+            return 120.0 if self.mock_flying else 0.0
+        try:
+            return float(self.tello.get_height())
+        except Exception:
+            return 0.0
+
+    def _query_wifi(self):
+        """Asks the drone "wifi?". Returns (snr, replied): snr is its signal-to-noise ratio when it
+        reports one (it answers 0 in station mode); replied is False when the query got no answer
+        and None when a flight command held the link, so nothing was learned."""
+        if not self.command_lock.acquire(blocking=False):
+            return None, None
+        self._wifi_polling = True
+        try:
+            reply = self.tello.send_command_with_return("wifi?", timeout=3)
+            self._last_command_at = time.time()  # a query counts as a command for auto-land
+            if str(reply).startswith("Aborting"):
+                # A late reply would be read as the next command's answer, so drop anything queued.
+                try:
+                    self.tello.get_own_udp_object()["responses"].clear()
+                except Exception:
+                    pass
+                return None, False
+        except Exception:
+            return None, False
+        finally:
+            self._wifi_polling = False
+            self.command_lock.release()
+        match = re.match(r"^\s*(\d{1,3})\s*$", str(reply))
+        snr = int(match.group(1)) if match else 0
+        return (snr or None), True
+
+    def _count_telemetry(self, seconds):
+        """Telemetry packets per second over the next few seconds. The Tello sends about 10 a
+        second; a weak link loses them. Each packet is a new dict in djitellopy."""
+        last = self.tello.get_current_state()
+        count, end = 0, time.time() + seconds
+        while time.time() < end:
+            time.sleep(0.02)
+            state = self.tello.get_current_state()
+            if state is not last:
+                count, last = count + 1, state
+        return count / seconds
+
+    def _signal(self):
+        """One reading, 0-100, and what it came from: the drone's SNR when it reports one,
+        otherwise link quality (telemetry packets arriving, and whether the query was answered)."""
+        if self.mock:
+            time.sleep(WIFI_POLL_S)
+            dist = math.hypot(self.pos_x - 150, self.pos_y - 200, self._height_cm() - 100)
+            return max(5, min(95, round(92 - dist / 6 + np.random.uniform(-3, 3)))), "snr", None
+        if not self.connected:
+            time.sleep(WIFI_POLL_S)
+            return None, None, None
+        rate = self._count_telemetry(WIFI_POLL_S)
+        snr, replied = self._query_wifi()
+        if snr:
+            return snr, "snr", rate
+        if replied is False:
+            return 0, "link", rate  # the drone didn't answer at all
+        # Scored against the best rate this link has managed, so the map shows it weakening.
+        self.wifi_best_rate = max(self.wifi_best_rate, rate)
+        return round(100 * min(1.0, rate / self.wifi_best_rate)), "link", rate
+
+    def _wifi_loop(self):
+        while True:
+            try:
+                value, source, rate = self._signal()
+            except Exception as exc:
+                print(f"Wi-Fi reading failed ({exc})")
+                time.sleep(WIFI_POLL_S)
+                continue
+            if value is None or not self.connected:
+                continue
+            z = self._height_cm()
+            key = (round(self.pos_x / WIFI_CELL_CM), round(self.pos_y / WIFI_CELL_CM), round(z / WIFI_CELL_CM))
+            now = time.time()
+            with self.wifi_lock:
+                self.wifi_snr, self.wifi_at = value, now
+                self.wifi_source, self.wifi_rate = source, rate
+                spot = self.wifi_spots.get(key)
+                if spot:
+                    spot["snr"] = round(0.6 * spot["snr"] + 0.4 * value, 1)
+                    spot["n"] += 1
+                elif len(self.wifi_spots) < WIFI_MAX_SPOTS:
+                    self.wifi_spots[key] = {"x": round(self.pos_x), "y": round(self.pos_y), "z": round(z),
+                                            "snr": float(value), "n": 1}
+
+    def _wifi_status(self):
+        with self.wifi_lock:
+            return {"snr": self.wifi_snr if time.time() - self.wifi_at < 10 else None,
+                    "source": self.wifi_source,
+                    "telemetry_hz": round(self.wifi_rate, 1) if self.wifi_rate is not None else None,
+                    "x": round(self.pos_x), "y": round(self.pos_y), "yaw": round(self.yaw),
+                    "spots": [dict(s) for s in self.wifi_spots.values()]}
+
+    # ---- expansion kit (dot matrix + ToF)
+
+    def _ext(self, command, timeout=2):
+        """An "EXT" command for the kit. Returns the reply, or None if nothing answered."""
+        if self.mock:
+            return None
+        reply = self.tello.send_command_with_return("EXT " + command, timeout=timeout)
+        if reply.startswith("Aborting"):
+            # A late reply would be read as the next command's answer, so drop anything queued.
+            try:
+                self.tello.get_own_udp_object()["responses"].clear()
+            except Exception:
+                pass
+            return None
+        return reply
+
+    def _probe_expansion(self):
+        reply = self._ext("tof?") or ""
+        self.expansion = reply.startswith("tof")
+        print("Expansion kit (dot matrix + ToF):", "found" if self.expansion else "not attached")
+        if self.expansion:
+            self._show(None)
+
+    def _read_tof(self):
+        """Distance ahead in mm from the ToF sensor; None when nothing is in range."""
+        if self.mock:
+            mm = self.mock_ahead_cm * 10
+        else:
+            match = re.search(r"tof\s+(\d+)", self._ext("tof?") or "")
+            if not match:
+                return self.ahead_mm
+            mm = int(match.group(1))
+        self.ahead_at = time.time()
+        self.ahead_mm = None if mm >= TOF_EMPTY_MM else mm
+        return self.ahead_mm
+
+    def _tof_loop(self):
+        """Keeps a fresh distance-ahead reading, between commands (never during one)."""
+        while True:
+            time.sleep(0.5)
+            if not (self.connected and self.expansion):
+                continue
+            if not self.command_lock.acquire(blocking=False):
+                continue
+            try:
+                self._read_tof()
+            except Exception as exc:
+                print(f"ToF read failed ({exc})")
+            finally:
+                self.command_lock.release()
+
+    def _guard_forward(self):
+        if not self.expansion:
+            return
+        mm = self._read_tof()  # a fresh reading, not the last poll
+        if mm is not None and mm / 10 - MOVE_CM < GUARD_CM:
+            self._show("stop")
+            raise ValueError(f"Something is {mm / 1000:.1f} m ahead. Moving forward {MOVE_CM} cm would "
+                             f"bring the drone within {GUARD_CM} cm of it. Turn or back up first.")
+
+    def _show(self, name):
+        """Puts a pattern on the dot matrix (None clears it)."""
+        if not self.expansion:
+            return
+        pattern = DISPLAY.get(name) if name else None
+        self.display = pattern
+        if not self.mock:
+            self._ext("mled g " + (pattern or "0" * 64))
+
+    def flash(self):
+        """A short flash when a frame is captured."""
+        if not self.expansion or not self.command_lock.acquire(blocking=False):
+            return
+        try:
+            before = self.display
+            self._show("flash")
+            time.sleep(0.15)
+            self.display = before
+            if not self.mock:
+                self._ext("mled g " + (before or "0" * 64))
+        finally:
+            self.command_lock.release()
+
+    def _kit_status(self):
+        fresh = self.expansion and time.time() - self.ahead_at < TOF_FRESH_S
+        return {"expansion": self.expansion,
+                "ahead_cm": round(self.ahead_mm / 10) if fresh and self.ahead_mm is not None else None,
+                "display": self.display}
+
+    def _mock_move(self, action):
+        """The simulated drone, including a wall ahead that forward moves approach."""
+        if action == "takeoff":
+            self.mock_flying, self.mock_ahead_cm = True, 220
+        elif action == "land":
+            self.mock_flying = False
+        elif action == "forward":
+            self.mock_ahead_cm = max(10, self.mock_ahead_cm - MOVE_CM)
+        elif action == "back":
+            self.mock_ahead_cm += MOVE_CM
+        elif action in ("cw", "ccw"):
+            self.mock_ahead_cm = {220: 140, 140: 900, 900: 220}.get(self.mock_ahead_cm, 220)
 
     def shutdown(self):
         if self.mock or not self.connected:
@@ -359,7 +784,7 @@ class ErcotFeed:
 
 # ---------------------------------------------------------------- app
 
-def create_app(drone: Drone, grid: Grid, feed: ErcotFeed) -> Flask:
+def create_app(drone: Drone, grid: Grid, feed: ErcotFeed, joiner: hotspot.HotspotJoiner) -> Flask:
     app = Flask(__name__, static_folder=None)
 
     @app.after_request
@@ -383,7 +808,23 @@ def create_app(drone: Drone, grid: Grid, feed: ErcotFeed) -> Flask:
     # drone
     @app.get("/api/status")
     def status():
-        return jsonify(drone.status())
+        return jsonify({**drone.status(), "hotspot": joiner.state()})
+
+    @app.route("/api/drone/hotspot", methods=["POST", "OPTIONS"])
+    def drone_hotspot():
+        """Sends the hotspot to a drone that is back on its own Wi-Fi (see hotspot.py)."""
+        if request.method == "OPTIONS":
+            return "", 204
+        origin = request.headers.get("Origin")
+        if origin and not LOCAL_ORIGIN.match(origin) and request.host_url.rstrip("/") != origin:
+            return jsonify(error="only a page on this computer can switch its Wi-Fi"), 403
+        try:
+            joiner.start()
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+        except BlockingIOError as exc:
+            return jsonify(error=str(exc)), 409
+        return jsonify(joiner.state()), 202
 
     @app.route("/api/command", methods=["POST", "OPTIONS"])
     def command():
@@ -405,9 +846,13 @@ def create_app(drone: Drone, grid: Grid, feed: ErcotFeed) -> Flask:
     @app.get("/video")
     def video():
         def stream():
-            while True:
+            # Ends after VIDEO_IDLE_S without frames, so a stream opened while the drone is
+            # away does not hold a server thread forever; the page reopens it on reconnect.
+            last_frame = time.time()
+            while time.time() - last_frame < VIDEO_IDLE_S:
                 jpg = drone.jpeg()
                 if jpg:
+                    last_frame = time.time()
                     yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpg + b"\r\n"
                 time.sleep(1 / FPS)
 
@@ -420,8 +865,12 @@ def create_app(drone: Drone, grid: Grid, feed: ErcotFeed) -> Flask:
         jpg = drone.jpeg()
         if not jpg:
             return jsonify(error="no camera frame available"), 503
+        drone.flash()
         CAPTURE_DIR.mkdir(exist_ok=True)
-        name = time.strftime("%Y%m%d-%H%M%S") + ("-sim" if drone.mock else "") + ".jpg"
+        # Milliseconds in the name: a survey can capture twice within one second.
+        now = time.time()
+        stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(now)) + f"-{int(now * 1000) % 1000:03d}"
+        name = stamp + ("-sim" if drone.mock else "") + ".jpg"
         (CAPTURE_DIR / name).write_bytes(jpg)
         return jsonify(snapshot_info(name))
 
@@ -515,9 +964,18 @@ def main():
                         help="simulated drone and workload machines, no hardware needed")
     parser.add_argument("--mock-grid", action="store_true",
                         help="simulate only the two workload machines (real drone, fake watts)")
-    parser.add_argument("--drone", action="store_true", help="connect to the Tello drone (off by default)")
+    parser.add_argument("--drone", action="store_true",
+                        help="connect to the Tello drone, finding it on this computer's network "
+                             "(on by default once bridge/.drone.json exists)")
+    parser.add_argument("--no-drone", action="store_true", help="don't connect to the drone")
     parser.add_argument("--tello-ip", default=None,
-                        help="drone IP when it has joined a router via tello_wifi.py (implies --drone)")
+                        help="only talk to the drone at this address instead of searching (implies --drone)")
+    parser.add_argument("--hotspot", help="hotspot name for the site's 'Connect drone to hotspot' button (remembered)")
+    parser.add_argument("--tello-ssid",
+                        help="the drone's own Wi-Fi name(s) for that button, comma-separated, "
+                             "e.g. TELLO-ABC123,RMTT-ABC123 (remembered)")
+    parser.add_argument("--hotspot-password-file", default=str(Path(__file__).resolve().parent / ".hotspot"),
+                        help="file with the hotspot password on its first line (default: bridge/.hotspot)")
     parser.add_argument("--no-ercot", action="store_true", help="don't fetch live ERCOT data")
     parser.add_argument("--host", default="127.0.0.1",
                         help="use 0.0.0.0 to let other devices on the network view the site")
@@ -525,17 +983,27 @@ def main():
     args = parser.parse_args()
 
     agent.load_env_file()
-    use_drone = args.drone or args.tello_ip is not None
-    drone = Drone(mock=args.mock, tello_ip=args.tello_ip or TELLO_DEFAULT_IP, enabled=use_drone)
+    config = hotspot.load_config()
+    hotspot_name = args.hotspot or config.get("hotspot")
+    tello_ssids = ([s.strip() for s in args.tello_ssid.split(",") if s.strip()] if args.tello_ssid
+                   else config.get("tello_ssids") or [])
+    if args.hotspot or args.tello_ssid:
+        hotspot.save_config(hotspot=hotspot_name, tello_ssids=tello_ssids)
+    remembered = bool(config) or bool(args.hotspot or args.tello_ssid)
+    use_drone = not args.no_drone and (args.drone or args.tello_ip is not None or remembered)
+    drone = Drone(mock=args.mock, tello_ip=args.tello_ip, enabled=use_drone, last_ip=config.get("last_ip"),
+                  on_found=lambda ip: hotspot.save_config(last_ip=ip))
     grid = Grid(mock=args.mock or args.mock_grid)
     feed = ErcotFeed(enabled=not args.no_ercot)
+    joiner = hotspot.HotspotJoiner(hotspot_name, tello_ssids, args.hotspot_password_file, mock=args.mock,
+                                   drone_connected=lambda: drone.connected, pause_drone=drone.pause)
     atexit.register(drone.shutdown)
-    mode = "mock" if args.mock else (f"Tello at {args.tello_ip or TELLO_DEFAULT_IP}" if use_drone else "no drone") + (
+    mode = "mock" if args.mock else (f"Tello at {args.tello_ip}" if args.tello_ip else "finding the Tello" if use_drone else "no drone") + (
         ", simulated machines" if args.mock_grid else "")
     a = agent.status()
     mode += f"; inspection agent {'on (' + a['model'] + ')' if a['available'] else 'off: ' + a['reason']}"
     print(f"SiteStar bridge on http://{args.host}:{args.port}  ({mode})")
-    create_app(drone, grid, feed).run(host=args.host, port=args.port, threaded=True)
+    create_app(drone, grid, feed, joiner).run(host=args.host, port=args.port, threaded=True)
 
 
 if __name__ == "__main__":
