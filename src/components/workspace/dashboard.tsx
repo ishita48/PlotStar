@@ -136,7 +136,7 @@ export function Dashboard() {
           </div>
           <div className="topbar-right">
             <Button asChild variant="outline" size="sm">
-              <Link href="/dashboard-2">
+              <Link href="/studio">
                 Open the workspace <ArrowUpRight size={14} />
               </Link>
             </Button>

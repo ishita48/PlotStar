@@ -160,7 +160,6 @@ function Close() {
       <footer className="ps-foot">
         <Wordmark />
         <nav aria-label="Product">
-          <Link href="/dashboard-2">Guided walkthrough</Link>
           <Link href="/projects">Projects dashboard</Link>
           <Link href="/explore">Explore</Link>
           <Link href="/studio">Data center studio</Link>
@@ -204,7 +203,6 @@ function Palette({ onClose, onType }: { onClose: () => void; onType: (id: TypeSt
 
   const actions: Action[] = useMemo(() => [
     { id: 'start', group: 'Go', label: 'Start a project', hint: 'Find, design, protect', run: go('/studio') },
-    { id: 'walk', group: 'Go', label: 'Guided walkthrough', hint: 'Sample sites, every project type', run: go('/dashboard-2') },
     { id: 'explore', group: 'Go', label: 'Explore the map', hint: 'Real parcels, public data', run: go('/explore') },
     { id: 'studio', group: 'Go', label: 'Open the data center studio', run: go('/studio') },
     { id: 'projects', group: 'Go', label: 'Open the projects dashboard', run: go('/projects') },

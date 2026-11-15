@@ -216,7 +216,6 @@ const DEEPER = [
   ['/studio/agent', 'How the AI works', 'Watch the Deep Agents evaluate a parcel, live.'],
   ['/studio/data', 'The data platform', 'Search, vectors, geo and change streams in Atlas.'],
   ['/explore', 'Explore the map', 'Real CoStar parcels, gated by public data.'],
-  ['/dashboard-2', 'Guided walkthrough', 'Every project type, end to end, on sample sites.'],
 ] as const;
 
 export function Sources() {
