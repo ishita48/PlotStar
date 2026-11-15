@@ -5,6 +5,7 @@ import {
   MoveVertical, OctagonX, PlaneLanding, PlaneTakeoff, RotateCcw, RotateCw, ScanLine, Thermometer,
 } from 'lucide-react';
 import { captureSrc, LABEL, SWEEP_STOPS, useDrone, type Action, type DroneStatus, type Phase } from './use-drone';
+import { FrameInsight } from '../../sponsors/gemini/frame-insight';
 
 const PILL: Record<Phase, { text: string; tone: string }> = {
   checking: { text: 'Checking', tone: 'idle' }, 'bridge-offline': { text: 'Bridge offline', tone: 'off' },
@@ -112,12 +113,13 @@ export function DroneSurvey({ siteName, onContinue, busy = false }: { siteName: 
         {d.captures.length ? (
           <ul className="st-dr-captures">
             {d.captures.slice(0, 12).map((c) => (
-              <li key={c.url}>
+              <li key={c.url} style={{ position: 'relative' }}>
                 <a href={captureSrc(c)} target="_blank" rel="noopener">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={captureSrc(c)} alt={`Aerial capture at ${clock(c.time)}`} loading="lazy" />
                   <span>{clock(c.time)}{c.simulated && <span className="st-tag st-tag-simulated">Test pattern</span>}</span>
                 </a>
+                <FrameInsight src={captureSrc(c)} simulated={c.simulated} />
               </li>
             ))}
           </ul>

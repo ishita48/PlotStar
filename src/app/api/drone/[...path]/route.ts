@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { guardOrigin, HttpError, readJSON, routeError } from '@/lib/http';
+import { guardOrigin, HttpError, localOnly, readJSON, routeError } from '@/lib/http';
+import { requireMobileKey } from '@/lib/haven/mobile';
 
 // Proxy to the Tello bridge (bridge/server.py) running on the demo laptop. The dashboard talks
 // only to its own origin; the bridge itself accepts local origins only.
@@ -21,6 +22,15 @@ const actions = z.enum([
 ]);
 const captureName = /^[0-9]{8}-[0-9]{6}(-[0-9]{3})?(-sim)?\.jpg$/;
 type Context = { params: Promise<{ path: string[] }> };
+
+/** The drone flies only from this laptop, or from the team's phone app with its token: never through a public tunnel. */
+function guardDrone(req: Request) {
+  try {
+    requireMobileKey(req);
+  } catch {
+    localOnly(req);
+  }
+}
 
 async function bridge(path: string, init: RequestInit & { timeoutMs?: number } = {}) {
   const { timeoutMs = 4000, signal, ...rest } = init;
@@ -44,6 +54,7 @@ async function relay(res: Response) {
 
 export async function GET(req: Request, ctx: Context) {
   try {
+    guardDrone(req);
     const path = (await ctx.params).path.join('/');
     if (path === 'status') {
       // Never an error: "bridge offline" is a normal state the page renders.
@@ -90,6 +101,7 @@ export async function GET(req: Request, ctx: Context) {
 
 export async function POST(req: Request, ctx: Context) {
   try {
+    guardDrone(req);
     guardOrigin(req);
     const path = (await ctx.params).path.join('/');
     if (path === 'command') {

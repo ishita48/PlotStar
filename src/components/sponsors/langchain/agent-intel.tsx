@@ -8,12 +8,14 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Bot, Brain, Calculator, Check, CircleAlert, CircleCheck, ClipboardList, Copy, Database, ExternalLink, FileSearch,
-  GitBranch, Hourglass, ListChecks, Loader2, Network, ShieldCheck, Timer, Wrench, X,
+  GitBranch, Hourglass, ListChecks, Loader2, Network, Scale, ShieldCheck, Timer, Wrench, X,
 } from 'lucide-react';
+import { CitationChips } from '../costar/citation-chips';
+import { DebateView } from './debate-view';
 import { Markdown } from './markdown';
 import { evidenceUrl, type AgentNode, type Evidence, type Finding, type RunState, type Score } from './use-agent-run';
 
-type Tab = 'graph' | 'timeline' | 'evidence';
+type Tab = 'graph' | 'timeline' | 'evidence' | 'debate';
 type Pick = { kind: 'node'; id: string } | { kind: 'evidence'; id: string } | null;
 
 const AGENT_TITLE: Record<string, string> = {
@@ -21,6 +23,7 @@ const AGENT_TITLE: Record<string, string> = {
   'financial-feasibility': 'Financial Feasibility', 'resource-infrastructure': 'Resource & Infrastructure',
   'community-sustainability': 'Community & Sustainability', 'design-simulation': 'Design & Simulation',
   'safety-operations': 'Safety & Operations', 'general-purpose': 'General purpose',
+  'imagery-analyst': 'Imagery Analyst (Gemini)', 'design-editor': 'Design Editor',
 };
 const KIND_LABEL: Record<string, string> = { agent: 'Deep Agent', model: 'Model call', tool: 'Tool', mcp: 'MCP tool', compute: 'Computation', verify: 'Verification', plan: 'Planning' };
 const title = (name: string) => AGENT_TITLE[name] ?? name;
@@ -75,7 +78,7 @@ export function AgentIntel({ s, onClose, onDecide, page = false }: {
           </div>
         </div>
         <nav className="ai-tabs" role="tablist">
-          {([['graph', 'Live graph', GitBranch], ['timeline', 'Timeline', Timer], ['evidence', 'Evidence & decisions', FileSearch]] as const).map(([k, l, I]) => (
+          {([['graph', 'Live graph', GitBranch], ['timeline', 'Timeline', Timer], ['evidence', 'Evidence & decisions', FileSearch], ...(s.debate ? [['debate', 'Debate', Scale]] as const : [])] as const).map(([k, l, I]) => (
             <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}><I size={13} /> {l}</button>
           ))}
         </nav>
@@ -86,7 +89,8 @@ export function AgentIntel({ s, onClose, onDecide, page = false }: {
         <div className="ai-approval" role="alert">
           <ShieldCheck size={16} />
           <div><b>A person must approve this action</b>
-            {s.approval.actions.map((a, i) => <p key={i}><code>{a.name}</code> {Object.entries(a.args ?? {}).map(([k, v]) => `${k}: ${String(v)}`).join(' · ')}</p>)}
+            {s.approval.actions.map((a, i) => <p key={i}><code>{a.name}</code> {a.name === 'apply_layout_edit' && a.description ? a.description
+              : Object.entries(a.args ?? {}).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : String(v)}`).join(' · ')}</p>)}
           </div>
           <button className="st-btn primary" onClick={() => onDecide?.(true)}>Approve</button>
           <button className="st-btn" onClick={() => onDecide?.(false)}>Reject</button>
@@ -98,6 +102,7 @@ export function AgentIntel({ s, onClose, onDecide, page = false }: {
         <div className="ai-main">
           {!s.runId && s.status !== 'starting' ? <Empty /> : tab === 'graph' ? <LiveGraph s={s} nodes={nodes} pick={pick} onPick={setPick} now={now} />
             : tab === 'timeline' ? <Timeline s={s} nodes={nodes} onPick={setPick} pick={pick} now={now} />
+            : tab === 'debate' && s.debate ? <DebateView d={s.debate} />
             : <EvidenceView s={s} onPick={setPick} />}
         </div>
         {pick && (
@@ -306,6 +311,8 @@ function DecisionCard({ s }: { s: RunState }) {
         {v && <span className={`ai-verify ${v.grounded ? 'ok' : 'warn'}`}><ShieldCheck size={11} /> {v.grounded ? `${v.numbers_checked} numbers verified` : `${v.unverified_numbers.length} unverified number(s)`}</span>}
       </div>
       {s.answer ? <Markdown text={s.answer} className="ai-answer" /> : <p className="ai-dim">{s.status === 'error' ? 'The run failed before an answer.' : 'Waiting for the orchestrator to combine the findings…'}</p>}
+      <CitationChips citations={s.citations} />
+      {s.designEdits.map((d, i) => <p key={i} className="ai-dim"><Check size={11} /> Applied after approval: {d.headline}</p>)}
     </div>
   );
 }
@@ -359,6 +366,7 @@ function EvidenceView({ s, onPick }: { s: RunState; onPick: (p: Pick) => void })
       {s.score && <ScoreCard sc={s.score} eChip={eChip} />}
       {s.answer && (
         <section className="ai-block"><h3>Recommendation</h3><Markdown text={s.answer} className="ai-answer" />
+          <CitationChips citations={s.citations} />
           {s.verification && <p className={`ai-verify-line ${s.verification.grounded ? 'ok' : 'warn'}`}><ShieldCheck size={13} /> {s.verification.note}</p>}
         </section>
       )}

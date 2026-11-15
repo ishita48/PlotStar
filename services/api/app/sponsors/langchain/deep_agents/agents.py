@@ -25,6 +25,8 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app import config
 from app.sponsors.langchain.deep_agents import tools as T
+from app.sponsors.langchain.deep_agents import citations, design_agent
+from app.sponsors.gemini import specialist as gemini_specialist
 from app.sponsors.langchain.deep_agents.mcp_client import MCP
 from app.sponsors.langchain.deep_agents.runtime import (
     AGENT_INFO,
@@ -207,11 +209,16 @@ SPECIALISTS: list[dict[str, Any]] = [
                 "say so in next_steps; you cannot notify anyone yourself."),
 ]
 
+SPECIALISTS.append(design_agent.SPEC)  # changes the layout; every change waits for a person's approval
+SPECIALISTS.append(gemini_specialist.SPEC)  # runs on Gemini (its own model and tools): reads the Vexcel imagery
+
 ORCH_PROMPT = """You are the PlotStar orchestrator for GeoStar, a site-intelligence workspace for data center developers.
 You coordinate six specialist subagents with the `task` tool. You never compute or estimate a number yourself.
 
 Specialists (subagent_type): property-intelligence, financial-feasibility, resource-infrastructure,
-community-sustainability, design-simulation, safety-operations. Do not use general-purpose.
+community-sustainability, design-simulation, design-editor, safety-operations, imagery-analyst. Do not use general-purpose.
+imagery-analyst runs on Google Gemini: use it for what physically occupies or surrounds the site (existing buildings,
+trees, water, paving from the Vexcel aerial; measured neighbour heights; capture dates and oblique views).
 
 How you work:
 1. Start every request with write_todos: a short plan (2-6 items) naming the specialists you will use and why.
@@ -233,6 +240,10 @@ What-ifs about the design (cooling, capacity, redundancy, storeys, setback): del
 metrics change (resource-infrastructure for power and water, financial-feasibility for money, design-simulation for the
 layout); each runs what_if. Changes are previews the user applies in the Studio.
 
+Layout changes the user asks for (move, add, remove or rotate an object): delegate to design-editor with the request
+in the user's words; it previews the change and a person approves it before it applies. design-simulation is for
+brief what-ifs (capacity, cooling, redundancy), design-editor for the drawing itself.
+
 Incidents: delegate to safety-operations. To notify teams, call dispatch_safety_alert; a person must approve it.
 
 Final answer: plain language, under 170 words. For an evaluation: the verdict and score from compute_site_score, the two
@@ -250,7 +261,7 @@ def _model(slug: str, title: str, role: str, model: str) -> Any:
 def _register_info() -> None:
     AGENT_INFO[ORCHESTRATOR] = dict(title="PlotStar Orchestrator", role="Plans, delegates, scores and answers.", model=ORCH_MODEL)
     for s in SPECIALISTS:
-        AGENT_INFO[s["name"]] = dict(title=s["title"], role=s["role"], model=SUB_MODEL)
+        AGENT_INFO[s["name"]] = dict(title=s["title"], role=s["role"], model=s.get("model_name", SUB_MODEL))
     AGENT_INFO["general-purpose"] = dict(title="General purpose", role="Deep Agents default subagent.", model=ORCH_MODEL)
 
 
@@ -282,7 +293,7 @@ def graph() -> Any:
         from deepagents import FilesystemPermission, create_deep_agent
         from deepagents.backends import FilesystemBackend
         from langchain.agents.middleware import ModelCallLimitMiddleware, TodoListMiddleware
-        G, C = T.geostar_tools(), T.costar_tools()
+        G, C = T.geostar_tools() | design_agent.tools() | gemini_specialist.tools(), T.costar_tools()
         missing: list[str] = []
 
         def pick(names: list[str]) -> list[Any]:
@@ -295,11 +306,14 @@ def graph() -> Any:
         subagents = []
         for s in SPECIALISTS:
             spec: dict[str, Any] = dict(name=s["name"], description=s["description"], system_prompt=s["prompt"] + COMMON,
-                                        tools=pick(s["tools"]), model=_model(s["name"], s["title"], s["role"], SUB_MODEL),
+                                        tools=pick(s["tools"]),
+                                        model=s["make_model"]() if s.get("make_model") else _model(s["name"], s["title"], s["role"], SUB_MODEL),
                                         response_format=Findings,
                                         middleware=[ModelCallLimitMiddleware(run_limit=SUB_CALL_LIMIT, exit_behavior="end")])
             if s.get("skills"):
                 spec["skills"] = ["/deep_skills/"]
+            if s.get("interrupt_on"):
+                spec["interrupt_on"] = s["interrupt_on"]
             subagents.append(spec)
         saver, where = _checkpointer()
         g = create_deep_agent(
@@ -402,7 +416,8 @@ def _execute(run: Run, message: str, thread_id: str, root_name: str, stage: str)
         msgs = state.values.get("messages") or []
         run.answer = next((_text(m.content) for m in reversed(msgs) if getattr(m, "type", "") == "ai" and _text(m.content)), "")
         run.verification = verify(run)
-        run.emit("answer", answer=run.answer, verification=run.verification, proposal=run.proposal)
+        run.citations = citations.cite(run.evidence, run.answer)  # local only: reads full CoStar evidence
+        run.emit("answer", answer=run.answer, verification=run.verification, proposal=run.proposal, citations=run.citations)
         run.set_status("done")
     except Exception as e:  # noqa: BLE001
         run.error = f"{type(e).__name__}: {e}"
@@ -474,7 +489,7 @@ def architecture() -> dict[str, Any]:
     except Exception as e:  # noqa: BLE001
         _GRAPH.setdefault("error", f"{type(e).__name__}: {e}")
     tools_by = _GRAPH.get("tools") or {}
-    allt = {**T.geostar_tools(), **T.costar_tools()}
+    allt = {**T.geostar_tools(), **design_agent.tools(), **gemini_specialist.tools(), **T.costar_tools()}
 
     def tinfo(n: str) -> dict[str, Any]:
         t = allt.get(n)
@@ -486,9 +501,9 @@ def architecture() -> dict[str, Any]:
                    kind="orchestrator", tools=[tinfo("compute_site_score"), tinfo("dispatch_safety_alert"),
                                                dict(name="task", display="Delegate to a subagent", provider="deepagents", kind="delegation", available=True),
                                                dict(name="write_todos", display="Plan", provider="deepagents", kind="planning", available=True)],
-                   skills=["site-scoring", "costar-evidence"], approval=["dispatch_safety_alert"])]
+                   skills=["site-scoring", "costar-evidence"], approval=["dispatch_safety_alert", "apply_layout_edit (design-editor)"])]
     for s in SPECIALISTS:
-        agents.append(dict(name=s["name"], title=s["title"], role=s["role"], description=s["description"], model=SUB_MODEL,
+        agents.append(dict(name=s["name"], title=s["title"], role=s["role"], description=s["description"], model=s.get("model_name", SUB_MODEL),
                            kind="subagent", tools=[tinfo(n) for n in tools_by.get(s["name"], s["tools"])],
                            skills=["site-scoring", "costar-evidence"] if s.get("skills") else [], output="Findings (structured)"))
     on = bool(os.getenv("LANGSMITH_API_KEY")) and os.getenv("LANGSMITH_TRACING", "").lower() == "true"
@@ -498,7 +513,7 @@ def architecture() -> dict[str, Any]:
                  "TodoListMiddleware planning", "skills (progressive disclosure)", "memory (AGENTS.md)",
                  "filesystem backend with write permissions denied on memory and skills",
                  "summarization and Anthropic prompt caching (SDK defaults)", f"checkpointer: {_GRAPH.get('memory') or 'not started'}",
-                 "human-in-the-loop: interrupt_on dispatch_safety_alert"],
+                 "human-in-the-loop: interrupt_on dispatch_safety_alert, and apply_layout_edit on the design-editor subagent"],
         agents=agents, mcp=MCP.status(), scoring=scoring.method(), privacy={"costar_fields_to_model": LLM_COSTAR},
         langsmith={"tracing": on, "project": os.getenv("LANGSMITH_PROJECT") or "default"},
         missing_tools=_GRAPH.get("missing") or [], error=_GRAPH.get("error"))

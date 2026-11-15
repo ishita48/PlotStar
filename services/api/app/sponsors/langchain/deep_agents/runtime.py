@@ -63,6 +63,9 @@ class Run:
         self._decision: dict[str, Any] | None = None
         self._decided = threading.Event()
         self.ctx: Any = None  # copilot.Ctx for engine tools (set by agents.py)
+        self.citations: list[dict[str, Any]] = []      # CoStar record + field per CoStar figure in the answer (citations.py)
+        self.design_edits: list[dict[str, Any]] = []   # approved layout edits (design_agent.py)
+        self.debate: dict[str, Any] | None = None      # rounds of the visible debate (debate.py)
 
     # events -------------------------------------------------------------------------------------------------
     def emit(self, type_: str, **payload: Any) -> None:
@@ -122,7 +125,8 @@ class Run:
             out.update(context=self.context, nodes=list(self.nodes.values()), plan=self.plan, findings=self.findings,
                        evidence=ev, score=self.score, answer=self.answer, proposal=self.proposal,
                        verification=self.verification, approval=self.approval, dispatches=self.dispatches,
-                       error=self.error, langsmith=langsmith_ref(self.trace_id))
+                       error=self.error, langsmith=langsmith_ref(self.trace_id), citations=self.citations,
+                       design_edits=self.design_edits, debate=self.debate)
             return out
 
 
@@ -325,6 +329,12 @@ class Recorder(BaseCallbackHandler):
                     and self._agent_of(self._owner(parent_run_id)) != name:
                 info = AGENT_INFO[name]
                 d = self._delegation_for(parent_run_id) or {}
+                did = (metadata or {}).get("lc_subagent_tool_call_id") or d.get("tool_call_id")
+                paused = next((n for n in self.run.nodes.values() if n["kind"] == "agent" and n["name"] == name and did
+                               and n.get("delegation_id") == did and n["status"] == "running"), None)
+                if paused:  # the same delegation resumed after a human decision: same box, not a second one
+                    self.kept[run_id] = paused["id"]
+                    return
                 self._add(run_id, parent_run_id, kind="agent", name=name, label=info.get("title", name),
                           role=info.get("role"), model=info.get("model"), run_name=name,
                           objective=d.get("description"),

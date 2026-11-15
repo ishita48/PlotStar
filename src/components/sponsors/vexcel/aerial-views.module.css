@@ -1,0 +1,32 @@
+/* Vexcel aerial views in Define's site card. Studio tokens (--st-*) come from .st. Doubled classes beat
+   `.st-aerial img { height: 170px }` and `.st button { color: inherit }`. */
+.wrap { position: relative; }
+.seg { position: absolute; top: 8px; left: 8px; display: flex; gap: 2px; padding: 2px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); box-shadow: 0 1px 3px rgba(16, 20, 17, 0.18); }
+.seg.seg button { border: 0; background: none; cursor: pointer; padding: 3px 9px; border-radius: 999px; font: 500 11px var(--ps-sans, inherit); color: var(--st-ink-2); }
+.seg.seg button:hover { color: var(--st-ink); }
+.seg.seg button.on { background: #1f4a36; color: #fff; }
+
+.view, .compare { position: relative; height: 260px; border-radius: 12px; overflow: hidden; border: 1px solid var(--st-hair, #dde5d6); background: #e9ece6; }
+.view.view img, .compare.compare img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border: 0; border-radius: 0; }
+.view svg { display: block; width: 100%; height: 100%; }
+.compare .after { clip-path: inset(0 0 0 var(--pos)); }
+.compare input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: ew-resize; }
+.handle { position: absolute; top: 0; bottom: 0; left: var(--pos); width: 2px; margin-left: -1px; background: #c9ec7a; box-shadow: 0 0 0 1px rgba(16, 20, 17, 0.35); pointer-events: none; }
+.handle::after { content: ''; position: absolute; top: 50%; left: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; background: #c9ec7a; border: 2px solid #1f4a36; }
+
+.status { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; text-align: center; font-size: 12px; color: var(--st-muted); background: rgba(233, 236, 230, 0.6); }
+.wrap > .status { position: relative; height: 260px; border-radius: 12px; border: 1px solid var(--st-hair, #dde5d6); }
+.spin { animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 6px; font-size: 11.5px; color: var(--st-muted); }
+.bar label { display: inline-flex; align-items: center; gap: 5px; }
+.bar select { font: inherit; font-size: 11.5px; padding: 2px 4px; border-radius: 6px; border: 1px solid var(--st-line); background: #fff; color: var(--st-ink); }
+.dirs { display: inline-flex; gap: 3px; }
+.dirs.dirs button { border: 1px solid var(--st-line); background: #fff; border-radius: 999px; padding: 1px 9px; font-size: 11px; cursor: pointer; color: var(--st-ink-2); text-transform: capitalize; }
+.dirs.dirs button.on { background: #1f4a36; border-color: #1f4a36; color: #fff; }
+.legend { display: inline-flex; align-items: center; gap: 2px; font-family: var(--st-mono); font-size: 10px; }
+.legend i { display: inline-grid; place-items: center; min-width: 20px; height: 14px; border-radius: 3px; font-style: normal; color: #101411; }
+.legend i:nth-child(n+4) { color: #fff; }
+.bar abbr { text-decoration: underline dotted; cursor: help; }
