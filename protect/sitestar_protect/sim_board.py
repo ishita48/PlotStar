@@ -1,9 +1,9 @@
 """Fake building ESP32 on a virtual serial port. Mirrors esp32_building.ino, including the
 firmware leak reflex and the valve interlock.
 
-Keys:  w water on the probe (toggle)   s smoke in the beam (toggle)   p person in lounge (toggle)
+Keys:  w water on the sensor (toggle)  s smoke in the beam (toggle)   p person in lounge (toggle)
        h hold the DHT11 (heat)         b breathe on the DHT11          i ice cube on the pipe
-       f sump flooding (toggle)        c clear everything              q quit
+       f sump flooding (toggle)        j jam the valve (toggle)        c clear everything   q quit
 """
 from __future__ import annotations
 
@@ -28,6 +28,9 @@ class FakeBuildingBoard:
         self.smoke_in_beam = False
         self.person = False
         self.flood = False
+        self.jam = False                 # finger on the valve arm: servo told to close, switch never pressed
+        self.door_open = True
+        self._want_door_open = True
         self.t, self.rh, self.pipe, self.lvl = 23.5, 46.0, 21.0, 30.0
         self._heat_until = self._breath_until = self._ice_until = 0.0
         # firmware state
@@ -85,6 +88,8 @@ class FakeBuildingBoard:
                 self._dry_since = 0.0
             if self.wet and self.valve_open:
                 self.valve_open = False
+            if self.smoke_in_beam and self.door_open:   # fire door reflex
+                self.door_open = False
             # slow environment
             target_t = 33.5 if now < self._heat_until else 23.5
             self.t += (target_t - self.t) * 0.02
@@ -100,7 +105,8 @@ class FakeBuildingBoard:
         beam = 260 if self.smoke_in_beam else 880
         self._write(f"I leak={2600 if self.water else 80} wet={int(self.wet)} beam={beam} base=900 "
                     f"smoke={int(self.smoke_in_beam)} t={self.t:.1f} rh={self.rh:.0f} pipe={self.pipe:.1f} "
-                    f"pir={int(self.person)} lvl={self.lvl:.1f} valve={int(self.valve_open)} bseq={self.bseq} "
+                    f"pir={int(self.person)} lvl={self.lvl:.1f} valve={int(self.valve_open)} "
+                    f"vsw={int(not self.valve_open and not self.jam)} door={int(self.door_open)} bseq={self.bseq} "
                     f"up={int(now - self._t0)}\n")
 
     # ------------------------------------------------------------ commands
@@ -131,6 +137,11 @@ class FakeBuildingBoard:
             self.buzz = int(kv.get("buzz", 0))
             self.agent = int(kv.get("agent", 0))
             self.rooms = [int(x) for x in kv.get("r", "0,0,0,0").split(",")[:4]]
+            want_door = kv.get("door", "1") == "1"
+            if not want_door:
+                self.door_open = False
+            elif not self.smoke_in_beam:
+                self.door_open = True
             self.last_cmd = time.monotonic()
             self.cmds_rx += 1
         elif line.startswith("L "):
@@ -152,6 +163,8 @@ class FakeBuildingBoard:
             self.person = not self.person
         elif ch == "f":
             self.flood = not self.flood
+        elif ch == "j":
+            self.jam = not self.jam
         elif ch == "h":
             self._heat_until = now + 25
         elif ch == "b":
@@ -159,7 +172,7 @@ class FakeBuildingBoard:
         elif ch == "i":
             self._ice_until = now + 30
         elif ch == "c":
-            self.water = self.smoke_in_beam = self.flood = False
+            self.water = self.smoke_in_beam = self.flood = self.jam = False
             self._heat_until = self._breath_until = self._ice_until = 0.0
 
     def render(self) -> str:
@@ -169,13 +182,14 @@ class FakeBuildingBoard:
         out = [f"FAKE BUILDING BOARD  {self.port}  {'LINK OK' if self.online else 'OFFLINE'}",
                "+---------------------+", *[f"|{r:<21}|" for r in self.oled], "+---------------------+"]
         out += [f"room LEDs : " + " | ".join(f"{n} {led[s]}" for n, s in zip(names, self.rooms)),
-                f"valve     : {'OPEN' if self.valve_open else 'CLOSED'}   probe: {'WET' if self.wet else 'dry'}"
+                f"valve     : {'OPEN' if self.valve_open else 'CLOSED'}{' (JAMMED, switch open)' if self.jam else ''}"
+                f"   fire door: {'open' if self.door_open else 'SHUT'}   leak sensor: {'WET' if self.wet else 'dry'}"
                 f"{'  (drying...)' if self.wet and not self.water else ''}",
                 f"fan       : {self.fan:.0%}   strobe: {'ON' if self.strobe else 'off'}   "
                 f"buzzer: {['off', 'chirp', 'ALARM'][self.buzz]}   agent LED: {agent}",
                 f"sensors   : mech {self.t:.1f}C {self.rh:.0f}%  pipe {self.pipe:.1f}C  sump {self.lvl:.0f}cm  "
                 f"smoke-beam {'BLOCKED' if self.smoke_in_beam else 'clear'}  lounge {'occupied' if self.person else 'empty'}",
-                "", "keys: w water  s smoke  p person  h heat  b breath  i ice  f flood  c clear  q quit"]
+                "", "keys: w water  s smoke  p person  h heat  b breath  i ice  f flood  j jam valve  c clear  q quit"]
         return "\n".join(out)
 
 

@@ -29,7 +29,9 @@
     "pipe":   "B1-MECH",
     "sump":   "B1-MECH",
     "fan":    "B1-MECH",
-    "strobe": "1F-CORR"
+    "strobe": "1F-CORR",
+    "door":   "1F-LOUNGE",
+    "lobby":  "1F-CORR"
   },
   "led_rooms": ["2F-BATH", "B1-MECH", "1F-LOUNGE", "1F-CORR"]
 }

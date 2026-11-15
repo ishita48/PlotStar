@@ -5,7 +5,8 @@ import pytest
 from sitestar_protect.agent import IncidentCommander
 from sitestar_protect.building import load_building
 from sitestar_protect.controller import ProtectController
-from sitestar_protect.device import NullLink, Reading, encode_command, parse_reading
+from sitestar_protect.device import (NullLink, Reading, encode_command, encode_panel, parse_badge,
+                                     parse_reading)
 from sitestar_protect.messaging import Messenger, parse_decision
 
 
@@ -27,10 +28,10 @@ def wait_for(cond, timeout=5.0):
     return False
 
 
-def rig(tmp_path, link=None):
+def rig(tmp_path, link=None, lobby=None):
     b = load_building()
     m = Messenger(None)
-    c = ProtectController(b, link or NullLink(), m)
+    c = ProtectController(b, link or NullLink(), m, lobby=lobby, badges_path=tmp_path / "badges.json")
     c.commander = IncidentCommander(c, m, fs_root=tmp_path, model=None, mode="offline")
     return c, m
 
@@ -51,7 +52,17 @@ def test_parse_reading_and_missing_sensors():
 
 def test_encode_command():
     assert encode_command(False, 1.4, True, 2, [2, 0, 1], 1).decode() == \
-        "A valve=0 fan=1.00 strobe=1 buzz=2 r=2,0,1,0 agent=1\n"
+        "A valve=0 fan=1.00 strobe=1 buzz=2 r=2,0,1,0 agent=1 door=1\n"
+
+
+def test_parse_door_switch_badge_panel():
+    r = parse_reading("I leak=80 wet=0 beam=880 base=900 smoke=0 t=- rh=- pipe=- pir=0 lvl=- valve=0 vsw=1 door=0 bseq=0 up=1")
+    assert r.vsw is True and r.door_open is False
+    old = parse_reading("I leak=80 wet=0 beam=880 base=900 smoke=0 t=- rh=- pipe=- pir=0 lvl=- valve=1 bseq=0 up=1")
+    assert old.vsw is None and old.door_open is True          # v1 firmware still parses
+    assert parse_badge("C uid=20111b5c") == "20111B5C" and parse_badge("I lobby up=3") is None
+    assert encode_panel("drop", "Leak 2F Bathroom, saved 12 L").decode() == \
+        "P icon=drop text=LEAK 2F BATHROOM  SAVED 12 L\n"
 
 
 def test_parse_decision():
@@ -203,3 +214,193 @@ def test_tick_drives_board(tmp_path):
     c.tick()
     assert link.sent[0].startswith("A valve=0") and "r=2,0,1,0" in link.sent[0]
     assert link.sent[1].startswith("L SITESTAR PROTECT|WATER LEAK")
+
+
+# ------------------------------------------------- new parts: door, switch, lobby
+def test_smoke_shuts_fire_door_and_reopens_after(tmp_path):
+    link = RecLink()
+    c, _ = rig(tmp_path, link)
+    c.ingest(reading(beam=260, smoke=True, door_open=False))
+    assert c.want_door_open is False
+    assert any("fire door SHUT" in r["action"] for r in c.detector.all[0].reflex)
+    c.tick()
+    assert "door=0" in link.sent[0]
+    c.ingest(reading(door_open=False))                        # smoke cleared
+    assert c.want_door_open is True
+
+
+def test_valve_switch_catches_a_jammed_valve(tmp_path):
+    c, m = rig(tmp_path)
+    t0 = time.time()
+    c.ingest(reading(valve_open=False, vsw=False, ts=t0))
+    assert not c.detector.all                                 # grace period while the servo moves
+    c.ingest(reading(valve_open=False, vsw=False, ts=t0 + 2.0))
+    inc = c.detector.all[0]
+    assert inc.kind == "valve_fault" and inc.severity == "critical" and c.buzz == 2
+    assert c.panel_state()[0] == "cross"
+    c2, _ = rig(tmp_path / "b")
+    c2.ingest(reading(valve_open=False, vsw=True, ts=t0))
+    c2.ingest(reading(valve_open=False, vsw=True, ts=t0 + 2.0))
+    assert not c2.detector.all                                # switch pressed: valve really shut
+
+
+def test_water_saved_counts_while_valve_shut(tmp_path):
+    c, _ = rig(tmp_path)
+    t0 = time.time() - 120
+    c.ingest(reading(leak=2600, wet=True, valve_open=False, ts=t0))
+    assert 23 <= c.water_saved_l() <= 25                      # 2 min x 12 L/min
+    icon, text = c.panel_state()
+    assert icon == "drop" and "SAVED 24 L" in text
+    assert "water saved 24 L" in c.oled_lines()[-1]
+
+
+def test_unknown_badge_refused_when_no_vendor_expected(tmp_path):
+    lobby = RecLink()
+    c, m = rig(tmp_path, lobby=lobby)
+    c.on_lobby_line("C uid=DEADBEEF")
+    assert wait_for(lambda: c.last_badge and c.last_badge["result"].startswith("refused"))
+    assert "Door stayed locked" in m.transcript[-1]["text"]
+    c.tick()
+    assert any(x.startswith("P icon=cross text=NO WORK ORDER") for x in lobby.sent)
+
+
+def test_plumber_badge_checks_in_and_manager_card_approves_reopen(tmp_path):
+    c, m = rig(tmp_path)
+    c.make_manager_card("20111B5C")
+    assert "20111B5C" in (tmp_path / "badges.json").read_text()
+    c.ingest(reading(leak=2600, wet=True, valve_open=False))
+    inc = c.detector.all[0]
+    assert wait_for(lambda: inc.agent_state == "waiting_approval")
+    c.on_badge("20111B5C")                                    # manager taps: approves the plumber
+    assert wait_for(lambda: c.commander.dispatches)
+    assert c.panel_state()[0] in ("check", "wrench")
+    c.on_badge("A1B2C3D4")                                    # plumber arrives
+    assert wait_for(lambda: c.commander.dispatches[0].get("arrived"))
+    assert wait_for(lambda: "checked in at the lobby" in m.transcript[-1]["text"])
+    assert "valve stays shut" in m.transcript[-1]["text"]
+    assert wait_for(lambda: "Site visit" in (tmp_path / "incidents" / inc.id / "report.md").read_text())
+    c.ingest(reading(valve_open=False))                       # sensor dry -> reopen offered
+    assert wait_for(lambda: any("REOPEN" in x["text"] for x in m.transcript))
+    c.on_badge("20111B5C")
+    assert wait_for(lambda: c.want_valve_open is True)
+    assert any(x["channel"] == "badge" for x in m.transcript if x["dir"] == "in")
+
+
+def test_badge_line_from_the_esp32_itself(tmp_path):
+    c, m = rig(tmp_path)
+    c.on_serial_line("C uid=DEADBEEF")
+    assert wait_for(lambda: c.last_badge and c.last_badge["result"].startswith("refused"))
+
+
+def test_events_are_forwarded_to_the_team_app(tmp_path):
+    class FakeHaven:
+        def __init__(self): self.calls = []
+        def incident(self, kind, title): self.calls.append(("incident", kind))
+        def approved(self): self.calls.append(("approved",))
+        def all_clear(self): self.calls.append(("clear",))
+        def snapshot(self): return {}
+    b = load_building(); m = Messenger(None); h = FakeHaven()
+    c = ProtectController(b, NullLink(), m, badges_path=tmp_path / "badges.json", haven=h)
+    c.commander = IncidentCommander(c, m, fs_root=tmp_path, model=None, mode="offline")
+    c.make_manager_card("AA11")
+    c.ingest(reading(leak=2600, wet=True, valve_open=False))
+    assert ("incident", "leak") in h.calls
+    assert wait_for(lambda: c.detector.all[0].agent_state == "waiting_approval")
+    c.on_badge("AA11")
+    assert wait_for(lambda: ("approved",) in h.calls)
+    c.ingest(reading(valve_open=False))
+    assert ("clear",) in h.calls
+
+
+# ------------------------------------------------------------ data-hall power + grid events
+class FakeMeter:
+    def __init__(self, w=40.0): self.watts, self.ok, self.history = w, True, []
+    def avg(self, seconds): return self.watts
+
+
+class FakeFlex:
+    n = 8
+    def __init__(self): self.paused = 0.0
+    @property
+    def running(self): return round(self.n * (1 - self.paused))
+    def pause(self, f): self.paused = f; return round(self.n * f)
+    def resume(self): self.paused = 0.0
+
+
+def power_rig(tmp_path):
+    b = load_building(); m = Messenger(None); meter, flex = FakeMeter(), FakeFlex()
+    c = ProtectController(b, NullLink(), m, badges_path=tmp_path / "badges.json", meter=meter, flex=flex)
+    c.commander = IncidentCommander(c, m, fs_root=tmp_path, model=None, mode="offline")
+    return c, m, meter, flex
+
+
+def test_keypad_grid_event_needs_badge_then_cuts_load_and_cooling(tmp_path):
+    from sitestar_protect.device import encode_console, parse_key
+    assert parse_key("K A") == "A" and parse_key("K x") is None
+    c, m, meter, flex = power_rig(tmp_path)
+    c.make_manager_card("AA11")
+    c.tick(); assert c.fan == 0.35                              # normal cooling
+    for k in "50":
+        c.on_key(k)
+    c.on_key("A")                                               # "50 then A": grid event, 50 % cut
+    assert c.grid["state"] == "requested" and c.grid["depth"] == 50 and flex.paused == 0.0
+    assert "PAUSE 50%" in m.transcript[-1]["text"]
+    c.on_badge("AA11")                                          # manager approves with the card
+    assert wait_for(lambda: c.grid["state"] == "active")
+    assert flex.paused == 0.5
+    c.tick(); assert c.fan == 0.2                               # cooling slowed
+    assert c.panel_state()[0] == "check"                       # "MANAGER APPROVED" for a few seconds
+    c._panel_override = None
+    assert c.panel_state()[0] == "bolt"
+    assert encode_console(41.4, True, fan=0.3).decode() == "W 41 F 1 T - S 30\n"
+    meter.watts = 30.0
+    c.grid["since"] -= 30
+    c.on_key("B")                                               # end the event
+    assert c.grid["state"] == "normal" and flex.paused == 0.0
+    assert c.grid["result"]["cut_w"] == 10.0 and "back" in m.transcript[-1]["text"]
+
+
+def test_grid_event_declined_keeps_full_power(tmp_path):
+    c, m, meter, flex = power_rig(tmp_path)
+    c.grid_request(source="dashboard")
+    m.receive("NO")
+    assert wait_for(lambda: c.grid["state"] == "normal")
+    assert flex.paused == 0.0
+
+
+def test_smoke_beats_grid_cooling(tmp_path):
+    c, m, meter, flex = power_rig(tmp_path)
+    c.ingest(reading(beam=260, smoke=True))
+    c.tick()
+    assert c.fan == 0.0
+
+
+def test_fan_watts_follow_the_fan_law():
+    from sitestar_protect.power import fan_watts
+    assert fan_watts(1.0) == 1.5 and fan_watts(0.0) == 0.0 and fan_watts(0.6) > 2 * fan_watts(0.3)
+
+
+def test_depth_is_locked_while_waiting_for_approval(tmp_path):
+    c, m, meter, flex = power_rig(tmp_path)
+    for k in "20A":
+        c.on_key(k)
+    for k in "56A":                                   # typed after the request: ignored
+        c.on_key(k)
+    assert c.grid["depth"] == 20
+    m.receive("YES")
+    assert wait_for(lambda: c.grid["state"] == "active")
+    assert flex.paused == 0.25 or flex.paused == 0.2  # 20 % of 8 jobs rounds to 2 (0.25)
+
+
+def test_joystick_steps_cut_live_and_silences_alarm(tmp_path):
+    c, m, meter, flex = power_rig(tmp_path)
+    t0 = time.time()
+    c.ingest(reading(jy=2050, ts=t0))                         # at rest: learns the centre
+    c.grid_request(source="test"); m.receive("YES")
+    assert wait_for(lambda: c.grid["state"] == "active")
+    c.ingest(reading(jy=200, ts=t0 + 1))                      # pushed: +5 %, applied live
+    assert c.grid["depth"] == 45 and flex.paused == 0.45
+    c.buzz = 2
+    c.ingest(reading(jy=2050, jsw=True, ts=t0 + 2))           # press = ACK
+    link = RecLink(); c.link = link; c.tick()
+    assert "buzz=0" in link.sent[0]

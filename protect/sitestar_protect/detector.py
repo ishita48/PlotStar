@@ -16,11 +16,14 @@ HUMIDITY_SPIKE_PTS = 12.0  # breathe on the DHT11
 HUMIDITY_WINDOW_S = 90.0
 FREEZE_C = 6.0             # ice cube on the pipe thermistor
 SUMP_HIGH_CM = 8.0         # water surface this close to the ultrasonic sensor
+VALVE_FAULT_S = 1.5        # valve commanded shut but its micro switch still open this long (hold the arm)
 
 SEVERITY = {"leak": "critical", "smoke": "critical", "overheat": "warning",
-            "humidity_spike": "warning", "freeze_risk": "warning", "sump_high": "critical"}
+            "humidity_spike": "warning", "freeze_risk": "warning", "sump_high": "critical",
+            "valve_fault": "critical"}
 TITLES = {"leak": "Water leak", "smoke": "Smoke", "overheat": "Equipment room overheating",
-          "humidity_spike": "Humidity spike", "freeze_risk": "Pipe freeze risk", "sump_high": "Sump water high"}
+          "humidity_spike": "Humidity spike", "freeze_risk": "Pipe freeze risk", "sump_high": "Sump water high",
+          "valve_fault": "Valve did not close"}
 
 
 @dataclass
@@ -101,6 +104,7 @@ class Detector:
         self.b, self.h = building, history
         self.active: dict[str, Incident] = {}
         self.all: list[Incident] = []
+        self._vfault_since: Optional[float] = None
 
     def _conditions(self, r: Reading) -> dict[str, bool]:
         hw = self.b.hardware_map
@@ -108,6 +112,12 @@ class Detector:
         rh = self.h.series("rh", HUMIDITY_WINDOW_S)
         if len(rh) >= 2:
             rh_spike = (rh[-1][1] - min(v for _, v in rh)) >= HUMIDITY_SPIKE_PTS
+        # The valve reports what it was told; the micro switch reports what it actually did.
+        if r.vsw is False and not r.valve_open:
+            self._vfault_since = self._vfault_since or r.ts
+        else:
+            self._vfault_since = None
+        vfault = self._vfault_since is not None and r.ts - self._vfault_since >= VALVE_FAULT_S
         return {
             f"leak:{hw['leak']}": r.wet,
             f"smoke:{hw['smoke']}": r.smoke,
@@ -115,6 +125,7 @@ class Detector:
             f"humidity_spike:{hw['dht']}": rh_spike,
             f"freeze_risk:{hw['pipe']}": r.pipe is not None and r.pipe <= FREEZE_C,
             f"sump_high:{hw['sump']}": r.lvl is not None and r.lvl <= SUMP_HIGH_CM,
+            f"valve_fault:{hw.get('valve', hw['leak'])}": vfault,
         }
 
     def update(self, r: Reading) -> tuple[list[Incident], list[Incident]]:
@@ -139,7 +150,8 @@ class Detector:
     def _evidence(self, r: Reading) -> dict:
         return {"leak_adc": r.leak, "wet": r.wet, "smoke_beam_pct": round(r.beam_pct, 1), "mech_temp_c": r.t,
                 "mech_rh_pct": r.rh, "pipe_c": r.pipe, "lounge_occupied": r.pir, "sump_cm": r.lvl,
-                "valve_open": r.valve_open, "at": time.strftime("%H:%M:%S", time.localtime(r.ts))}
+                "valve_open": r.valve_open, "valve_switch_confirms_shut": r.vsw, "fire_door_open": r.door_open,
+                "at": time.strftime("%H:%M:%S", time.localtime(r.ts))}
 
     def get(self, incident_id: str) -> Optional[Incident]:
         return next((i for i in self.all if i.id == incident_id), None)

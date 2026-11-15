@@ -38,12 +38,16 @@ VENDORS = {
     "fire": [{"name": "Gulf Coast Fire & Safety (demo vendor)", "eta": "60-90 min", "callout_usd": 240, "rating": 4.7}],
     "hvac": [{"name": "Montrose Mechanical (demo vendor)", "eta": "2 h", "callout_usd": 160, "rating": 4.6}],
 }
-TRADE_FOR = {"leak": "plumbing", "freeze_risk": "plumbing", "sump_high": "plumbing",
+TRADE_FOR = {"leak": "plumbing", "freeze_risk": "plumbing", "sump_high": "plumbing", "valve_fault": "plumbing",
              "smoke": "fire", "overheat": "hvac", "humidity_spike": "hvac"}
 
 SYSTEM_PROMPT = """You are the SiteStar PROTECT incident commander for {project} ({city}).
 A building's sensors raised an incident. Deterministic safety reflexes ALREADY ran (listed in the
 incident); you handle judgment, coordination and communication.
+Hardware facts: the water valve has a micro switch that confirms it is physically shut
+(valve_switch_confirms_shut); a valve_fault incident means it was told to close but did not, so
+water may still be flowing and someone must close the manual shutoff. Smoke releases the lounge fire
+door (fire_door_open). Dispatched vendors check in by tapping their badge at the lobby panel.
 
 Work like a senior facilities engineer:
 1. Delegate to the `diagnostician` sub-agent: give it the incident id and ask for the likely cause,
@@ -269,12 +273,78 @@ class IncidentCommander:
     def on_manager_reply(self, text: str, channel: str) -> None:
         self._q.put(("reply", text, channel))
 
+    def request_grid(self, depth: int, before_w) -> None:
+        """Grid event: the cut needs the manager (badge tap or YES)."""
+        line = f"PAUSE {depth}% of flexible AI jobs and slow cooling for the grid event"
+        est = f" Now drawing {before_w:.0f} W." if before_w else ""
+        self.pending["GRID"] = {"incident": None, "n": 1, "lines": [line], "mode": "offline", "grid": True}
+        self._t(None, "approval", f"Approve: {line}?")
+        self.messenger.send(f"Grid event from the utility (ERCOT peak).{est} Approve: {line}? "
+                            f"Jobs pause, they don't fail. Tap your badge or reply YES / NO.",
+                            kind="approval", actions=["YES", "NO"])
+
+    def handle_badge(self, uid: str, role: str) -> None:
+        self._q.put(("badge", uid, role))
+
+    # ------------------------------------------------------------ lobby badges
+    @staticmethod
+    def _short(vendor: str) -> str:
+        return re.sub(r"\s*\(.*?\)", "", vendor).strip()
+
+    def expected_vendor(self) -> Optional[dict]:
+        """The oldest approved dispatch whose vendor has not checked in yet."""
+        for rec in self.dispatches:
+            if not rec.get("arrived"):
+                return {**rec, "short": self._short(rec["vendor"]).upper()}
+        return None
+
+    def _run_badge(self, uid: str, role: str) -> None:
+        tail = uid[-4:]
+        if role == "manager":
+            if self.pending:
+                self._t(None, "human", f"manager badge {uid} tapped at the lobby: approve")
+                self.ctx.badge_result(uid, "approved what was pending", "check", "MANAGER APPROVED")
+                if getattr(self.ctx, "haven", None):
+                    self.ctx.haven.approved()
+                self.messenger.receive("YES", sender=f"manager badge {uid}", channel="badge")
+            else:
+                active = list(self.ctx.detector.active.values())
+                self.ctx.badge_result(uid, "manager card, nothing pending", "idle",
+                                      "HELLO MANAGER  " + (active[0].title if active else "ALL CLEAR"))
+            return
+        rec = next((r for r in self.dispatches if not r.get("arrived")), None)
+        if rec is None:
+            self._t(None, "warn", f"badge ...{tail} refused at the lobby: no vendor expected")
+            self.ctx.badge_result(uid, "refused: no vendor expected", "cross", "NO WORK ORDER - ACCESS DENIED")
+            self.messenger.send(f"Heads up: unrecognised badge (...{tail}) tapped at the lobby and no vendor is "
+                                f"expected. Door stayed locked.", kind="info")
+            return
+        now = time.strftime("%H:%M")
+        rec["arrived"], rec["badge"] = now, uid
+        wo = self.work_orders.get(rec["work_order"], {})
+        if wo:
+            wo["status"] = f"on site: {rec['vendor']} ({now})"
+        inc_id = wo.get("incident") or self._last_incident
+        inc = self.ctx.detector.get(inc_id) if inc_id else None
+        name = self._short(rec["vendor"])
+        self._t(inc_id, "human", f"{name} checked in at the lobby (badge ...{tail}) for {rec['work_order']}")
+        self._append_report(inc_id, f"Site visit: {name} checked in at the lobby, badge ...{tail} "
+                                    f"({rec['work_order']})")
+        self.ctx.badge_result(uid, f"checked in: {name}", "check", f"WELCOME {name.upper()}  {rec['work_order']}")
+        extra = ""
+        if inc and inc.kind == "leak" and not self.ctx.live_status().get("valve_open", True):
+            extra = " The valve stays shut until the leak sensor is dry and you approve reopening it."
+        self.messenger.send(f"{name} checked in at the lobby at {now} for {rec['work_order']} "
+                            f"(badge ...{tail}).{extra}", kind="info", incident=inc_id)
+
     def _worker(self) -> None:
         while True:
             job = self._q.get()
             try:
                 if job[0] == "incident":
                     self._run_incident(job[1])
+                elif job[0] == "badge":
+                    self._run_badge(job[1], job[2])
                 else:
                     self._run_reply(job[1], job[2])
             except Exception:  # keep the commander alive whatever happens
@@ -461,8 +531,13 @@ class IncidentCommander:
             cause = "Water at the floor-level probe; supply valve closed automatically. Likely fixture or supply-line failure."
             risk = (f"Water can reach {b.room_name(below)} directly below" if below else "Contained to the room")
             risk += "; it is OCCUPIED now - keep people away from ceiling lights." if occupied else "."
+        elif inc.kind == "valve_fault":
+            cause = ("The valve was commanded shut but its position switch never closed: the valve is jammed or "
+                     "the linkage slipped. Water may still be flowing.")
+            risk = "The leak continues until someone closes the manual shutoff by hand."
         elif inc.kind == "smoke":
-            cause = "Light-beam smoke sensor obscured; strobe on, exhaust fan held off to avoid spreading smoke."
+            cause = ("Light-beam smoke sensor obscured; strobe on, fire door released, exhaust fan held off to avoid "
+                     "spreading smoke.")
             risk = "Lounge is OCCUPIED - evacuate and confirm headcount." if occupied else "Lounge appears empty."
         elif inc.kind == "freeze_risk":
             cause = "Pipe surface temperature near freezing; burst risk if it continues."
@@ -490,6 +565,12 @@ class IncidentCommander:
 
     def _offline_decision(self, inc: Optional[Incident], req: dict, decision: str, text: str) -> None:
         inc_id = req["incident"]
+        if req.get("grid"):
+            self.ctx.grid_decide(decision == "approve", by="manager")
+            self.messenger.send("Grid event approved: flexible AI jobs paused, cooling slowed. Watch the meter."
+                                if decision == "approve" else "OK, no cut. Running at full power.", kind="confirm")
+            self._t(None, "done", f"grid event decision: {decision}")
+            return
         if req.get("valve"):
             if decision == "approve":
                 result = self.ctx.request_valve(True, by="manager approval")
@@ -513,12 +594,14 @@ class IncidentCommander:
             self._set_state(inc, "done")
         self._t(inc_id, "done", f"manager decision recorded: {decision}")
 
-    def _append_report(self, inc_id: str, line: str) -> None:
+    def _append_report(self, inc_id: Optional[str], line: str) -> None:
+        if not inc_id:
+            return
         d = self.fs_root / "incidents" / inc_id / "report.md"
         if d.exists():
             body = d.read_text()
-            if "## Manager decisions" not in body:
-                body += "\n## Manager decisions\n"
+            if "## Decisions and site visits" not in body:
+                body += "\n## Decisions and site visits\n"
             d.write_text(body + f"- {time.strftime('%H:%M:%S')} {line}\n")
 
     def _offline_answer(self, text: str) -> str:
