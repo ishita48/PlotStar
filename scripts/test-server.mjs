@@ -1,13 +1,9 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { resolve } from 'node:path';
-import { closeSync, openSync, existsSync } from 'node:fs';
-const db = resolve('prisma/plotstar-test.db');
-if (!existsSync(db)) closeSync(openSync(db, 'a'));
-const init = spawnSync(
-  process.execPath,
-  ['node_modules/prisma/build/index.js', 'db', 'push', '--skip-generate'],
-  { stdio: 'inherit', env: process.env },
-);
+// Applies the Prisma migrations to the test database (Postgres), then serves the production build on port 3100.
+const init = spawnSync(process.execPath, ['node_modules/prisma/build/index.js', 'migrate', 'deploy'], {
+  stdio: 'inherit',
+  env: process.env,
+});
 if (init.status !== 0) process.exit(init.status || 1);
 const child = spawn(
   process.execPath,

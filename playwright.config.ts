@@ -24,7 +24,9 @@ export default defineConfig({
     timeout: 60000,
     env: {
       ...(process.env as Record<string, string>),
-      DATABASE_URL: 'file:./plotstar-test.db',
+      // Postgres: a throwaway Neon branch is best (TEST_DATABASE_URL); falls back to DATABASE_URL.
+      DATABASE_URL: process.env.TEST_DATABASE_URL || process.env.DATABASE_URL || '',
+      DATABASE_URL_UNPOOLED: process.env.TEST_DATABASE_URL || process.env.DATABASE_URL_UNPOOLED || '',
       TELEMETRY_API_KEY: process.env.TELEMETRY_API_KEY,
       OPENAI_API_KEY: '',
     },

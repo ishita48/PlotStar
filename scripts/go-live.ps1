@@ -4,12 +4,10 @@
 #   powershell -ExecutionPolicy Bypass -File scripts\go-live.ps1 -Local   only localhost (API on 8000, website on 3000)
 #   powershell -ExecutionPolicy Bypass -File scripts\go-live.ps1 -Stop    close the public tunnels (live site loses data)
 #
-# Everything runs on this laptop. The live site (Vercel) reaches it through two temporary Cloudflare tunnels:
-#   api  -> the data service (port 8000): CoStar data, layouts, agents
-#   web  -> this laptop's website (port 3000): the live site forwards /api/protection, /api/projects, /api/telemetry,
-#           /api/hey-geo and /api/voice to it, because the project database and the AI keys only exist here.
-# A tunnel's address changes whenever it restarts, so a new tunnel means a redeploy (about 2 minutes). Tunnels that
-# are still working are reused, and nothing is redeployed.
+# The live site (Vercel) has its own database (Neon Postgres) and keys. Only the CoStar data service stays on this
+# laptop (the kit cannot leave it); the site reaches it through a temporary Cloudflare tunnel to port 8000.
+# A tunnel's address changes whenever it restarts, so a new tunnel means a redeploy (about 2 minutes). A tunnel that
+# is still working is reused, and nothing is redeployed.
 # While the tunnels are open, anyone with the site link can see the CoStar data and use the AI features.
 # The drone and real emergency calls stay local: they refuse anything that arrives through a tunnel.
 param([switch]$Local, [switch]$Stop)
@@ -75,18 +73,19 @@ if (-not (Listening 3000)) {
     -WindowStyle Hidden -RedirectStandardOutput (Join-Path $run "web.log") -RedirectStandardError (Join-Path $run "web.err.log")
 }
 if (-not (WaitFor "http://127.0.0.1:8000/studio/defaults" 120)) { "The data service did not start. See $run\api.log"; exit 1 }
-if (-not (WaitFor "http://127.0.0.1:3000/api/protection" 180)) { "The local website did not start. See $run\web.log"; exit 1 }
+if (-not (WaitFor "http://127.0.0.1:3000/" 180)) { "The local website did not start. See $run\web.log"; exit 1 }
 "Data service:  http://127.0.0.1:8000"
 "Local website: http://localhost:3000/studio"
 if ($Local) { exit 0 }
 
 try {
   $url = EnsureTunnel "api" 8000 "/studio/defaults"
-  $web = EnsureTunnel "web" 3000 "/api/protection"
 } catch { "$_"; exit 1 }
-"Public data address:    $url"
-"Public website address: $web  (used only by the live site's server)"
-$state = "$url $web"
+# The old second tunnel (laptop website) is no longer used: close it if it is still running.
+$webPid = Join-Path $run "tunnel-web.pid"
+if (Test-Path $webPid) { Stop-Process -Id (Get-Content $webPid) -Force -ErrorAction SilentlyContinue; Remove-Item $webPid, (Join-Path $run "tunnel-web.log") -ErrorAction SilentlyContinue }
+"Public data address: $url"
+$state = "$url"
 $liveFile = Join-Path $run "live-url.txt"
 $last = $null
 if (Test-Path $liveFile) { $last = (Get-Content $liveFile -Raw).Trim() }
@@ -102,8 +101,7 @@ cmd /c "cd /d `"$repo`" && git archive HEAD | tar -x -C `"$deploy`""
 if (Test-Path (Join-Path $deploy ".env")) { "Refusing to deploy: a .env file is in the deploy copy."; exit 1 }
 
 $vars = @{ NEXT_PUBLIC_API_URL = $url }
-# Browser-side values only, safe to ship. The Clerk secret key stays on this laptop: the live site forwards
-# /api/account (which needs it) here.
+# Browser-side values only. Server secrets (Neon, Clerk, AI keys) are stored on the Vercel project itself.
 foreach ($name in "NEXT_PUBLIC_MATTERPORT_SDK_KEY", "NEXT_PUBLIC_MAP_TILE_URL", "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
                   "NEXT_PUBLIC_CLERK_SIGN_IN_URL", "NEXT_PUBLIC_CLERK_SIGN_UP_URL") {
   $value = PublicEnv $name
@@ -112,11 +110,10 @@ foreach ($name in "NEXT_PUBLIC_MATTERPORT_SDK_KEY", "NEXT_PUBLIC_MAP_TILE_URL", 
 $flags = @()
 foreach ($k in $vars.Keys) { $flags += "--build-env"; $flags += "$k=$($vars[$k])"; $flags += "--env"; $flags += "$k=$($vars[$k])" }
 $flags += "--env"; $flags += "PLOTSTAR_API_URL=$url"
-$flags += "--build-env"; $flags += "GEOSTAR_WEB_ORIGIN=$web"   # next.config.ts forwards the database and AI routes there
 
 Push-Location $deploy
 # Keep Vercel's stored settings in step too, so deploys started by a git push use the current addresses.
-foreach ($pair in @(@("NEXT_PUBLIC_API_URL", $url), @("PLOTSTAR_API_URL", $url), @("GEOSTAR_WEB_ORIGIN", $web))) {
+foreach ($pair in @(@("NEXT_PUBLIC_API_URL", $url), @("PLOTSTAR_API_URL", $url))) {
   foreach ($target in "production", "preview") {
     $extra = @(); if ($target -eq "preview") { $extra = @("") }
     $pair[1] | & vercel env add $pair[0] $target @extra --force 2>&1 | Out-Null
