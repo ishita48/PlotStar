@@ -149,8 +149,8 @@ def join_mac_wifi(dev: str, ssid: str, password: str | None, want_prefix: str | 
     msg = (out.stdout + out.stderr).strip()
     if msg:
         print(f"  networksetup: {msg}")
-    if "Could not find network" in msg:
-        return False  # not in range (yet); waiting for an address would only waste the timeout
+    if "Could not find network" in msg or "Failed to join network" in msg:
+        return False  # not in range, or the join was refused; waiting for an address would only waste the timeout
     deadline = time.time() + timeout
     while time.time() < deadline:
         ip = current_ip(dev)

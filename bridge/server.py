@@ -26,6 +26,7 @@ Then open http://localhost:8000
 
 import argparse
 import atexit
+import ipaddress
 import json
 import math
 import re
@@ -62,6 +63,14 @@ WIFI_CELL_CM = 25            # readings closer than this share one spot on the W
 WIFI_MAX_SPOTS = 400
 TELEMETRY_FLOOR_HZ = 5      # link scores are relative to the best rate seen, at least this
 TELLO_DEFAULT_IP = "192.168.10.1"
+# Hold-to-fly: the page sends stick positions (-100..100) while a control is held, the bridge
+# passes them to the drone as "rc" speeds, and the drone glides instead of hopping 30 cm at a time.
+RC_HZ = 20
+RC_MAX = 60                  # the fastest a held control may ask for
+RC_SLEW = 6                  # most a stick changes per tick: speed ramps over ~0.3 s, no jerk
+RC_STALE_S = 0.5             # no stick update for this long = released (page closed, link lost)
+RC_BRAKE_CM = 40             # extra room to stop in, on top of GUARD_CM, when gliding forward
+RC_CM_PER_S = 1.0            # rough cm/s (and degrees/s) per stick unit, only for the Wi-Fi map
 # Pages allowed to use endpoints that change this computer (switching its Wi-Fi).
 LOCAL_ORIGIN = re.compile(r"^https?://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$")
 GRID_MACHINES = ("baseline", "optimized")
@@ -133,6 +142,10 @@ class Drone:
         self.last_ip = last_ip
         self.on_found = on_found or (lambda ip: None)
         self.paused = False          # set while hotspot.py is switching this computer's Wi-Fi
+        self.rc_target = (0, 0, 0, 0)  # sticks the page is holding: right, forward, up, clockwise
+        self.rc_at = 0.0
+        self.rc_now = [0, 0, 0, 0]     # what the drone was last sent, easing toward the target
+        self._stepping = False         # a step command (take-off, land, a 30 cm move) is running
         self._misses = 0
         self._last_report = None
         self.disabled = not enabled and not mock
@@ -166,6 +179,7 @@ class Drone:
             return
         threading.Thread(target=self._tof_loop, daemon=True).start()
         threading.Thread(target=self._wifi_loop, daemon=True).start()
+        threading.Thread(target=self._rc_loop, daemon=True).start()
         if not mock:
             from djitellopy import Tello  # imported lazily so --mock works without it
             try:
@@ -188,7 +202,10 @@ class Drone:
             net = tello_wifi.local_subnet()
         except OSError:
             raise LookupError("This computer isn't on a network.")
-        hosts = dict.fromkeys([str(h) for h in net.hosts()] + [self.last_ip or TELLO_DEFAULT_IP, TELLO_DEFAULT_IP])
+        # Only addresses on this network: the drone's own-Wi-Fi address can't answer from a hotspot,
+        # and a stale reply from it would look like the drone had joined.
+        extra = [ip for ip in (self.last_ip, TELLO_DEFAULT_IP) if ip and ipaddress.ip_address(ip) in net]
+        hosts = dict.fromkeys([str(h) for h in net.hosts()] + extra)
         for host in hosts:
             # Entries are added but never removed: djitellopy's receiver thread stops for good
             # if an address disappears from this dict between its check and its lookup.
@@ -251,6 +268,10 @@ class Drone:
                     self._report(f"Tello at {self.tello.address[0]} not reachable ({exc}); "
                                  f"retrying every {RECONNECT_SECONDS}s")
             time.sleep(wait)
+
+    def on_hotspot(self) -> bool:
+        """Connected, and not on the drone's own Wi-Fi (which always uses 192.168.10.x)."""
+        return self.connected and (self.mock or not self.tello.address[0].startswith("192.168.10."))
 
     def pause(self, paused: bool):
         """hotspot.py: stop (or go back to) looking for the drone."""
@@ -325,8 +346,50 @@ class Drone:
         frame = self.frame_read.frame if self.frame_read is not None else None
         return frame is not None and frame.shape[:2] != (300, 400)
 
+    # ---- hold-to-fly
+
+    def is_flying(self) -> bool:
+        return self.mock_flying if self.mock else bool(self.connected and self.tello.is_flying)
+
+    def fly(self, right, forward, up, clockwise):
+        """The sticks the page is holding now, each -100..100. Send it again at least every
+        RC_STALE_S while held; when updates stop the drone eases to a hover by itself."""
+        self.rc_target = tuple(max(-RC_MAX, min(RC_MAX, int(v))) for v in (right, forward, up, clockwise))
+        self.rc_at = time.time()
+
+    def _rc_loop(self):
+        dt = 1 / RC_HZ
+        while True:
+            time.sleep(dt)
+            try:
+                self._rc_tick(dt)
+            except Exception as exc:
+                print(f"Hold-to-fly tick failed ({exc})")
+
+    def _rc_tick(self, dt):
+        held = self.is_flying() and not self._stepping and time.time() - self.rc_at < RC_STALE_S
+        want = list(self.rc_target) if held else [0, 0, 0, 0]
+        if want[1] > 0 and self.expansion and self.ahead_mm is not None \
+                and time.time() - self.ahead_at < TOF_FRESH_S and self.ahead_mm / 10 < GUARD_CM + RC_BRAKE_CM:
+            want[1] = 0  # something is close ahead: no more forward, the other sticks still work
+        if self._stepping or not self.is_flying():
+            self.rc_now = [0, 0, 0, 0]  # a step command owns the drone; never mix speeds into it
+            return
+        if not any(want) and not any(self.rc_now):
+            return  # hovering and nothing held: stay off the air
+        self.rc_now = [now + max(-RC_SLEW, min(RC_SLEW, w - now)) for now, w in zip(self.rc_now, want)]
+        right, forward, up, clockwise = self.rc_now
+        if not self.mock:
+            self.tello.send_rc_control(right, forward, up, clockwise)
+        # Dead reckoning for the Wi-Fi map; much rougher than the step moves.
+        rad, k = math.radians(self.yaw), RC_CM_PER_S * dt
+        self.pos_x += (forward * math.sin(rad) + right * math.cos(rad)) * k
+        self.pos_y += (forward * math.cos(rad) - right * math.sin(rad)) * k
+        self.yaw = (self.yaw + clockwise * k) % 360
+
     def command(self, action):
         self._last_command_at = time.time()
+        self.rc_target = (0, 0, 0, 0)  # any step command lets go of the sticks first
         if action == "emergency":
             # Never blocked by a running command: motors stop immediately.
             if self.mock:
@@ -345,7 +408,11 @@ class Drone:
             # A Wi-Fi reading takes a moment; wait it out rather than refuse the tap.
             if not (self._wifi_polling and self.command_lock.acquire(timeout=3.5)):
                 raise BlockingIOError("drone is busy with another command")
+        self._stepping = True
         try:
+            if any(self.rc_now) and not self.mock:
+                self.tello.send_rc_control(0, 0, 0, 0)  # stop gliding before the step starts
+                time.sleep(0.3)
             if action == "forward":
                 self._guard_forward()
             if action == "takeoff":
@@ -365,6 +432,7 @@ class Drone:
             if self.expansion:
                 self._read_tof()  # the view ahead changed; don't wait for the next poll
         finally:
+            self._stepping = False
             self.command_lock.release()
 
     # ---- Wi-Fi map (the drone's own signal, wifi?, at each spot it flies to)
@@ -843,6 +911,21 @@ def create_app(drone: Drone, grid: Grid, feed: ErcotFeed, joiner: hotspot.Hotspo
             return jsonify(error=str(exc)), 502
         return jsonify(ok=True, action=action)
 
+    @app.route("/api/rc", methods=["POST", "OPTIONS"])
+    def rc():
+        """Hold-to-fly. Body: {"right": 0, "forward": 40, "up": 0, "clockwise": 0}, each -100..100
+        (capped at RC_MAX). Repeat it while the control is held; all zeros (or silence) stops."""
+        if request.method == "OPTIONS":
+            return "", 204
+        if not drone.connected:
+            return jsonify(error="drone not connected"), 503
+        b = body()
+        try:
+            drone.fly(*(b.get(k) or 0 for k in ("right", "forward", "up", "clockwise")))
+        except (TypeError, ValueError):
+            return jsonify(error="right, forward, up and clockwise must be numbers"), 400
+        return jsonify(ok=True, flying=drone.is_flying())
+
     @app.get("/video")
     def video():
         def stream():
@@ -996,7 +1079,7 @@ def main():
     grid = Grid(mock=args.mock or args.mock_grid)
     feed = ErcotFeed(enabled=not args.no_ercot)
     joiner = hotspot.HotspotJoiner(hotspot_name, tello_ssids, args.hotspot_password_file, mock=args.mock,
-                                   drone_connected=lambda: drone.connected, pause_drone=drone.pause)
+                                   drone_connected=drone.on_hotspot, pause_drone=drone.pause)
     atexit.register(drone.shutdown)
     mode = "mock" if args.mock else (f"Tello at {args.tello_ip}" if args.tello_ip else "finding the Tello" if use_drone else "no drone") + (
         ", simulated machines" if args.mock_grid else "")
