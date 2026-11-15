@@ -67,6 +67,10 @@ class Messenger:
         if self.on_reply:
             self.on_reply(text, channel)
 
+    def record_in(self, text: str, sender: str = "manager", channel: str = "dashboard") -> None:
+        """Log an inbound reply that the caller acts on itself (a badge tap), without dispatching it."""
+        self._log("in", text, channel, sender=sender)
+
     def snapshot(self) -> dict:
         with self._lock:
             return {"transcript": list(self.transcript[-60:]), "bridge_url": self.bridge_url,

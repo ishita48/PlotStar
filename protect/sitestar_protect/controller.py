@@ -195,10 +195,12 @@ class ProtectController:
         uid = uid.upper()
         role = "manager" if uid in self.badges["managers"] else "other"
         print(f"[lobby] badge {uid} tapped ({'manager card' if role == 'manager' else 'not a manager card'})")
-        self.last_badge = {"uid": uid, "role": role, "t": time.time(), "result": "..."}
+        self.last_badge = {"uid": uid, "role": role, "t": time.time(), "result": "card read, working on it"}
         self._log(f"badge {uid} tapped at the lobby", "lobby")
         if role == "manager":
             self.acknowledge_alarm("manager card")
+        # Instant feedback: the AI may still be busy, so the tap is confirmed before it is acted on.
+        self.show_panel("wait", "CARD READ", 4.0)
         if self.commander:
             self.commander.handle_badge(uid, role)
 

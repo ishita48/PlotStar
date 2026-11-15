@@ -527,3 +527,57 @@ def test_token_not_needed_without_it_or_from_this_computer(tmp_path, monkeypatch
     # the same loopback address through a tunnel still needs the token
     assert local.get("/api/state", headers={"cf-connecting-ip": "203.0.113.9"}).status_code == 401
     assert local.get("/api/state", headers={"cf-ray": "abc", "X-Protect-Token": "t" * 48}).status_code == 200
+
+
+# ------------------------------------------- card taps that waited in line
+def test_a_queued_card_tap_does_not_approve_a_newer_question(tmp_path):
+    """06:30:40 on the bench: four taps waited behind the AI; the spare ones reopened the valve."""
+    c, m = rig(tmp_path)
+    c.make_manager_card("20111B5C")
+    c.ingest(reading(leak=2600, wet=True, valve_open=False))
+    inc = c.detector.all[0]
+    assert wait_for(lambda: inc.agent_state == "waiting_approval")
+    m.receive("no")                                           # decline the vendor
+    assert wait_for(lambda: inc.agent_state == "done")
+    tapped = time.time()                                      # a tap that is still queued...
+    time.sleep(0.8)
+    c.ingest(reading(valve_open=False))                       # ...while a newer question appears
+    assert wait_for(lambda: any("REOPEN" in x["text"] for x in m.transcript))
+    c.commander._run_badge("20111B5C", "manager", tapped_at=tapped)
+    assert c.want_valve_open is False                         # the stale tap did not reopen the valve
+    assert c.commander.pending                                # the question still waits for the manager
+    assert c.panel_state()[1] == "TAP AGAIN TO APPROVE"
+    c.on_badge("20111B5C")                                    # a fresh tap does
+    assert wait_for(lambda: c.want_valve_open is True)
+
+
+def test_a_card_tap_is_confirmed_before_the_ai_acts(tmp_path):
+    c, m = rig(tmp_path)
+    c.make_manager_card("20111B5C")
+    c.commander = None                                        # the AI is busy / not involved yet
+    c.on_badge("20111B5C")
+    assert c.panel_state()[1] == "CARD READ"
+    assert c.last_badge["result"] == "card read, working on it"
+
+
+def test_a_card_tap_approves_once(tmp_path):
+    c, m = rig(tmp_path)
+    c.make_manager_card("20111B5C")
+    c.ingest(reading(leak=2600, wet=True, valve_open=False))
+    inc = c.detector.all[0]
+    assert wait_for(lambda: inc.agent_state == "waiting_approval")
+    c.on_badge("20111B5C")
+    assert wait_for(lambda: c.commander.dispatches)
+    assert sum(1 for x in m.transcript if x["dir"] == "in" and x["channel"] == "badge") == 1
+
+
+def test_protect_model_overrides_the_website_model(monkeypatch):
+    from sitestar_protect import agent
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setenv("ANTHROPIC_MODEL", "claude-opus-5-5")
+    monkeypatch.setenv("PROTECT_MODEL", "claude-haiku-5-5")
+    monkeypatch.delenv("AWS_ACCESS_KEY_ID", raising=False)
+    monkeypatch.delenv("AWS_PROFILE", raising=False)
+    monkeypatch.setenv("PROTECT_LLM", "anthropic")
+    model, mode = agent.make_model()
+    assert mode == "anthropic" and getattr(model, "model", None) == "claude-haiku-5-5"

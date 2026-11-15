@@ -101,7 +101,10 @@ def make_model():
     if choice in ("auto", "anthropic") and os.getenv("ANTHROPIC_API_KEY"):
         from langchain_anthropic import ChatAnthropic
 
-        return ChatAnthropic(model=os.getenv("ANTHROPIC_MODEL", "claude-opus-5-5"), max_tokens=16000), "anthropic"
+        # PROTECT_MODEL lets the incident commander use a faster model than the website (ANTHROPIC_MODEL):
+        # every approval waits for the commander, so its speed is what the manager feels at the reader.
+        model = os.getenv("PROTECT_MODEL") or os.getenv("ANTHROPIC_MODEL", "claude-opus-5-5")
+        return ChatAnthropic(model=model, max_tokens=16000), "anthropic"
     return None, "offline"
 
 
@@ -277,14 +280,15 @@ class IncidentCommander:
         """Grid event: the cut needs the manager (badge tap or YES)."""
         line = f"PAUSE {depth}% of flexible AI jobs and slow cooling for the grid event"
         est = f" Now drawing {before_w:.0f} W." if before_w else ""
-        self.pending["GRID"] = {"incident": None, "n": 1, "lines": [line], "mode": "offline", "grid": True}
+        self.pending["GRID"] = {"incident": None, "n": 1, "lines": [line], "mode": "offline", "grid": True,
+                                "at": time.time()}
         self._t(None, "approval", f"Approve: {line}?")
         self.messenger.send(f"Grid event from the utility (ERCOT peak).{est} Approve: {line}? "
                             f"Jobs pause, they don't fail. Tap your badge or reply YES / NO.",
                             kind="approval", actions=["YES", "NO"])
 
     def handle_badge(self, uid: str, role: str) -> None:
-        self._q.put(("badge", uid, role))
+        self._q.put(("badge", uid, role, time.time()))
 
     # ------------------------------------------------------------ lobby badges
     @staticmethod
@@ -298,15 +302,26 @@ class IncidentCommander:
                 return {**rec, "short": self._short(rec["vendor"]).upper()}
         return None
 
-    def _run_badge(self, uid: str, role: str) -> None:
+    def _run_badge(self, uid: str, role: str, tapped_at: Optional[float] = None) -> None:
         tail = uid[-4:]
         if role == "manager":
             if self.pending:
+                req = self.pending[next(reversed(self.pending))]
+                if tapped_at is not None and req.get("at", 0) > tapped_at + 0.5:
+                    # The tap waited in line while the AI worked, and the AI has since asked something
+                    # new. A tap never approves a question the manager had not seen yet.
+                    self._t(req.get("incident"), "human",
+                            f"manager badge {uid}: tap came before this question, not counted as approval")
+                    self.ctx.badge_result(uid, "tap was before the current question: tap again to approve",
+                                          "wait", "TAP AGAIN TO APPROVE")
+                    return
                 self._t(None, "human", f"manager badge {uid} tapped at the lobby: approve")
                 self.ctx.badge_result(uid, "approved what was pending", "check", "MANAGER APPROVED")
                 if getattr(self.ctx, "haven", None):
                     self.ctx.haven.approved()
-                self.messenger.receive("YES", sender=f"manager badge {uid}", channel="badge")
+                # Record the reply and act on it now, on this worker, so it approves exactly this request.
+                self.messenger.record_in("YES", sender=f"manager badge {uid}", channel="badge")
+                self._run_reply("YES", "badge")
             else:
                 active = list(self.ctx.detector.active.values())
                 self.ctx.badge_result(uid, "manager card, nothing pending", "idle",
@@ -344,7 +359,7 @@ class IncidentCommander:
                 if job[0] == "incident":
                     self._run_incident(job[1])
                 elif job[0] == "badge":
-                    self._run_badge(job[1], job[2])
+                    self._run_badge(job[1], job[2], job[3] if len(job) > 3 else None)
                 else:
                     self._run_reply(job[1], job[2])
             except Exception:  # keep the commander alive whatever happens
@@ -422,7 +437,8 @@ class IncidentCommander:
                 lines.append(f"REOPEN the {inc.room_name} water valve ({args.get('reason', '')})")
             else:
                 lines.append(f"{a.get('name')} {args}")
-        self.pending[inc.id] = {"incident": inc.id, "n": max(1, len(actions)), "lines": lines, "mode": "llm"}
+        self.pending[inc.id] = {"incident": inc.id, "n": max(1, len(actions)), "lines": lines, "mode": "llm",
+                                "at": time.time()}
         inc.pending_approval = self.pending[inc.id]
         self._set_state(inc, "waiting_approval")
         text = "Approve: " + "; ".join(lines) + "? Reply YES or NO."
@@ -525,7 +541,7 @@ class IncidentCommander:
             self._t(inc.id, "done", f"warning handled automatically; {wo['id']} logged, no approval needed")
             return
         line = f"dispatch {vendor['name']} for {wo['id']} (ETA {vendor['eta']}, call-out ${vendor['callout_usd']})"
-        self.pending[inc.id] = {"incident": inc.id, "n": 1, "lines": [line], "mode": "offline",
+        self.pending[inc.id] = {"incident": inc.id, "n": 1, "lines": [line], "mode": "offline", "at": time.time(),
                                 "dispatch": (wo["id"], vendor["name"], vendor["eta"], vendor["callout_usd"])}
         inc.pending_approval = self.pending[inc.id]
         self._set_state(inc, "waiting_approval")
@@ -565,7 +581,8 @@ class IncidentCommander:
         if key in self.pending:
             return
         line = f"REOPEN the {inc.room_name} water valve (leak probe has read dry)"
-        self.pending[key] = {"incident": inc.id, "n": 1, "lines": [line], "mode": "offline", "valve": True}
+        self.pending[key] = {"incident": inc.id, "n": 1, "lines": [line], "mode": "offline", "valve": True,
+                             "at": time.time()}
         self._t(inc.id, "approval", f"Approve: {line}?")
         self.messenger.send(f"Leak probe in {inc.room_name} is dry again. Approve: {line}? Reply YES or NO.",
                             kind="approval", incident=inc.id, actions=["YES", "NO"])
