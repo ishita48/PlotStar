@@ -112,6 +112,22 @@ test('HAVEN command: the emergency call is simulated, once per incident, and cle
   assert.equal(state.team, undefined);
 });
 
+test('HAVEN command: a live hardware leak places the emergency call automatically, once', () => {
+  let state = run(deployed(), { action: 'trigger', kind: 'leak', live: true });
+  assert.equal(state.call?.mode, 'simulated');
+  assert.equal(state.call?.incidentId, primaryIncident(state)!.id);
+  assert.ok(state.timeline.some((a) => /placed automatically/.test(a.message)));
+  const id = state.call!.id;
+  state = run(state, { action: 'trigger', kind: 'leak', live: true });
+  assert.equal(state.call?.id, id);
+  assert.throws(() => run(state, { action: 'emergency-call' }), /already exists/);
+});
+
+test('HAVEN command: a demo leak button still leaves the call to the operator', () => {
+  const state = run(deployed(), { action: 'trigger', kind: 'leak' });
+  assert.equal(state.call, undefined);
+});
+
 test('HAVEN command: usage-only incidents never exclude a route', () => {
   const state = run(deployed(), { action: 'trigger', kind: 'usage' });
   const plan = responsePlan(state)!;

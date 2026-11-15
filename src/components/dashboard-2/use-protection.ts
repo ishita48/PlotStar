@@ -41,6 +41,32 @@ export function useProtection(facility: Facility, enabled: boolean) {
       if (currentFacility.current.id === target.id) setLoading(false);
     }
   }, []);
+  // Live updates: real hardware (SiteStar PROTECT bridge) and the phone app change this workspace
+  // from outside the page. Re-read it every 2 s and apply it only when the revision moved.
+  useEffect(() => {
+    if (!enabled) return;
+    const timer = setInterval(async () => {
+      const target = currentFacility.current;
+      if (inFlight.current || loaded.current !== target.id) return;
+      try {
+        const query = new URLSearchParams({ name: target.name, city: target.city, type: target.type });
+        const response = await fetch(`/api/protection/${target.id}?${query}`, { cache: 'no-store' });
+        if (!response.ok) return;
+        const data = (await response.json()) as ProtectionState;
+        if (
+          currentFacility.current.id === target.id &&
+          !inFlight.current &&
+          data.revision !== currentState.current.revision
+        ) {
+          currentState.current = data;
+          setState(data);
+        }
+      } catch {
+        /* offline for a moment: try again next tick */
+      }
+    }, 2000);
+    return () => clearInterval(timer);
+  }, [enabled]);
   useEffect(() => {
     if (state.facility.id !== facility.id) {
       setState(initialProtectionState(facility));

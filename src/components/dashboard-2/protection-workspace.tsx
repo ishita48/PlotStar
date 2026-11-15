@@ -38,6 +38,7 @@ import {
 } from '@/lib/haven/engine';
 import { PrimaryCard, StepNavigation } from './shell';
 import { FacilityTwin } from './facility-twin';
+import { LiveHardware } from './live-hardware';
 import {
   BuildingOverview,
   IncidentCommand,
@@ -453,6 +454,9 @@ export function ProtectModule({
             <Radio size={12} /> SIMULATION MODE
           </span>
         </div>
+        {/* Every deployed project: live readings when the physical model is connected to it,
+            otherwise where the kit is and a button to connect it here. */}
+        <LiveHardware facility={state.facility} />
         <div className="hv-live-heading">
           <div>
             <span className="d2-overline">CONNECTED TO YOUR VISION</span>

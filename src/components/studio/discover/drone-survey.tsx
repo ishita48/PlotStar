@@ -4,7 +4,7 @@ import {
   ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BatteryMedium, Sparkles, Camera, ChevronsDown, ChevronsUp, Drone, LoaderCircle,
   MoveVertical, OctagonX, PlaneLanding, PlaneTakeoff, RotateCcw, RotateCw, ScanLine, Thermometer,
 } from 'lucide-react';
-import { captureSrc, LABEL, SWEEP_STOPS, useDrone, type Action, type DroneStatus, type Phase } from './use-drone';
+import { captureSrc, isMove, LABEL, SWEEP_STOPS, useDrone, type Action, type DroneStatus, type Move, type Phase } from './use-drone';
 import { FrameInsight } from '../../sponsors/gemini/frame-insight';
 
 const PILL: Record<Phase, { text: string; tone: string }> = {
@@ -22,10 +22,23 @@ export function DroneSurvey({ siteName, onContinue, busy = false }: { siteName: 
   const pill = PILL[phase];
   const lowBattery = status?.battery != null && status.battery < 20;
 
+  // Move controls fly while held and stop on release. A keyboard "click" (Space or Enter on a
+  // focused button) has no release event, so it gives a short nudge instead.
+  const holdProps = (move: Move) => ({
+    onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => { e.currentTarget.setPointerCapture(e.pointerId); d.hold(move); },
+    onPointerUp: () => d.release(move),
+    onPointerCancel: () => d.release(move),
+    onLostPointerCapture: () => d.release(move),
+    onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
+    onClick: (e: React.MouseEvent) => { if (e.detail === 0) { d.hold(move); setTimeout(() => d.release(move), 450); } },
+  });
+
   // A render helper, not a component: a nested component would remount every button (and drop focus) on each poll.
   const key = (action: Action, Icon: typeof ArrowUp, label = '', className = '') => (
-    <button type="button" className={`st-dr-key ${className}`} disabled={action === 'takeoff' ? locked || flying : moveLocked}
-      onClick={() => void d.send(action)} aria-label={LABEL[action]} title={LABEL[action]}>
+    <button type="button" className={`st-dr-key ${className} ${isMove(action) && d.holding.includes(action) ? 'is-held' : ''}`}
+      disabled={action === 'takeoff' ? locked || flying : moveLocked}
+      {...(isMove(action) ? holdProps(action) : { onClick: () => void d.send(action) })}
+      aria-label={LABEL[action]} title={isMove(action) ? `${LABEL[action]} (hold)` : LABEL[action]}>
       {pending === action ? <LoaderCircle className="st-dr-spin" size={16} /> : <Icon size={16} />}
       {label && <span>{label}</span>}
     </button>
@@ -85,7 +98,7 @@ export function DroneSurvey({ siteName, onContinue, busy = false }: { siteName: 
             <OctagonX size={14} /> {d.armStop ? 'Press again · drone will drop' : 'Stop motors'}
           </button>
           <p className={`st-dr-msg ${d.message?.error ? 'is-error' : ''}`} role="status" aria-live="polite">
-            {d.message?.text || (connected ? (flying ? 'Each press moves 30 cm or turns 45°.' : 'Take off to unlock movement.') : 'Controls unlock once the drone connects.')}
+            {d.message?.text || (connected ? (flying ? 'Hold a control to fly; release to hover.' : 'Take off to unlock movement.') : 'Controls unlock once the drone connects.')}
           </p>
           <dl className="st-dr-keys" aria-label="Keyboard shortcuts">
             {([[['W', 'A', 'S', 'D'], 'Move'], [['↑', '↓'], 'Height'], [['Q', 'E'], 'Turn'], [['T', 'L'], 'Take off · Land'], [['C'], 'Capture']] as const).map(([keys, label]) => (

@@ -14,9 +14,19 @@ export type Phase = 'checking' | 'bridge-offline' | 'searching' | 'no-video' | '
 
 export const SWEEP_STOPS = 8; // 8 × 45° = one full turn
 export const LABEL: Record<Action, string> = {
-  takeoff: 'Take off', land: 'Land', up: 'Up 30 cm', down: 'Down 30 cm', left: 'Left 30 cm', right: 'Right 30 cm',
-  forward: 'Forward 30 cm', back: 'Back 30 cm', cw: 'Turn right 45°', ccw: 'Turn left 45°', emergency: 'Stop motors',
+  takeoff: 'Take off', land: 'Land', up: 'Up', down: 'Down', left: 'Left', right: 'Right',
+  forward: 'Forward', back: 'Back', cw: 'Turn right', ccw: 'Turn left', emergency: 'Stop motors',
 };
+// Hold-to-fly: while a move control is held the drone glides at these stick values (of 100) and
+// eases to a hover on release. The bridge ramps the speed and stops by itself if updates stop.
+export type Move = Exclude<Action, 'takeoff' | 'land' | 'emergency'>;
+type Sticks = { right: number; forward: number; up: number; clockwise: number };
+const GLIDE = 35, CLIMB = 35, TURN = 45, STICK_MS = 100;
+const STICK: Record<Move, Partial<Sticks>> = {
+  forward: { forward: GLIDE }, back: { forward: -GLIDE }, right: { right: GLIDE }, left: { right: -GLIDE },
+  up: { up: CLIMB }, down: { up: -CLIMB }, cw: { clockwise: TURN }, ccw: { clockwise: -TURN },
+};
+export const isMove = (a: Action): a is Move => a in STICK;
 const KEYS: Record<string, Action> = { w: 'forward', s: 'back', a: 'left', d: 'right', q: 'ccw', e: 'cw', ArrowUp: 'up', ArrowDown: 'down', t: 'takeoff', l: 'land' };
 
 function phaseOf(s: DroneStatus | null): Phase {
@@ -47,6 +57,9 @@ export function useDrone() {
   const [frameSeen, setFrameSeen] = useState(false);
   const sweepCancel = useRef(false);
   const busy = useRef(false);
+  const held = useRef(new Set<Move>());
+  const stickTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [holding, setHolding] = useState<Move[]>([]);
 
   const phase = phaseOf(status);
   const connected = phase === 'live' || phase === 'test' || phase === 'no-video';
@@ -95,8 +108,43 @@ export function useDrone() {
     return () => clearTimeout(t);
   }, [armStop]);
 
+  // Hold-to-fly. The held controls add up (forward + turn right = a curve); the sticks are re-sent
+  // every STICK_MS, and zeros go out the moment the last control is released.
+  const sendSticks = useCallback(() => {
+    const sticks: Sticks = { right: 0, forward: 0, up: 0, clockwise: 0 };
+    for (const move of held.current)
+      for (const [axis, v] of Object.entries(STICK[move])) sticks[axis as keyof Sticks] += v;
+    void fetch('/api/drone/rc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sticks), keepalive: true })
+      .catch(() => {}); // a lost update is harmless: the next one follows, and silence stops the drone
+  }, []);
+  const syncHeld = useCallback(() => {
+    setHolding([...held.current]);
+    sendSticks();
+    if (held.current.size && !stickTimer.current) stickTimer.current = setInterval(sendSticks, STICK_MS);
+    if (!held.current.size && stickTimer.current) { clearInterval(stickTimer.current); stickTimer.current = null; }
+  }, [sendSticks]);
+  const hold = useCallback((move: Move) => {
+    if (busy.current || held.current.has(move)) return;
+    held.current.add(move);
+    syncHeld();
+  }, [syncHeld]);
+  const release = useCallback((move?: Move) => {
+    if (move ? !held.current.delete(move) : !held.current.size) return;
+    if (!move) held.current.clear();
+    syncHeld();
+  }, [syncHeld]);
+  // Let go of everything when the window loses focus, the drone lands or the page goes away.
+  useEffect(() => {
+    const drop = () => release();
+    window.addEventListener('blur', drop);
+    document.addEventListener('visibilitychange', drop);
+    return () => { window.removeEventListener('blur', drop); document.removeEventListener('visibilitychange', drop); drop(); };
+  }, [release]);
+  useEffect(() => { if (!flying) release(); }, [flying, release]);
+
   const send = useCallback(async (action: Action) => {
     if (action !== 'emergency' && busy.current) return false;
+    release(); // a step command (take-off, land, stop) lets go of the sticks first
     if (action !== 'emergency') busy.current = true;
     setPending(action);
     setMessage({ text: `${LABEL[action]}…` });
@@ -111,7 +159,7 @@ export function useDrone() {
       if (action !== 'emergency') busy.current = false;
       setPending(null);
     }
-  }, []);
+  }, [release]);
 
   const capture = useCallback(async (quiet = false) => {
     if (!quiet && busy.current) return false;
@@ -131,6 +179,7 @@ export function useDrone() {
 
   async function runSweep() {
     if (busy.current) return;
+    release();
     busy.current = true;
     sweepCancel.current = false;
     setSweep(0);
@@ -166,28 +215,37 @@ export function useDrone() {
     void send('emergency');
   }
 
-  // Keyboard flying: W A S D move, ↑ ↓ height, Q E turn, T take off, L land, C capture.
+  // Keyboard flying: hold W A S D to move, ↑ ↓ for height, Q E to turn; T take off, L land, C capture.
   useEffect(() => {
     if (!connected) return;
+    const keyOf = (e: KeyboardEvent) => (e.key.length === 1 ? e.key.toLowerCase() : e.key);
     function onKey(e: KeyboardEvent) {
-      if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       const el = e.target as HTMLElement | null;
       if (el?.closest('input, textarea, select, [contenteditable="true"]')) return;
-      const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-      if (key === 'c' && hasVideo) { e.preventDefault(); void capture(); return; }
+      const key = keyOf(e);
       const action = KEYS[key];
+      if (action && isMove(action) && flying) e.preventDefault(); // also stops the arrows scrolling while held
+      if (e.repeat) return;
+      if (key === 'c' && hasVideo) { e.preventDefault(); void capture(); return; }
       if (!action) return;
       if (action !== 'takeoff' && !flying) return;
       e.preventDefault();
-      void send(action);
+      if (isMove(action)) hold(action);
+      else void send(action);
+    }
+    function onKeyUp(e: KeyboardEvent) {
+      const action = KEYS[keyOf(e)];
+      if (action && isMove(action)) release(action);
     }
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [connected, flying, hasVideo, send, capture]);
+    window.addEventListener('keyup', onKeyUp);
+    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKeyUp); };
+  }, [connected, flying, hasVideo, send, capture, hold, release]);
 
   return {
     status, phase, connected, hasVideo, flying, pending, message, captures, armStop, sweep, streamKey, frameSeen,
     setFrameSeen, retryStream: () => setTimeout(() => setStreamKey((k) => k + 1), 2000),
-    send, capture, runSweep, cancelSweep, stopMotors,
+    send, capture, runSweep, cancelSweep, stopMotors, hold, release, holding,
   };
 }

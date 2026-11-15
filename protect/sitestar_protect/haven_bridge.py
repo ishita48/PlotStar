@@ -1,4 +1,4 @@
-"""Pushes real hardware events into the team's main app (Next.js, HAVEN command center in Dashboard 2).
+"""Pushes real hardware events into the team's main app (Next.js, HAVEN command center in Studio → Deploy).
 
 The main app's Protect command center and the iPhone app read the same protection workspace. Its
 API only knows demo incidents, so a real event is sent as the matching command:
@@ -10,29 +10,47 @@ API only knows demo incidents, so a real event is sent as the matching command:
     manager badge approval  -> {"action": "acknowledge", "incidentId": <newest active>}
     everything clear        -> {"action": "reset"}   (the command center then shows Recovering)
 
-Target facility: HAVEN_FACILITY env var (its id), else the most recently deployed non-sample
-facility, else the most recent deployed sample. Never raises into the caller; failures are shown
-on the dashboard.
+Which project the physical model belongs to (one kit, one project at a time):
+    1. the project it was last connected to from the dashboard ("Connect here", or deploying a
+       project), saved to disk so it survives a restart;
+    2. else HAVEN_FACILITY (the --haven-facility flag);
+    3. else the most recently deployed non-sample project, else the most recent deployed sample.
+Never raises into the caller; failures are shown on the dashboard.
 """
 from __future__ import annotations
 
 import json
 import os
 import queue
+import re
 import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 from typing import Optional
 
 KIND_FOR = {"leak": "leak", "valve_fault": "leak", "smoke": "fire", "overheat": "usage"}
+FACILITY_ID = re.compile(r"^[a-z0-9-]{1,150}$")
+RESOLVE_EVERY_S = 5.0            # retry finding a project this often while none is known
+
+
+def clean_facility(f: dict) -> dict:
+    """The fields the main app needs, validated. Raises ValueError on a bad project."""
+    fid = str(f.get("id", ""))
+    name = str(f.get("name", "")).strip()
+    if not FACILITY_ID.match(fid) or not name:
+        raise ValueError("a project needs an id (a-z, 0-9, -) and a name")
+    return {"id": fid, "name": name[:160], "city": str(f.get("city", ""))[:120], "type": str(f.get("type", ""))[:60]}
 
 
 class HavenBridge:
-    def __init__(self, base_url: Optional[str] = "http://127.0.0.1:3000"):
+    def __init__(self, base_url: Optional[str] = "http://127.0.0.1:3000", link_path: Optional[Path] = None):
         self.base = base_url.rstrip("/") if base_url else None
-        self.facility: Optional[dict] = None
+        self.link_path = Path(link_path) if link_path else None
+        self.facility: Optional[dict] = self._load_link()
+        self.linked_by: Optional[str] = "saved" if self.facility else None
         self.ok: Optional[bool] = None
         self.error: Optional[str] = None
         self.last: Optional[str] = None
@@ -44,7 +62,7 @@ class HavenBridge:
     # ------------------------------------------------------------------ API
     def incident(self, kind: str, title: str) -> None:
         if self.base and kind in KIND_FOR:
-            self._q.put({"action": "trigger", "kind": KIND_FOR[kind], "_why": title})
+            self._q.put({"action": "trigger", "kind": KIND_FOR[kind], "live": True, "_why": title})
 
     def approved(self) -> None:
         if self.base:
@@ -54,12 +72,50 @@ class HavenBridge:
         if self.base:
             self._q.put({"action": "reset", "_why": "all sensors normal"})
 
+    def link(self, facility: dict, by: str = "dashboard") -> dict:
+        """Connect the physical model to this project from now on (and after a restart)."""
+        f = clean_facility(facility)
+        self.facility, self.linked_by = f, by
+        self.ok, self.error = None, None
+        if self.link_path:
+            try:
+                self.link_path.parent.mkdir(parents=True, exist_ok=True)
+                self.link_path.write_text(json.dumps(f, indent=2) + "\n")
+            except OSError as e:
+                self.error = f"could not save the project link: {e}"
+        self._note(f"connected to {f['name']} ({by})")
+        return f
+
     def snapshot(self) -> dict:
         f = self.facility or {}
         return {"url": self.base, "ok": self.ok, "error": self.error, "facility": f.get("name"),
-                "facility_id": f.get("id"), "last": self.last, "log": self.log[-8:]}
+                "facility_id": f.get("id") or os.environ.get("HAVEN_FACILITY"),
+                "facility_type": f.get("type"), "facility_city": f.get("city"), "linked_by": self.linked_by,
+                "last": self.last, "log": self.log[-8:]}
 
     # -------------------------------------------------------------- plumbing
+    def _load_link(self) -> Optional[dict]:
+        if not self.link_path or not self.link_path.exists():
+            return None
+        try:
+            return clean_facility(json.loads(self.link_path.read_text()))
+        except (OSError, ValueError, TypeError):
+            return None
+
+    def _forget_link(self) -> None:
+        self.facility, self.linked_by = None, None
+        if self.link_path:
+            try:
+                self.link_path.unlink()
+            except OSError:
+                pass
+
+    def _note(self, text: str) -> None:
+        self.last = f"{time.strftime('%H:%M:%S')} {text}"
+        self.log.append({"t": time.time(), "text": self.last})
+        del self.log[:-50]
+        print(f"[haven] {self.last}")
+
     def _http(self, method: str, path: str, body: Optional[dict] = None) -> dict:
         data = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(self.base + path, data=data, method=method,
@@ -81,14 +137,19 @@ class HavenBridge:
             raise RuntimeError("no deployed facility in the main app yet (Protect -> Deploy one)")
         return pool[0]["facility"]
 
+    def _resolve(self) -> None:
+        if self.facility is None:
+            self.facility = clean_facility(self._pick_facility())
+            self.linked_by = "flag" if os.environ.get("HAVEN_FACILITY") else "newest deployed"
+            self._note(f"connected to {self.facility['name']} ({self.linked_by})")
+
     def _state(self) -> dict:
         f = self.facility
         q = urllib.parse.urlencode({"name": f["name"], "city": f.get("city", ""), "type": f.get("type", "")})
         return self._http("GET", f"/api/protection/{f['id']}?{q}")
 
     def _send(self, cmd: dict) -> str:
-        if self.facility is None:
-            self.facility = self._pick_facility()
+        self._resolve()
         state = self._state()
         command = {k: v for k, v in cmd.items() if not k.startswith("_")}
         if command["action"] == "acknowledge":
@@ -113,7 +174,17 @@ class HavenBridge:
 
     def _worker(self) -> None:
         while True:
-            cmd = self._q.get()
+            try:
+                cmd = self._q.get(timeout=RESOLVE_EVERY_S)
+            except queue.Empty:
+                # Idle: find the project up front so the dashboard knows where the kit belongs.
+                if self.facility is None:
+                    try:
+                        self._resolve()
+                        self.ok, self.error = True, None
+                    except Exception as e:  # noqa: BLE001
+                        self.error = f"no project yet: {getattr(e, 'reason', e)}"
+                continue
             label = f"{cmd['action']} {cmd.get('kind', '')}".strip()
             try:
                 result = self._send(cmd)
@@ -122,13 +193,12 @@ class HavenBridge:
                 detail = e.read().decode(errors="replace")[:160]
                 result, self.ok, self.error = f"HTTP {e.code}", False, f"{label}: HTTP {e.code} {detail}"
                 if e.code == 404:
-                    self.facility = None
+                    self._forget_link()
             except (urllib.error.URLError, OSError, TimeoutError) as e:
                 result, self.ok = "main app not reachable", False
                 self.error = f"main app not reachable at {self.base} ({getattr(e, 'reason', e)})"
             except Exception as e:  # noqa: BLE001
                 result, self.ok, self.error = "error", False, f"{label}: {e}"
-            self.last = f"{time.strftime('%H:%M:%S')} {label} ({cmd.get('_why', '')}): {result}"
-            self.log.append({"t": time.time(), "text": self.last})
-            del self.log[:-50]
-            print(f"[haven] {self.last}" + (f"  -- {self.error}" if self.error and not self.ok else ""))
+            self._note(f"{label} ({cmd.get('_why', '')}): {result}")
+            if self.error and not self.ok:
+                print(f"[haven]   -- {self.error}")

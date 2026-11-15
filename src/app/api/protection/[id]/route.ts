@@ -3,6 +3,7 @@ import { guardOrigin, HttpError, readJSON, routeError } from '@/lib/http';
 import { actionSchema } from '@/lib/haven/engine';
 import { changeProtection, loadProtection } from '@/lib/haven/store';
 import { resetWorkspace } from '@/lib/haven/deployed';
+import { linkHardware } from '@/lib/hardware/protect';
 
 export const dynamic = 'force-dynamic';
 const facilitySchema = z.object({
@@ -41,11 +42,16 @@ export async function PATCH(req: Request, ctx: Context) {
       })
       .parse(await readJSON(req));
     if (id !== body.facility.id) throw new HttpError(400, 'Facility identifier does not match.');
+    let next;
     try {
-      return Response.json(await changeProtection(body.facility, body.revision, body.command));
+      next = await changeProtection(body.facility, body.revision, body.command);
     } catch (error) {
       throw new HttpError(409, (error as Error).message);
     }
+    // A newly deployed project takes over the physical model, so every deployment gets the same
+    // live hardware. Best effort: deploying never waits long on, or fails because of, PROTECT.
+    if (body.command.action === 'deploy') await linkHardware(body.facility, 'deploy');
+    return Response.json(next);
   } catch (error) {
     return routeError(error);
   }

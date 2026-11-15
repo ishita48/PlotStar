@@ -517,6 +517,13 @@ class IncidentCommander:
         self.messenger.send(f"SiteStar: {inc.title} in {inc.room_name} at "
                             f"{time.strftime('%H:%M', time.localtime(inc.started))}. Done automatically: {done}. "
                             f"{risk.split('.')[0]}.", kind="update", incident=inc.id)
+        if inc.severity != "critical":
+            # Warnings (heat, humidity, freeze risk): handled automatically and logged. No call-out
+            # approval, so the manager's one tap always goes to what matters (leaks, fire).
+            self._append_report(inc.id, f"Logged {wo['id']} for routine follow-up; no call-out needed.")
+            self._set_state(inc, "done")
+            self._t(inc.id, "done", f"warning handled automatically; {wo['id']} logged, no approval needed")
+            return
         line = f"dispatch {vendor['name']} for {wo['id']} (ETA {vendor['eta']}, call-out ${vendor['callout_usd']})"
         self.pending[inc.id] = {"incident": inc.id, "n": 1, "lines": [line], "mode": "offline",
                                 "dispatch": (wo["id"], vendor["name"], vendor["eta"], vendor["callout_usd"])}

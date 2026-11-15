@@ -227,8 +227,9 @@ export function DeployedProjects({
         </ul>
       )}
       <p className="hv-note">
-        Readings are simulated. Sample projects are illustrative fixtures that run the same HAVEN
-        rules as your own project, each with its own saved state. No hardware is connected.
+        Readings are simulated unless the physical model is connected to a project; deploying a
+        project connects it. Sample projects are illustrative fixtures that run the same HAVEN rules
+        as your own project, each with its own saved state.
       </p>
     </>
   );

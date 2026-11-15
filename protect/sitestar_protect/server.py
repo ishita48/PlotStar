@@ -29,6 +29,14 @@ class Reply(BaseModel):
     channel: Optional[str] = "dashboard"
 
 
+class Project(BaseModel):
+    id: str
+    name: str
+    city: Optional[str] = ""
+    type: Optional[str] = ""
+    by: Optional[str] = "dashboard"
+
+
 def create_app(ctrl, sim_board=None) -> FastAPI:
     app = FastAPI(title="SiteStar PROTECT")
     app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -56,6 +64,8 @@ def create_app(ctrl, sim_board=None) -> FastAPI:
 
     @app.post("/api/manager/reply")
     def reply(body: Reply):
+        if body.text.strip().upper() in ("YES", "NO"):     # Approve / Decline on the dashboard
+            ctrl.acknowledge_alarm(body.channel or "dashboard")
         ctrl.messenger.receive(body.text, body.sender or "manager", body.channel or "dashboard")
         return {"ok": True}
 
@@ -75,6 +85,16 @@ def create_app(ctrl, sim_board=None) -> FastAPI:
             raise HTTPException(400, "bad watts")
         ctrl.meter.feed(w)
         return {"ok": True}
+
+    @app.post("/api/haven/link")
+    def haven_link(body: Project):
+        """Connect the physical model to a deployed project in the main app (Studio → Deploy)."""
+        try:
+            f = ctrl.haven.link(body.model_dump(exclude={"by"}), by=(body.by or "dashboard")[:40])
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        ctrl._log(f"physical model connected to {f['name']}", body.by or "dashboard")
+        return {"ok": True, "facility": f}
 
     @app.post("/api/grid/request")
     def grid_request(depth: Optional[int] = None):
