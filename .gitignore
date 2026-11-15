@@ -48,3 +48,11 @@ xcuserdata/
 *.xcuserstate
 mobile/build/
 DerivedData/
+
+# from website-live-feeds
+.hotspot
+/Data/
+web/data/costar-sites.json
+web/data/media/
+bridge/.cache/
+bridge/.env

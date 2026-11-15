@@ -647,7 +647,7 @@ function ConnectionDetails({ status, phase }: { status: DroneStatus | null; phas
             <code>pip install -r bridge/requirements.txt</code>
           </li>
           <li>
-            <code>python bridge/server.py</code> (serves on port 8010)
+            <code>python bridge/server.py --drone</code> (serves on port 8010)
           </li>
         </ol>
         <p>

@@ -170,7 +170,7 @@ function Connection({ status, phase }: { status: DroneStatus | null; phase: Phas
         <ol>
           <li>Power on the Tello and join its TELLO-XXXXXX Wi-Fi.</li>
           <li><code>pip install -r bridge/requirements.txt</code></li>
-          <li><code>python bridge/server.py</code> (serves on port 8010)</li>
+          <li><code>python bridge/server.py --drone</code> (serves on port 8010)</li>
         </ol>
         <p>No drone at hand? <code>python bridge/server.py --mock</code> runs the bridge with a labeled test pattern.</p>
       </div>
