@@ -13,11 +13,13 @@ let status = null; // last /api/status
 let streaming = false;
 let paneOpen = false;
 let clockT0 = 0;
+let hotspotError = null; // why the last "Connect drone to hotspot" click was refused
 
 export function initDrone() {
   $("#dr-off-art").innerHTML = droneSVG("drone-big");
   $$("#dr-ctl [data-action]").forEach((b) => b.addEventListener("click", () => command(b.dataset.action, b)));
   $("#dr-snap").addEventListener("click", capture);
+  $("#dr-hotspot").addEventListener("click", connectHotspot);
   $("#dr-img").addEventListener("error", () => (streaming = false));
   on((type, detail) => {
     if (type === "select") renderCaptures();
@@ -72,15 +74,49 @@ function render() {
     $("#dr-msg").textContent =
       store.base === null ? "Start the bridge on the demo laptop to fly it."
       : !s ? "The bridge isn't answering."
-      : s.disabled ? "Start the bridge with --drone (and --tello-ip on a hotspot) to fly it live."
-      : s.error ? "The drone isn't answering. Check it's on and on the same Wi-Fi as this laptop."
+      : s.disabled ? "Start the bridge with --drone to fly it live."
+      : s.error ? "Looking for the drone. Check it's on and on the same Wi-Fi as this laptop."
       : "Connecting to the drone…";
   }
+  renderHotspot(s);
   $("#hud-alt").textContent = s?.height != null ? `${s.height} cm` : "—";
   $("#hud-bat").textContent = s?.battery != null ? `${s.battery}%` : "—";
   $("#hud-temp").textContent = s?.temp != null ? `${s.temp} °C` : "—";
   $("#hud-mode").textContent = s?.mock ? "SIMULATED" : "LIVE";
   $$("#dr-ctl button").forEach((b) => (b.disabled = !live));
+}
+
+/** The "Connect drone to hotspot" button on the offline card (bridge/hotspot.py does the work). */
+function renderHotspot(s) {
+  const hs = s?.hotspot;
+  const show = !!(hs && !s.connected && !s.disabled);
+  const btn = $("#dr-hotspot");
+  btn.hidden = !show;
+  $("#dr-off").classList.toggle("hotspot", show);
+  const nb = (t) => String(t).replace(/-/g, "‑"); // keep TELLO-XXXXXX on one line
+  btn.disabled = !show || !!hs.problem || hs.running;
+  btn.textContent = hs?.running ? "Connecting…" : "Connect drone to hotspot";
+  $("#dr-hotspot-msg").classList.toggle("err", !!(show && !hs.running && (hotspotError || hs.ok === false)));
+  $("#dr-hotspot-msg").textContent = !show ? ""
+    : hs.running ? hs.step
+    : hs.problem ? hs.problem
+    : hotspotError ? `✗ ${hotspotError}`
+    : hs.message ? hs.message
+    : `Use this when ${nb(hs.tello_ssid)} shows in the ${nb("Wi-Fi")} menu. This Mac goes offline for about 30 s.`;
+  btn.title = show && hs.ssid ? `Sends ${hs.ssid} and its password to the drone over the drone's own Wi-Fi, then puts this Mac back on ${hs.ssid}.` : "";
+}
+
+async function connectHotspot() {
+  const btn = $("#dr-hotspot");
+  btn.disabled = true;
+  hotspotError = null;
+  try {
+    const hs = await post("/api/drone/hotspot", {});
+    if (status) status = { ...status, hotspot: hs };
+  } catch (e) {
+    hotspotError = e.message; // kept until the next click; polls would overwrite a status field
+  }
+  render();
 }
 
 function tickClock() {

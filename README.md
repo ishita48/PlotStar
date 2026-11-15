@@ -321,7 +321,7 @@ python bridge/server.py --mock-grid      # open http://localhost:8000
   - On a second laptop: `python bridge/controller.py --machine baseline --bridge http://<demo-laptop-ip>:8000`, with the bridge started using `--host 0.0.0.0`.
   - With one laptop, the flat machine stays simulated and labeled as such.
 - **ESP32 button.** `POST /api/grid/emergency` with `{"active": true, "source": "esp32"}`.
-- **Drone.** `python bridge/server.py --tello-ip 172.20.10.14 --mock-grid` (the drone on your hotspot; see `bridge/tello_wifi.py`). The Inspect section's Drone tab shows its live feed, and captured frames go on the building's passport.
+- **Drone.** `python bridge/server.py --drone --mock-grid`. The bridge finds the drone on whatever Wi-Fi the laptop is on (its own or your hotspot; see `bridge/tello_wifi.py`) and follows it when its address changes. Pass `--hotspot NAME --tello-ssid TELLO-XXXXXX` once to get the site's "Connect drone to hotspot" button; they are remembered in `bridge/.drone.json`. The Inspect section's Drone tab shows its live feed, and captured frames go on the building's passport.
 - **No hardware at all:** `python bridge/server.py --mock` (simulated drone and machines, labeled).
 
 Presenter keys: **1–5** jump between sections, **0** to the top. `?site=<CoStar id>` opens a finalist; `&inspect=1` starts its inspection.

@@ -69,6 +69,19 @@ def join(ssid: str, password: str) -> int:
 
 
 def local_subnet() -> ipaddress.IPv4Network:
+    """The network to search for the drone: the Wi-Fi's real one on a Mac (an iPhone hotspot
+    is a /28), never more than the /24 around this computer."""
+    if sys.platform == "darwin":
+        try:
+            dev = wifi_device()
+            ip = current_ip(dev)
+            mask = subprocess.run(["ipconfig", "getoption", dev, "subnet_mask"],
+                                  capture_output=True, text=True).stdout.strip()
+            if ip:
+                net = ipaddress.ip_network(f"{ip}/{mask or 24}", strict=False)
+                return net if net.prefixlen >= 24 else ipaddress.ip_network(f"{ip}/24", strict=False)
+        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+            pass
     # Connecting a UDP socket sends nothing; it only picks the outgoing interface.
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
         s.connect(("10.255.255.255", 1))
@@ -136,6 +149,8 @@ def join_mac_wifi(dev: str, ssid: str, password: str | None, want_prefix: str | 
     msg = (out.stdout + out.stderr).strip()
     if msg:
         print(f"  networksetup: {msg}")
+    if "Could not find network" in msg:
+        return False  # not in range (yet); waiting for an address would only waste the timeout
     deadline = time.time() + timeout
     while time.time() < deadline:
         ip = current_ip(dev)

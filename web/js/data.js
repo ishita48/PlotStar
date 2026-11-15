@@ -4,6 +4,7 @@
 //   1. ?bridge=http://host:port in the page URL
 //   2. Same origin (when the page is served by the bridge itself)
 //   3. http://localhost:8000
+//   4. http://localhost:8010 (the always-on service the iPhone app also uses)
 
 const params = new URLSearchParams(location.search);
 
@@ -12,6 +13,7 @@ function candidates() {
   if (params.get("bridge")) list.push(params.get("bridge").replace(/\/$/, ""));
   if (location.protocol.startsWith("http")) list.push("");
   list.push("http://localhost:8000");
+  list.push("http://localhost:8010");
   return [...new Set(list)];
 }
 
