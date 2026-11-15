@@ -62,3 +62,6 @@ app.include_router(intel.router)  # CoStar intelligence tools, MCP audit timelin
 
 from .routers import costar_site  # noqa: E402
 app.include_router(costar_site.router)  # CoStar control, occupancy, redevelopment screen, community exposure
+
+from .routers import agents as agents_router  # noqa: E402
+app.include_router(agents_router.router)  # Deep Agents: orchestrator, specialists, live execution graph, evidence

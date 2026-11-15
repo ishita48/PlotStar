@@ -118,10 +118,12 @@ class Run:
     def snapshot(self, with_data: bool = False) -> dict[str, Any]:
         with self.lock:
             ev = {k: ({**v} if with_data else {kk: vv for kk, vv in v.items() if kk != "data"}) for k, v in self.evidence.items()}
-            return dict(**self.summary(), context=self.context, nodes=list(self.nodes.values()), plan=self.plan,
-                        findings=self.findings, evidence=ev, score=self.score, answer=self.answer, proposal=self.proposal,
-                        verification=self.verification, approval=self.approval, dispatches=self.dispatches,
-                        error=self.error, langsmith=langsmith_ref(self.trace_id))
+            out = self.summary()
+            out.update(context=self.context, nodes=list(self.nodes.values()), plan=self.plan, findings=self.findings,
+                       evidence=ev, score=self.score, answer=self.answer, proposal=self.proposal,
+                       verification=self.verification, approval=self.approval, dispatches=self.dispatches,
+                       error=self.error, langsmith=langsmith_ref(self.trace_id))
+            return out
 
 
 def register(run: Run) -> Run:
@@ -254,10 +256,31 @@ class Recorder(BaseCallbackHandler):
             seen += 1
         return None
 
-    def _add(self, rid: UUID, parent_rid: UUID | None, **node: Any) -> dict[str, Any]:
+    def _by_metadata(self, md: dict[str, Any] | None) -> str | None:
+        """The agent node a call belongs to, from the metadata LangGraph/deepagents stamp on every run: the delegating
+        `task` call id (exact) or the agent name. Needed because some wrapper runs (e.g. model middleware) never report
+        a chain start, so walking parent ids alone can dead-end."""
+        md = md or {}
+        agents = [n for n in self.run.nodes.values() if n["kind"] == "agent"]
+        tcid = md.get("lc_subagent_tool_call_id")
+        if tcid:
+            hit = next((n for n in reversed(agents) if n.get("delegation_id") == tcid), None)
+            if hit:
+                return hit["id"]
+        name = md.get("lc_agent_name")
+        if name:
+            hit = next((n for n in reversed(agents) if n["name"] == name and n["status"] == "running"), None) \
+                or next((n for n in reversed(agents) if n["name"] == name), None)
+            if hit:
+                return hit["id"]
+        return None
+
+    def _add(self, rid: UUID, parent_rid: UUID | None, md: dict[str, Any] | None = None, **node: Any) -> dict[str, Any]:
         with self.run.lock:
             nid = f"n{len(self.run.nodes) + 1}"
-            parent = self._owner(parent_rid)
+            parent = (self._by_metadata(md) if node.get("kind") != "agent" else None) or self._owner(parent_rid)
+            if parent is None and node.get("name") != ORCHESTRATOR:
+                parent = next((n["id"] for n in self.run.nodes.values() if n["name"] == ORCHESTRATOR), None)
             n: dict[str, Any] = dict(id=nid, parent=parent, status="running", start=round(time.time() - self.run.t0, 3),
                                      end=None, ms=None, lc_run_id=str(rid), error=None, input=None, output=None, evidence=[])
             n.update(node)
@@ -305,7 +328,7 @@ class Recorder(BaseCallbackHandler):
                 self._add(run_id, parent_run_id, kind="agent", name=name, label=info.get("title", name),
                           role=info.get("role"), model=info.get("model"), run_name=name,
                           objective=d.get("description"),
-                          delegation_id=d.get("tool_call_id") or (metadata or {}).get("lc_subagent_tool_call_id"),
+                          delegation_id=(metadata or {}).get("lc_subagent_tool_call_id") or d.get("tool_call_id"),
                           input=_clip(d.get("description") or "", 600))
 
     def on_chain_end(self, outputs: Any, *, run_id: UUID, **kw: Any) -> None:
@@ -350,7 +373,7 @@ class Recorder(BaseCallbackHandler):
             role = getattr(last, "type", "message") if last is not None else "message"
             preview = f"{len(msgs)} messages in context. Last ({role}): {_clip(_text(getattr(last, 'content', '')), 280)}"
             provider, model = md.get("ls_provider") or "anthropic", md.get("ls_model_name") or (serialized or {}).get("name")
-            self._add(run_id, parent_run_id, kind="model", name=f"Model / {model}", label=model,
+            self._add(run_id, parent_run_id, md, kind="model", name=f"Model / {model}", label=model,
                       model={"provider": provider, "name": model}, input=preview, tokens=None)
 
     def on_llm_end(self, response: Any, *, run_id: UUID, **kw: Any) -> None:
@@ -385,7 +408,7 @@ class Recorder(BaseCallbackHandler):
             kind = "mcp" if provider.startswith("costar-mcp") else "compute" if md.get("kind") == "computation" \
                 else "verify" if md.get("kind") == "verification" else "plan" if name == "write_todos" else "tool"
             safe_args = {k: v for k, v in args.items() if k not in ("runtime", "config")}
-            self._add(run_id, parent_run_id, kind=kind, name=name, label=md.get("display_name") or name.replace("_", " "),
+            self._add(run_id, parent_run_id, md, kind=kind, name=name, label=md.get("display_name") or name.replace("_", " "),
                       provider=provider, input=_clip(dumps(safe_args), 600), args=safe_args)
             if name == "write_todos":
                 todos = args.get("todos") or []

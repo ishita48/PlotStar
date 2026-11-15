@@ -14,13 +14,14 @@ independent ones in parallel (several `task` calls in one message), and re-deleg
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import threading
 from typing import Any, Literal
 
 from langsmith import traceable
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .. import config
 from . import tools as T
@@ -29,6 +30,7 @@ from .runtime import AGENT_INFO, CURRENT, LLM_COSTAR, ORCHESTRATOR, Recorder, Ru
 
 ORCH_MODEL = os.getenv("PLOTSTAR_AGENT_MODEL", "claude-sonnet-5-5")
 SUB_MODEL = os.getenv("PLOTSTAR_SUBAGENT_MODEL", "claude-haiku-5-5")
+SUB_CALL_LIMIT = int(os.getenv("PLOTSTAR_SUBAGENT_CALL_LIMIT", "10"))  # model calls per delegated task
 WORKSPACE = config.REPO_ROOT / "services" / "api" / "agent_workspace"
 
 
@@ -36,24 +38,89 @@ WORKSPACE = config.REPO_ROOT / "services" / "api" / "agent_workspace"
 
 class EvidenceRef(BaseModel):
     id: str = Field(..., description="Evidence id returned by one of your tools, e.g. E3")
-    tool: str = Field(..., description="The tool that returned it")
-    what: str = Field(..., description="What this evidence shows, in a few words")
+    tool: str = Field("", description="The tool that returned it")
+    what: str = Field("", description="What this evidence shows, in a few words")
+
+
+def _listify(v: Any) -> Any:
+    if v is None:
+        return []
+    return [v] if isinstance(v, (str, dict)) else v
+
+
+_STATUS = (("insufficient", "insufficient evidence"), ("unknown", "insufficient evidence"), ("unfav", "unfavourable"),
+           ("negative", "unfavourable"), ("not viable", "unfavourable"), ("mix", "mixed"), ("partial", "mixed"),
+           ("fav", "favourable"), ("positive", "favourable"), ("viable", "favourable"))
 
 
 class Findings(BaseModel):
     """A specialist's report back to the orchestrator."""
     objective: str = Field(..., description="The question you were asked to answer")
-    summary: str = Field(..., description="One-sentence conclusion")
-    status: Literal["favourable", "mixed", "unfavourable", "insufficient evidence"]
-    evidence: list[EvidenceRef] = Field(default_factory=list)
+    summary: str = Field("", description="One-sentence conclusion")
+    status: str = Field("mixed", description="One of: favourable, mixed, unfavourable, insufficient evidence")
+    evidence: list[EvidenceRef] = Field(default_factory=list, description="Evidence ids your tools returned, with what each shows")
     tools_invoked: list[str] = Field(default_factory=list)
     calculations: list[str] = Field(default_factory=list, description="What was computed and by which tool (never your own arithmetic)")
     assumptions: list[str] = Field(default_factory=list)
     findings: list[str] = Field(default_factory=list, description="Key facts, each with its evidence id")
-    confidence: Literal["high", "medium", "low"]
-    confidence_reason: str
+    confidence: str = Field("medium", description="One of: high, medium, low")
+    confidence_reason: str = ""
     risks: list[str] = Field(default_factory=list)
     next_steps: list[str] = Field(default_factory=list)
+
+    # Tolerant at the boundary: spelling variants and loose shapes are normalised instead of rejected, because a
+    # rejected structured response makes the model retry (a loop), and the meaning is unambiguous.
+    @model_validator(mode="before")
+    @classmethod
+    def _recover_xml(cls, data: Any) -> Any:
+        """Smaller models sometimes put the whole report, as <field>…</field> tags, inside one string field. Lift
+        those tags back into their fields rather than reject (a rejection makes the model resend the same thing)."""
+        if not isinstance(data, dict):
+            return data
+        out = dict(data)
+        for v in list(data.values()):
+            if isinstance(v, str) and "</" in v:
+                for tag, body in re.findall(r"<([a-z_]+)>(.*?)</\1>", v, flags=re.S):
+                    if tag in cls.model_fields and not out.get(tag):
+                        items = re.findall(r"<(?:item|li)>(.*?)</(?:item|li)>", body, flags=re.S)
+                        out[tag] = [i.strip() for i in items] if items else body.strip()
+        obj = out.get("objective")
+        if isinstance(obj, str) and "<" in obj:
+            out["objective"] = re.sub(r"<[^>]+>.*", "", obj, flags=re.S).strip() or obj[:200]
+        if not out.get("summary"):
+            f = out.get("findings")
+            out["summary"] = (f[0] if isinstance(f, list) and f else f if isinstance(f, str) else "") or "See findings."
+        return out
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def _status(cls, v: Any) -> str:
+        t = str(v or "").strip().lower()
+        return next((canon for key, canon in _STATUS if key in t), "mixed")
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def _confidence(cls, v: Any) -> str:
+        t = str(v or "").strip().lower()
+        return "high" if t.startswith("h") else "low" if t.startswith("l") else "medium"
+
+    @field_validator("tools_invoked", "calculations", "assumptions", "findings", "risks", "next_steps", mode="before")
+    @classmethod
+    def _strings(cls, v: Any) -> list[str]:
+        return [x if isinstance(x, str) else json.dumps(x, ensure_ascii=False) for x in _listify(v)]
+
+    @field_validator("evidence", mode="before")
+    @classmethod
+    def _evidence(cls, v: Any) -> list[Any]:
+        out = []
+        for x in _listify(v):
+            if isinstance(x, str):
+                m = re.search(r"E\d+", x)
+                out.append({"id": m.group(0) if m else x[:12], "tool": "", "what": x})
+            elif isinstance(x, dict):
+                out.append({"id": str(x.get("id") or x.get("evidence_id") or "?"), "tool": str(x.get("tool") or ""),
+                            "what": str(x.get("what") or x.get("description") or "")})
+        return out
 
 
 # ------------------------------------------------------------------------------------------------ the specialists
@@ -204,7 +271,7 @@ def graph() -> Any:
             return _GRAPH["g"]
         from deepagents import FilesystemPermission, create_deep_agent
         from deepagents.backends import FilesystemBackend
-        from langchain.agents.middleware import TodoListMiddleware
+        from langchain.agents.middleware import ModelCallLimitMiddleware, TodoListMiddleware
         G, C = T.geostar_tools(), T.costar_tools()
         missing: list[str] = []
 
@@ -219,7 +286,8 @@ def graph() -> Any:
         for s in SPECIALISTS:
             spec: dict[str, Any] = dict(name=s["name"], description=s["description"], system_prompt=s["prompt"] + COMMON,
                                         tools=pick(s["tools"]), model=_model(s["name"], s["title"], s["role"], SUB_MODEL),
-                                        response_format=Findings)
+                                        response_format=Findings,
+                                        middleware=[ModelCallLimitMiddleware(run_limit=SUB_CALL_LIMIT, exit_behavior="end")])
             if s.get("skills"):
                 spec["skills"] = ["/deep_skills/"]
             subagents.append(spec)
@@ -302,9 +370,10 @@ def _execute(run: Run, message: str, thread_id: str, root_name: str, stage: str)
         cfg: dict[str, Any] = {
             "configurable": {"thread_id": thread_id}, "callbacks": [Recorder(run, root_name)], "run_name": root_name,
             "recursion_limit": 150, "tags": ["plotstar", "deep-agents", run.kind],
-            "metadata": {"agent_name": ORCHESTRATOR, "agent_role": "orchestrator", "workflow_stage": stage,
-                         "property_id": pid, "scenario_id": run.id, "run_kind": run.kind,
-                         "model_provider": "anthropic", "model_name": ORCH_MODEL}}
+            # run-wide context only: LangSmith copies root metadata onto every child run, so agent identity lives on
+            # each model (agent_name, agent_role, model_name) and in the SDK's lc_agent_name / ls_agent_type
+            "metadata": {"workflow_stage": stage, "property_id": pid, "scenario_id": run.id, "run_kind": run.kind,
+                         "orchestrator_model": ORCH_MODEL, "subagent_model": SUB_MODEL}}
         payload: Any = {"messages": [HumanMessage(message)]}
         while True:
             for _ in g.stream(payload, cfg, stream_mode="updates"):

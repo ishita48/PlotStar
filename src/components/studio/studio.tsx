@@ -17,6 +17,9 @@ import type { MapMode } from '../explore/explore-map';
 import { Plan2D, type Layers } from './plan2d';
 import type { MoveEdit, ViewPreset } from './model3d';
 import { Copilot, type BriefPatch } from './copilot';
+import { AgentIntel } from './agents/agent-intel';
+import { AgentStatusPill } from './agents/status-pill';
+import { isActive, useAgentRun } from './agents/use-agent-run';
 import { Guide } from './guide/guide';
 import { ImportDesign, type NotePreview } from './import/import-design';
 import { CostarDossier } from './costar/dossier';
@@ -472,6 +475,20 @@ export function Studio() {
     id: `studio-${projectId.toLowerCase().replace(/[^a-z0-9-]+/g, '-')}`.slice(0, 150), name: siteName.slice(0, 160), city: brief.market, type: kindLabel,
   }), [projectId, siteName, brief.market, kindLabel]);
   const protection = useProtection(facility, step >= 7);
+
+  // Deep Agents: one shared run for the site evaluation and the conversation, shown live in Agent Intelligence
+  const agentRun = useAgentRun();
+  const [intelOpen, setIntelOpen] = useState(false);
+  const [evalSite, setEvalSite] = useState<string | null>(null);
+  const agentBusy = isActive(agentRun.state);
+  const siteScore = agentRun.state.kind === 'site-evaluation' && evalSite === siteId ? agentRun.state.score : null;
+  const analyzeSite = () => {
+    if (!site) return;
+    setEvalSite(site.id);
+    setIntelOpen(true);
+    void agentRun.start('/agents/site-evaluation', { ...body(brief), stage: PAGES[step], market: brief.market, concept_id: concept?.id ?? null },
+      `Evaluate ${siteLabel(site)} for a ${brief.mw} MW data center`);
+  };
   const [protectStart, setProtectStart] = useState<number | undefined>();
   const [deployView, setDeployView] = useState<'current' | 'projects' | Facility>('current');
   const openCommand = () => { setProtectStart(undefined); setDeployView('current'); setStep(9); };
@@ -491,6 +508,7 @@ export function Studio() {
       <header className="st-top">
         <Brand />
         <div className="st-top-title"><b>Studio</b><span>{dc ? `${brief.name} · ${brief.mw} MW IT${site ? ` · ${siteLabel(site)}` : ''}` : `${kindLabel} · ${brief.market} · concept model`}</span></div>
+        <AgentStatusPill s={agentRun.state} onOpen={() => setIntelOpen(true)} />
         <nav className="st-top-nav">
           <Link href="/studio/agent">How the AI works</Link>
           <Link href="/studio/data">Data</Link>
@@ -624,6 +642,14 @@ export function Studio() {
                             <figcaption><Tag label="Sourced" /> Vexcel aerial{aerialMeta?.['last-capture-date'] ? ` · captured ${aerialMeta['last-capture-date'].slice(0, 10)}` : ''}{aerialMeta?.['min-gsd'] ? ` · ${(Number(aerialMeta['min-gsd']) * 100).toFixed(0)} cm per pixel` : ''}{ctx ? ' · 3D mesh available' : ''}</figcaption>
                           </figure>
                         )}
+                        <div className="ai-site-cta">
+                          {siteScore && agentRun.state.status === 'done' && <span className="ai-mini-score"><b>{siteScore.score ?? '—'}</b> {siteScore.verdict}</span>}
+                          <p>{siteScore && agentRun.state.status === 'done'
+                            ? `Scored by the agents from ${Object.keys(agentRun.state.evidence).length} evidence records, ${Math.round(siteScore.coverage * 100)}% coverage. Open the graph to see who found what.`
+                            : 'Deep Agents analyse this property in parallel: CoStar evidence over MCP, money, power and water, and the neighbours. Watch them work, then see exactly how the score was produced.'}</p>
+                          <button className="st-btn primary" onClick={analyzeSite} disabled={agentBusy}>{agentBusy && agentRun.state.kind === 'site-evaluation' ? 'Agents working…' : siteScore ? 'Re-run the agents' : 'Analyze with agents'}</button>
+                          {agentRun.state.runId && <button className="st-btn" onClick={() => setIntelOpen(true)}>Open the graph</button>}
+                        </div>
                         <p className="st-small"><b>Land price.</b> {(site as SiteExtra).landCost ? `${money((site as SiteExtra).landCost!)} · ${(site as SiteExtra).landCostBasis ?? ''}` : 'Unknown. No CoStar price for this location, so land is left out of the totals.'} <Tag label={(site as SiteExtra).landCost ? ((site as SiteExtra).labels?.landCost ?? 'Estimated') : 'Unknown'} /></p>
                         <h4>Site rectangle</h4>
                         <div className="st-row">
@@ -876,8 +902,11 @@ export function Studio() {
         </main>
       </div>
 
-      {result && <Copilot body={body(brief)} conceptId={concept?.id ?? null} selected={sel} stage={PAGES[step]} market={brief.market}
-        onApply={applyPatch} onSelectSite={(id) => { const s = sites.find((x) => x.id === id); if (s) void pickSite(id); }} busy={busy} />}
+      <Copilot body={body(brief)} conceptId={concept?.id ?? null} selected={sel} stage={PAGES[step]} market={brief.market}
+        facilityId={step >= 7 ? facility.id : null} lastScore={siteScore ? { verdict: siteScore.verdict, score: siteScore.score } : null}
+        agent={agentRun} onOpenGraph={() => setIntelOpen(true)}
+        onApply={applyPatch} onSelectSite={(id) => { const s = sites.find((x) => x.id === id); if (s) void pickSite(id); }} busy={busy} />
+      {intelOpen && <AgentIntel s={agentRun.state} onClose={() => setIntelOpen(false)} onDecide={(a) => void agentRun.decide(a)} />}
       <Guide body={result ? body(brief) : null} conceptId={concept?.id ?? null} selected={sel} stage={PAGES[step]} market={brief.market}
         hasSite={!!site} onApply={applyPatch} />
       {dossier && <CostarDossier parcelId={parcelId} lotAcres={site?.lotAcres ?? null} mwIt={brief.mw} rackKw={brief.rackKw} initialTab={dossier}

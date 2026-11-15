@@ -13,6 +13,7 @@ import '../dashboard-2/smart-blocks.css';
 import '../dashboard-2/command.css';
 import './design.css';
 import './design-theme.css';
+import './agents.css';
 
 export const metadata: Metadata = {
   title: 'Studio · GeoStar',
