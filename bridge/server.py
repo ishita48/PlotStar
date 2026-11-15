@@ -66,6 +66,41 @@ ACTIONS = {
 }
 
 
+# ---------------------------------------------------------------- expansion kit
+# The RoboMaster TT kit: a forward ToF distance sensor and an 8x8 dot-matrix display on the
+# drone's open-source controller, both driven with "EXT" SDK commands. Everything here is
+# optional: without the kit (nothing answers "EXT tof?"), the bridge behaves as before.
+GUARD_CM = 50                # a forward move must leave at least this much room ahead
+TOF_EMPTY_MM = 8000          # the sensor reports 8190 mm when nothing is in range
+TOF_FRESH_S = 3.0
+COUNTDOWN_S = 1.0
+
+
+def _pattern(rows, color):
+    """8 rows of 8 characters ('#' lit) -> the 64-character string 'EXT mled g' takes."""
+    return "".join("".join(color if c == "#" else "0" for c in row) for row in rows)
+
+
+# The display faces forward, toward whoever is in front of the drone, so sideways arrows are
+# drawn as those people see them: the drone moving to its left shows an arrow to their right.
+DISPLAY = {
+    "3": _pattern(["..####..", ".#....#.", "......#.", "...###..", "......#.", ".#....#.", "..####..", "........"], "p"),
+    "2": _pattern(["..####..", ".#....#.", "......#.", ".....#..", "...##...", "..#.....", ".######.", "........"], "p"),
+    "1": _pattern(["...##...", "..###...", "...##...", "...##...", "...##...", "...##...", "..####..", "........"], "p"),
+    "up": _pattern(["...##...", "..####..", ".######.", "...##...", "...##...", "...##...", "...##...", "........"], "b"),
+    "down": _pattern(["...##...", "...##...", "...##...", "...##...", ".######.", "..####..", "...##...", "........"], "b"),
+    "left": _pattern(["........", "..#.....", ".##.....", "########", ".##.....", "..#.....", "........", "........"], "b"),
+    "right": _pattern(["........", ".....#..", ".....##.", "########", ".....##.", ".....#..", "........", "........"], "b"),
+    "hover": _pattern(["........", "..####..", ".#....#.", ".#....#.", ".#....#.", ".#....#.", "..####..", "........"], "b"),
+    "toward": _pattern(["...##...", "...##...", "...##...", "...##...", "...##...", "........", "...##...", "........"], "r"),
+    "stop": _pattern(["#......#", ".#....#.", "..#..#..", "...##...", "...##...", "..#..#..", ".#....#.", "#......#"], "r"),
+    "flash": "p" * 64,
+}
+# What the display shows while each command runs (sideways mirrored, see above).
+SHOW_FOR = {"up": "up", "down": "down", "left": "right", "right": "left", "forward": "toward",
+            "back": "hover", "cw": "hover", "ccw": "hover", "land": "down"}
+
+
 # ---------------------------------------------------------------- drone
 
 class Drone:
@@ -82,7 +117,13 @@ class Drone:
         self._last_state = None
         self._last_state_at = 0.0
         self._last_command_at = time.time()
+        self.expansion = mock        # the simulated drone has the kit
+        self.ahead_mm = None
+        self.ahead_at = 0.0
+        self.display = None          # the 64-character pattern on the dot matrix, if any
+        self.mock_ahead_cm = 220
 
+        threading.Thread(target=self._tof_loop, daemon=True).start()
         if not mock:
             from djitellopy import Tello  # imported lazily so --mock works without it
             self.tello = Tello(host=tello_ip)
@@ -102,6 +143,7 @@ class Drone:
                         self.tello.background_frame_read = None
                     self.frame_read = self.tello.get_frame_read()
                     self._last_state, self._last_state_at = None, time.time()
+                    self._probe_expansion()
                     self.connected = True
                     self.error = None
                     print(f"Connected to Tello. Battery {self.tello.get_battery()}%")
@@ -156,7 +198,7 @@ class Drone:
     def status(self):
         base = {"connected": self.connected, "mock": self.mock, "error": self.error}
         if self.mock:
-            return {**base, "battery": 87, "height": 120 if self.mock_flying else 0,
+            return {**base, **self._kit_status(), "battery": 87, "height": 120 if self.mock_flying else 0,
                     "temp": 41, "flying": self.mock_flying, "video": True, "ip": None}
         if self.connected and not self._alive():
             self.connected = False
@@ -166,7 +208,7 @@ class Drone:
             return {**base, "connected": False, "battery": None, "height": None,
                     "temp": None, "flying": False, "video": False, "ip": self.tello.address[0]}
         t = self.tello
-        return {**base, "battery": t.get_battery(), "height": t.get_height(),
+        return {**base, **self._kit_status(), "battery": t.get_battery(), "height": t.get_height(),
                 "temp": t.get_temperature(), "flying": t.is_flying,
                 "video": self._has_frame(), "ip": t.address[0]}
 
@@ -182,22 +224,138 @@ class Drone:
                 self.mock_flying = False
             else:
                 self.tello.emergency()
+            if self.command_lock.acquire(blocking=False):  # the display only if nothing else is talking
+                try:
+                    self._show("stop")
+                finally:
+                    self.command_lock.release()
             return
         if action not in ACTIONS:
             raise ValueError(f"unknown action '{action}'")
         if not self.command_lock.acquire(blocking=False):
             raise BlockingIOError("drone is busy with another command")
         try:
+            if action == "forward":
+                self._guard_forward()
+            if action == "takeoff":
+                for n in "321":  # tells the people nearby what's coming
+                    self._show(n)
+                    time.sleep(COUNTDOWN_S)
+                self._show("up")
+            else:
+                self._show(SHOW_FOR.get(action))
             if self.mock:
                 time.sleep(0.4)
-                if action == "takeoff":
-                    self.mock_flying = True
-                elif action == "land":
-                    self.mock_flying = False
+                self._mock_move(action)
             else:
                 ACTIONS[action](self.tello)
+            self._show(None if action == "land" else "hover")
+            if self.expansion:
+                self._read_tof()  # the view ahead changed; don't wait for the next poll
         finally:
             self.command_lock.release()
+
+    # ---- expansion kit (dot matrix + ToF)
+
+    def _ext(self, command, timeout=2):
+        """An "EXT" command for the kit. Returns the reply, or None if nothing answered."""
+        if self.mock:
+            return None
+        reply = self.tello.send_command_with_return("EXT " + command, timeout=timeout)
+        if reply.startswith("Aborting"):
+            # A late reply would be read as the next command's answer, so drop anything queued.
+            try:
+                self.tello.get_own_udp_object()["responses"].clear()
+            except Exception:
+                pass
+            return None
+        return reply
+
+    def _probe_expansion(self):
+        reply = self._ext("tof?") or ""
+        self.expansion = reply.startswith("tof")
+        print("Expansion kit (dot matrix + ToF):", "found" if self.expansion else "not attached")
+        if self.expansion:
+            self._show(None)
+
+    def _read_tof(self):
+        """Distance ahead in mm from the ToF sensor; None when nothing is in range."""
+        if self.mock:
+            mm = self.mock_ahead_cm * 10
+        else:
+            match = re.search(r"tof\s+(\d+)", self._ext("tof?") or "")
+            if not match:
+                return self.ahead_mm
+            mm = int(match.group(1))
+        self.ahead_at = time.time()
+        self.ahead_mm = None if mm >= TOF_EMPTY_MM else mm
+        return self.ahead_mm
+
+    def _tof_loop(self):
+        """Keeps a fresh distance-ahead reading, between commands (never during one)."""
+        while True:
+            time.sleep(0.5)
+            if not (self.connected and self.expansion):
+                continue
+            if not self.command_lock.acquire(blocking=False):
+                continue
+            try:
+                self._read_tof()
+            except Exception as exc:
+                print(f"ToF read failed ({exc})")
+            finally:
+                self.command_lock.release()
+
+    def _guard_forward(self):
+        if not self.expansion:
+            return
+        mm = self._read_tof()  # a fresh reading, not the last poll
+        if mm is not None and mm / 10 - MOVE_CM < GUARD_CM:
+            self._show("stop")
+            raise ValueError(f"Something is {mm / 1000:.1f} m ahead. Moving forward {MOVE_CM} cm would "
+                             f"bring the drone within {GUARD_CM} cm of it. Turn or back up first.")
+
+    def _show(self, name):
+        """Puts a pattern on the dot matrix (None clears it)."""
+        if not self.expansion:
+            return
+        pattern = DISPLAY.get(name) if name else None
+        self.display = pattern
+        if not self.mock:
+            self._ext("mled g " + (pattern or "0" * 64))
+
+    def flash(self):
+        """A short flash when a frame is captured."""
+        if not self.expansion or not self.command_lock.acquire(blocking=False):
+            return
+        try:
+            before = self.display
+            self._show("flash")
+            time.sleep(0.15)
+            self.display = before
+            if not self.mock:
+                self._ext("mled g " + (before or "0" * 64))
+        finally:
+            self.command_lock.release()
+
+    def _kit_status(self):
+        fresh = self.expansion and time.time() - self.ahead_at < TOF_FRESH_S
+        return {"expansion": self.expansion,
+                "ahead_cm": round(self.ahead_mm / 10) if fresh and self.ahead_mm is not None else None,
+                "display": self.display}
+
+    def _mock_move(self, action):
+        """The simulated drone, including a wall ahead that forward moves approach."""
+        if action == "takeoff":
+            self.mock_flying, self.mock_ahead_cm = True, 220
+        elif action == "land":
+            self.mock_flying = False
+        elif action == "forward":
+            self.mock_ahead_cm = max(10, self.mock_ahead_cm - MOVE_CM)
+        elif action == "back":
+            self.mock_ahead_cm += MOVE_CM
+        elif action in ("cw", "ccw"):
+            self.mock_ahead_cm = {220: 140, 140: 900, 900: 220}.get(self.mock_ahead_cm, 220)
 
     def shutdown(self):
         if self.mock or not self.connected:
@@ -464,6 +622,7 @@ def create_app(drone: Drone, grid: Grid, feed: ErcotFeed) -> Flask:
         jpg = drone.jpeg()
         if not jpg:
             return jsonify(error="no camera frame available"), 503
+        drone.flash()
         CAPTURE_DIR.mkdir(exist_ok=True)
         # Milliseconds in the name: a survey can capture twice within one second.
         now = time.time()

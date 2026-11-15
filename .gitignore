@@ -41,3 +41,10 @@ services/api/agent_workspace/notes/*
 twin/data/calibration.json
 hardware/firmware/**/build/
 protect/data/
+
+# from mobile-ios
+# Xcode (mobile/)
+xcuserdata/
+*.xcuserstate
+mobile/build/
+DerivedData/

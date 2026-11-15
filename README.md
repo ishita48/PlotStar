@@ -64,6 +64,10 @@ to resume its saved plan. The original workspaces remain available. See
 
 Three seeded demonstrations: `demo-1` student dormitory, `demo-2` 100 MW data center, and `demo-3` community park. Dashboard projects can also be compared side by side. Newly created projects are independent of seeded examples.
 
+## Phone app (iPhone)
+
+`mobile/` is a native SwiftUI app for HAVEN incident response: site list, new-incident alerts, plan approval, acknowledgement, exit routes and team progress. It reaches this laptop through `npm run mobile:gateway`, which exposes only the token-checked `/api/mobile/*` routes while the web app stays on 127.0.0.1. See [mobile/README.md](mobile/README.md).
+
 ## Data honesty and external dependencies
 
 | Feature                                | Implementation / limitation                                                                                                                                                                                                                                                                            |
