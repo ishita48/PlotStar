@@ -8,9 +8,9 @@ import math
 import pytest
 from fastapi.testclient import TestClient
 
-from app import cad_import as X
+from app.engine import cad_import as X
 from app import config
-from app import layout_engine as L
+from app.engine import layout_engine as L
 from app.main import app
 from app.routers import blueprint as B
 

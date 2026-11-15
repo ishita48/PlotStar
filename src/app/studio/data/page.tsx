@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { DataView } from '@/components/studio/data-view';
+import { DataView } from '@/components/sponsors/mongodb/data-view';
 import '../studio.css';
 import './data.css';
 

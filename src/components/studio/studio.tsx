@@ -8,23 +8,24 @@ import {
   ArrowLeft, ArrowRight, Box as BoxIcon, LoaderCircle, Check, CircleAlert, CircleCheck, Coins, Columns2, Download, Droplets, Leaf, Lock,
   Briefcase, Building2, FileText, FileUp, MapPin, Move, RotateCcw, RotateCw, Sparkles, Square, Star, Trash2, Users,
 } from 'lucide-react';
-import { Brand } from '../brand';
-import { matterportEmbedUrl, PUBLIC_DATA_API, siteDetailUrl, vexcel3dRootUrl, vexcelMetaUrl, vexcelOrthoUrl } from '@/lib/plotstar-api';
+import { Star as GeoStarMark } from '../brand';
+import { PUBLIC_DATA_API, siteDetailUrl, vexcel3dRootUrl, vexcelMetaUrl, vexcelOrthoUrl } from '@/lib/plotstar-api';
 import type { GateResult } from '@/lib/types';
 import type { ExploreSite } from '../explore/types';
 import { verdict } from '../explore/types';
 import type { MapMode } from '../explore/explore-map';
 import { Plan2D, type Layers } from './plan2d';
 import type { MoveEdit, ViewPreset } from './model3d';
-import { Copilot, type BriefPatch } from './copilot';
-import { AgentIntel } from './agents/agent-intel';
-import { AgentStatusPill } from './agents/status-pill';
-import { isActive, useAgentRun } from './agents/use-agent-run';
-import { Guide } from './guide/guide';
+import { Copilot, type BriefPatch } from '../sponsors/langchain/copilot';
+import { AgentIntel } from '../sponsors/langchain/agent-intel';
+import { SiteWalk } from '../sponsors/matterport/site-walk';
+import { AgentStatusPill } from '../sponsors/langchain/status-pill';
+import { isActive, useAgentRun } from '../sponsors/langchain/use-agent-run';
+import { Guide } from '../sponsors/elevenlabs/guide';
 import { ImportDesign, type NotePreview } from './import/import-design';
-import { CostarDossier } from './costar/dossier';
-import { ExistingVsProposed } from './costar/existing-vs-proposed';
-import { DealDesk } from './deal/deal-desk';
+import { CostarDossier } from '../sponsors/costar/dossier';
+import { ExistingVsProposed } from '../sponsors/costar/existing-vs-proposed';
+import { DealDesk } from '../sponsors/costar/deal/deal-desk';
 import { KindPicker } from './kind-picker';
 import { DroneSurvey } from './discover/drone-survey';
 import { FacilityModel } from './design/facility-model';
@@ -33,7 +34,7 @@ import { ProtectModule } from '../dashboard-2/protection-workspace';
 import { DeployedProjects, ProjectCommandCenter } from '../dashboard-2/deployed-projects';
 import { useProtection } from '../dashboard-2/use-protection';
 import type { Facility } from '@/lib/haven/engine';
-import { openInvestmentMemo } from './deal/memo';
+import { openInvestmentMemo } from '../sponsors/costar/deal/memo';
 import type { AddedType, Brief, Concept, ConceptEdit, Edits, Factor, Room, StudioResult } from './types';
 import { COOLING_LABEL, ROUTE_COLOR, TYPE_STYLE, WHY, download, money, num, pct, toDxf } from './types';
 
@@ -479,6 +480,7 @@ export function Studio() {
   // Deep Agents: one shared run for the site evaluation and the conversation, shown live in Agent Intelligence
   const agentRun = useAgentRun();
   const [intelOpen, setIntelOpen] = useState(false);
+  const [walkModel, setWalkModel] = useState<string | null>(null);
   const [evalSite, setEvalSite] = useState<string | null>(null);
   const agentBusy = isActive(agentRun.state);
   const siteScore = agentRun.state.kind === 'site-evaluation' && evalSite === siteId ? agentRun.state.score : null;
@@ -506,7 +508,10 @@ export function Studio() {
   return (
     <div className="st">
       <header className="st-top">
-        <Brand />
+        <Link href="/" className="st-mark" aria-label="GeoStar home">
+          <span className="st-mark-icon"><GeoStarMark /></span>
+          <span>Geo<b>Star</b></span>
+        </Link>
         <div className="st-top-title"><b>Studio</b><span>{dc ? `${brief.name} · ${brief.mw} MW IT${site ? ` · ${siteLabel(site)}` : ''}` : `${kindLabel} · ${brief.market} · concept model`}</span></div>
         <AgentStatusPill s={agentRun.state} onOpen={() => setIntelOpen(true)} />
         <nav className="st-top-nav">
@@ -634,7 +639,7 @@ export function Studio() {
                             </div>
                           ))}
                         </div>
-                        {tours.length > 0 && <a className="st-tour" href={matterportEmbedUrl(tours[0])} target="_blank" rel="noreferrer"><BoxIcon size={14} /> Walk the existing building in 3D · {tours.length} Matterport scan{tours.length > 1 ? 's' : ''}</a>}
+                        {tours.length > 0 && <button type="button" className="st-tour" onClick={() => setWalkModel(tours[0])}><BoxIcon size={14} /> Site walk: pin notes and measure the existing building · {tours.length} Matterport scan{tours.length > 1 ? 's' : ''}</button>}
                         {aerialId && (
                           <figure className="st-aerial">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -906,6 +911,7 @@ export function Studio() {
         facilityId={step >= 7 ? facility.id : null} lastScore={siteScore ? { verdict: siteScore.verdict, score: siteScore.score } : null}
         agent={agentRun} onOpenGraph={() => setIntelOpen(true)}
         onApply={applyPatch} onSelectSite={(id) => { const s = sites.find((x) => x.id === id); if (s) void pickSite(id); }} busy={busy} />
+      {walkModel && site && parcelId && <SiteWalk parcelId={parcelId} modelId={walkModel} siteName={siteLabel(site)} mwIt={brief.mw} rackKw={brief.rackKw} onClose={() => setWalkModel(null)} />}
       {intelOpen && <AgentIntel s={agentRun.state} onClose={() => setIntelOpen(false)} onDecide={(a) => void agentRun.decide(a)} />}
       <Guide body={result ? body(brief) : null} conceptId={concept?.id ?? null} selected={sel} stage={PAGES[step]} market={brief.market}
         hasSite={!!site} onApply={applyPatch} />

@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from .costar.loader import LISTING_FILE, PROPERTY_FILE, SALE_FILE
-from .labels import Label
+from app.sponsors.costar.loader import LISTING_FILE, PROPERTY_FILE, SALE_FILE
+from app.labels import Label
 
 
 def _prop(path: str, formula: str | None = None) -> tuple[str, str, str, str | None]:

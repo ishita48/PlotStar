@@ -13,11 +13,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import db as DB
-from app import layout_engine as L
-from app.costar import homes as H
-from app.costar import redevelop as R
-from app.costar import tenancy as T
-from app.screening import EARTH_R_M, haversine_m
+from app.engine import layout_engine as L
+from app.sponsors.costar import homes as H
+from app.sponsors.costar import redevelop as R
+from app.sponsors.costar import tenancy as T
+from app.engine.screening import EARTH_R_M, haversine_m
 
 TODAY = date(2026, 11, 14)
 LAT0, LON0 = 29.80, -95.40  # site centre for property 1

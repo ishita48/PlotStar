@@ -554,7 +554,7 @@ export function FinalizePreview({
         </button>
       </div>
       <p className="d2-preview-footnote">
-        UI preview · illustrative data · selections are not saved.
+        Sample sites · selections are not saved.
       </p>
     </PrimaryCard>
   );

@@ -5,7 +5,7 @@ import pytest
 
 mongomock = pytest.importorskip("mongomock")
 
-from app import store  # noqa: E402
+from app.sponsors.mongodb import store  # noqa: E402
 
 
 def test_save_list_load_delete():

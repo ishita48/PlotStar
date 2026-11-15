@@ -6,8 +6,10 @@ import asyncio
 
 import pytest
 
-from app import config, copilot as C, deal_agent, deal_room
-from app.costar import tools as T
+from app import config
+from app.sponsors.langchain import copilot as C, deal_agent
+from app.sponsors.costar import deal_room
+from app.sponsors.costar import tools as T
 from app.db import db_ready
 
 GRID = {"price": [30 + (i % 12) * 3 for i in range(24)], "carbon": [350 + (i % 6) * 20 for i in range(24)]}
@@ -38,7 +40,7 @@ def test_write_tool_requires_confirmation_and_is_audited():
 
 
 def test_mcp_server_exposes_every_tool_with_annotations():
-    from app.mcp_server import server
+    from app.sponsors.costar.mcp_server import server
     tools = asyncio.run(server.list_tools())
     names = {t.name for t in tools}
     assert names == set(T.TOOLS)
@@ -109,7 +111,7 @@ def test_real_store_search_and_adjacency_carry_sources():
 
 
 def test_mongo_wiring_without_atlas_falls_back_and_keeps_costar_payloads_local():
-    from app import mongo
+    from app.sponsors.mongodb import mongo
     assert mongo.db() is None  # conftest keeps tests off the real cluster
     saver, where = mongo.checkpointer()
     assert where == "process memory"

@@ -1,6 +1,7 @@
 'use client';
 // GeoStar landing. One story told in three acts, most important first (inverted pyramid):
-// the promise, then the three things GeoStar does, then each act in depth, then HAVEN, then the details.
+// the promise on a real parcel, the three things GeoStar does, why now, then each act in depth with the real
+// engine woven between them (real.tsx), then HAVEN, the sources, and the close.
 // The light shifts from day (Find) to dusk (Design) to night (Protect), because that is when HAVEN works.
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
@@ -8,6 +9,7 @@ import { ArrowRight, Command, CornerDownLeft, MapPin, PencilRuler, Search, Shiel
 import { Star } from '@/components/brand';
 import { TYPES, type TypeStory } from './data';
 import { Design, Find, Haven, Protect } from './acts';
+import { LiveNumbers, LivePlan, RealHero, Sources, WhyNow, useLive } from './real';
 
 export const CHAPTERS = [
   { id: 'find', n: 'I', label: 'Find', icon: MapPin },
@@ -24,6 +26,7 @@ export function Story() {
   const [chapter, setChapter] = useState<ChapterId | null>(null);
   const [docked, setDocked] = useState(false);
   const [palette, setPalette] = useState(false);
+  const live = useLive();
 
   // Reveal-on-scroll, chapter tracking, dock visibility and the reading-progress line.
   useEffect(() => {
@@ -39,7 +42,7 @@ export function Story() {
       { rootMargin: '-45% 0px -50% 0px' },
     );
     el.querySelectorAll('[data-chapter]').forEach((n) => chapters.observe(n));
-    const hero = el.querySelector('.ps-hero');
+    const hero = el.querySelector('[data-hero]');
     const dock = new IntersectionObserver(([e]) => {
       setDocked(!e.isIntersecting);
       if (e.isIntersecting) setChapter(null);
@@ -70,12 +73,16 @@ export function Story() {
     <div className="ps" ref={root} data-tone={chapter === 'protect' || chapter === 'haven' ? 'dark' : 'light'}>
       <a className="ps-skip" href="#find">Skip to the story</a>
       <TopBar chapter={chapter} onPalette={() => setPalette(true)} />
-      <Hero type={type} onType={setTypeId} />
+      <RealHero type={type} onType={setTypeId} live={live} />
       <Pyramid />
+      <WhyNow />
       <Find type={type} onType={setTypeId} />
+      <LivePlan live={live} />
       <Design type={type} onType={setTypeId} />
+      <LiveNumbers live={live} />
       <Protect />
       <Haven />
+      <Sources />
       <Close />
       <Dock show={docked} chapter={chapter} onPalette={() => setPalette(true)} />
       {palette && <Palette onClose={() => setPalette(false)} onType={setTypeId} />}
@@ -104,163 +111,11 @@ function TopBar({ chapter, onPalette }: { chapter: ChapterId | null; onPalette: 
       <button type="button" className="ps-kbd-btn" onClick={onPalette} aria-label="Open the command menu">
         <Search size={14} /><span>Jump to…</span><kbd>Ctrl K</kbd>
       </button>
-      <Link href="/dashboard-2" className="ps-btn ps-btn-ink ps-btn-sm">Start a project <ArrowRight size={14} /></Link>
+      <Link href="/studio" className="ps-btn ps-btn-ink ps-btn-sm">Start a project <ArrowRight size={14} /></Link>
       <i className="ps-read" aria-hidden="true" />
     </header>
   );
 }
-
-/* ---------------------------------------------------------------- hero */
-
-const BEATS = [
-  { k: 'scan', t: 'Reading the place', d: 'Grid, water, schools, flood, people.' },
-  { k: 'pick', t: 'Parcel B fits best', d: 'Ranked on what matters to you.' },
-  { k: 'build', t: 'A building, drafted', d: 'Edit it, then export the CAD.' },
-  { k: 'guard', t: 'Protected for life', d: 'HAVEN watches water, power and smoke.' },
-] as const;
-
-function Hero({ type, onType }: { type: TypeStory; onType: (id: TypeStory['id']) => void }) {
-  const [beat, setBeat] = useState(0);
-  const [paused, setPaused] = useState(false);
-  useEffect(() => {
-    if (paused) return;
-    const t = setInterval(() => setBeat((b) => (b + 1) % BEATS.length), 2800);
-    return () => clearInterval(t);
-  }, [paused]);
-
-  return (
-    <section className="ps-hero" aria-labelledby="ps-hero-title">
-      <div className="ps-hero-copy">
-        <p className="ps-kicker" data-reveal><i />For commercial builders and developers</p>
-        <h1 id="ps-hero-title" data-reveal>
-          From an empty plot<br />to a building that <em>looks after itself.</em>
-        </h1>
-        <p className="ps-lede" data-reveal>
-          GeoStar finds the right place to build, designs what goes on it, and protects it once people move in.
-          One record of the place, from the first map to the last alarm that never had to ring.
-        </p>
-
-        <div className="ps-ask" data-reveal>
-          <span className="ps-ask-q">What are you building?</span>
-          <div className="ps-chips" role="radiogroup" aria-label="Project type">
-            {TYPES.map((t) => (
-              <button key={t.id} type="button" role="radio" aria-checked={t.id === type.id} className="ps-chip" onClick={() => onType(t.id)}>
-                {t.short}
-              </button>
-            ))}
-          </div>
-          <p className="ps-ask-a" aria-live="polite"><span>{type.question}</span></p>
-        </div>
-
-        <div className="ps-actions" data-reveal>
-          <Link href="/dashboard-2" className="ps-btn ps-btn-ink">Find my site <ArrowRight size={16} /></Link>
-          <a href="#find" className="ps-btn ps-btn-soft">Watch the story</a>
-        </div>
-      </div>
-
-      <figure
-        className="ps-hero-art"
-        data-beat={BEATS[beat].k}
-        onMouseEnter={() => setPaused(true)}
-        onMouseLeave={() => setPaused(false)}
-        data-reveal
-      >
-        <HeroPlot />
-        <figcaption className="ps-glass ps-beat">
-          <ol className="ps-beat-steps" aria-label="The GeoStar story in four beats">
-            {BEATS.map((b, i) => (
-              <li key={b.k}>
-                <button type="button" aria-current={i === beat ? 'step' : undefined} onClick={() => { setBeat(i); setPaused(true); }}>
-                  <span className="sr">{b.t}</span>
-                </button>
-              </li>
-            ))}
-          </ol>
-          <div key={beat} className="ps-beat-text">
-            <b>{BEATS[beat].t}</b>
-            <span>{BEATS[beat].d}</span>
-          </div>
-        </figcaption>
-      </figure>
-    </section>
-  );
-}
-
-/** Isometric plot that tells the whole story: scan, choose, build, protect. Driven by data-beat on the figure. */
-function HeroPlot() {
-  const h = 120;
-  return (
-    <svg className="ps-plot" viewBox="0 0 520 440" role="img" aria-label="A plot of land is scanned, the best parcel is chosen, a building rises on it and sensors light up inside.">
-      <defs>
-        <linearGradient id="psGround" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#ffffff" /><stop offset="1" stopColor="#e7e5de" />
-        </linearGradient>
-        <radialGradient id="psScan" cx=".5" cy=".5" r=".5">
-          <stop offset="0" stopColor="#c9ec7a" stopOpacity=".55" /><stop offset="1" stopColor="#c9ec7a" stopOpacity="0" />
-        </radialGradient>
-      </defs>
-      {/* ground slab */}
-      <path d="M260 120 L490 240 L260 360 L30 240 Z" fill="url(#psGround)" />
-      <path d="M30 240 L260 360 L260 378 L30 258 Z" fill="#dcd9d1" />
-      <path d="M490 240 L260 360 L260 378 L490 258 Z" fill="#cfccc4" />
-      {/* parcel grid */}
-      <g className="ps-plot-grid">
-        {[1, 2, 3, 4, 5].map((i) => {
-          const t = i / 6;
-          return (
-            <g key={i}>
-              <line x1={260 - 230 * t} y1={120 + 120 * t} x2={490 - 230 * t} y2={240 + 120 * t} />
-              <line x1={260 + 230 * t} y1={120 + 120 * t} x2={30 + 230 * t} y2={240 + 120 * t} />
-            </g>
-          );
-        })}
-      </g>
-      {/* context: river and roads */}
-      <path className="ps-plot-river" d="M70 262 C150 250 170 300 250 300 S370 330 440 286" />
-      <path className="ps-plot-road" d="M296 150 L452 231" />
-      {/* the chosen parcel */}
-      <path className="ps-plot-parcel" d="M260 188 L340 230 L260 272 L180 230 Z" />
-      {/* scanning ring */}
-      <ellipse className="ps-plot-scan" cx="260" cy="240" rx="210" ry="110" fill="url(#psScan)" />
-      {/* candidate pins */}
-      {[[150, 230, 'a'], [260, 222, 'b'], [372, 252, 'c']].map(([x, y, id]) => (
-        <g key={id as string} transform={`translate(${x} ${y})`}>
-          <g className={`ps-pin ps-pin-${id}`}>
-            <ellipse className="ps-pin-halo" rx="16" ry="8" />
-            <path d="M0 0 C-9 -12 -10 -18 -10 -22 a10 10 0 0 1 20 0 c0 4 -1 10 -10 22Z" />
-            <circle cy="-22" r="3.6" fill="#fff" />
-          </g>
-        </g>
-      ))}
-      {/* building rises from the parcel */}
-      <g className="ps-bldg">
-        <path className="l" d={`M200 236 L260 268 L260 ${268 - h} L200 ${236 - h} Z`} />
-        <path className="r" d={`M260 268 L320 236 L320 ${236 - h} L260 ${268 - h} Z`} />
-        <path className="t" d={`M200 ${236 - h} L260 ${204 - h} L320 ${236 - h} L260 ${268 - h} Z`} />
-        {[1, 2, 3, 4].map((f) => (
-          <g key={f} className="ps-bldg-floor">
-            <path d={`M200 ${236 - f * 24} L260 ${268 - f * 24} L320 ${236 - f * 24}`} />
-          </g>
-        ))}
-        {[0, 1, 2, 3, 4].map((f) => [0, 1, 2].map((c) => {
-          // Windows on the right face, which climbs 32 px over its 60 px run.
-          const x = 266 + c * 18, y = 268 - f * 24 - (x - 260) * (32 / 60) - 6, k = 10 * (32 / 60);
-          return <path key={`${f}${c}`} className="ps-win" d={`M${x} ${y} L${x + 10} ${y - k} L${x + 10} ${y - k - 11} L${x} ${y - 11} Z`} />;
-        }))}
-        {/* sensors */}
-        {[[232, 226, 'w'], [290, 196, 'e'], [240, 170, 'w'], [296, 150, 's'], [262, 140, 'e']].map(([x, y, k], i) => (
-          <g key={i} className={`ps-dot ps-dot-${k}`} transform={`translate(${x} ${y})`} style={{ '--d': `${i * 120}ms` } as CSSProperties}>
-            <circle r="9" className="ring" /><circle r="3.4" />
-          </g>
-        ))}
-      </g>
-      {/* shield ring once protected */}
-      <ellipse className="ps-shield" cx="260" cy="236" rx="118" ry="62" />
-    </svg>
-  );
-}
-
-/* ---------------------------------------------------------------- pyramid: the three things */
 
 function Pyramid() {
   const items = [
@@ -298,14 +153,13 @@ function Close() {
         <h2 id="ps-close-title">Every building starts as a plot.<br /><em>Start yours well.</em></h2>
         <p>Pick a project type, choose a city and GeoStar walks you from the map to the model to the sensors.</p>
         <div className="ps-actions ps-actions-c">
-          <Link href="/dashboard-2" className="ps-btn ps-btn-lime">Start a project <ArrowRight size={16} /></Link>
+          <Link href="/studio" className="ps-btn ps-btn-lime">Start a project <ArrowRight size={16} /></Link>
           <Link href="/explore" className="ps-btn ps-btn-ghost-light">Explore the map</Link>
         </div>
       </div>
       <footer className="ps-foot">
         <Wordmark />
         <nav aria-label="Product">
-          <Link href="/dashboard-2">Locate · Design · Protect</Link>
           <Link href="/projects">Projects dashboard</Link>
           <Link href="/explore">Explore</Link>
           <Link href="/studio">Data center studio</Link>
@@ -333,7 +187,7 @@ function Dock({ show, chapter, onPalette }: { show: boolean; chapter: ChapterId 
         ))}
       </ol>
       <button type="button" className="ps-dock-k" onClick={onPalette} aria-label="Open the command menu"><Command size={15} /></button>
-      <Link href="/dashboard-2" className="ps-btn ps-btn-ink ps-btn-sm">Start <ArrowRight size={14} /></Link>
+      <Link href="/studio" className="ps-btn ps-btn-ink ps-btn-sm">Start <ArrowRight size={14} /></Link>
     </div>
   );
 }
@@ -348,10 +202,12 @@ function Palette({ onClose, onType }: { onClose: () => void; onType: (id: TypeSt
   const jump = useCallback((id: string) => () => { onClose(); document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' }); }, [onClose]);
 
   const actions: Action[] = useMemo(() => [
-    { id: 'start', group: 'Go', label: 'Start a project', hint: 'Locate, Design, Protect', run: go('/dashboard-2') },
+    { id: 'start', group: 'Go', label: 'Start a project', hint: 'Find, design, protect', run: go('/studio') },
     { id: 'explore', group: 'Go', label: 'Explore the map', hint: 'Real parcels, public data', run: go('/explore') },
     { id: 'studio', group: 'Go', label: 'Open the data center studio', run: go('/studio') },
     { id: 'projects', group: 'Go', label: 'Open the projects dashboard', run: go('/projects') },
+    { id: 'agents', group: 'Go', label: 'How the AI works', hint: 'Deep Agents, live', run: go('/studio/agent') },
+    { id: 'data', group: 'Go', label: 'The data platform', hint: 'MongoDB Atlas', run: go('/studio/data') },
     ...CHAPTERS.map((c) => ({ id: `ch-${c.id}`, group: 'Read', label: `${c.label}`, hint: `Act ${c.n}`, run: jump(c.id) })),
     ...TYPES.map((t) => ({ id: `ty-${t.id}`, group: 'Show me', label: `Rank sites for ${t.label.toLowerCase()}`, run: () => { onType(t.id); jump('find')(); } })),
   ], [go, jump, onType]);

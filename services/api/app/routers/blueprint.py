@@ -18,8 +18,10 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from .. import cad_import, config, copilot, designs, layout_engine
-from .studio import Brief, GenerateIn, _grid
+from app.engine import cad_import, designs, layout_engine
+from app import config
+from app.sponsors.langchain import copilot
+from app.routers.studio import Brief, GenerateIn, _grid
 
 router = APIRouter(tags=["blueprint"])
 

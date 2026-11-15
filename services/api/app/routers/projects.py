@@ -12,7 +12,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from ..db import session
+from app.db import session
 
 router = APIRouter(tags=["projects"])
 

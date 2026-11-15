@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { Star } from '@/components/brand';
 import {
   ArrowLeft,
   Check,
@@ -56,33 +57,9 @@ function useGlassIndicator(container: RefObject<HTMLElement | null>, key: unknow
   }, [container, key]);
 }
 
-/** Smart Blocks mark: three stacked glass blocks, amber and electric blue. */
-export function SmartBlocksMark({ size = 26 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
-      <defs>
-        <linearGradient id="sb-mark-a" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#d6ef9c" />
-          <stop offset="1" stopColor="#4f7f5b" />
-        </linearGradient>
-        <linearGradient id="sb-mark-b" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#9fc46a" />
-          <stop offset="1" stopColor="#264d39" />
-        </linearGradient>
-      </defs>
-      <path d="M16 3.5 26.5 9 16 14.5 5.5 9Z" fill="url(#sb-mark-a)" />
-      <path d="M5.5 9 16 14.5V27L5.5 21.5Z" fill="#6fa24e" opacity=".55" />
-      <path d="M26.5 9 16 14.5V27l10.5-5.5Z" fill="url(#sb-mark-b)" opacity=".9" />
-      <path d="M16 14.5V27" stroke="#fff" strokeOpacity=".7" strokeWidth=".8" />
-      <path
-        d="M16 3.5 26.5 9 16 14.5 5.5 9Z"
-        fill="none"
-        stroke="#fff"
-        strokeOpacity=".8"
-        strokeWidth=".8"
-      />
-    </svg>
-  );
+/** GeoStar mark: the same star the landing page uses. */
+export function GeoStarMark() {
+  return <Star className="d2-brand-star" />;
 }
 
 const modules = [
@@ -109,12 +86,13 @@ export function Sidebar({
   useGlassIndicator(nav, active);
   return (
     <aside className="d2-sidebar">
-      <Link href="/dashboard-2" className="d2-brand" aria-label="Smart Blocks home">
+      <Link href="/" className="d2-brand" aria-label="GeoStar home">
         <span className="d2-brand-icon">
-          <SmartBlocksMark />
+          <GeoStarMark />
         </span>
         <span>
-          Smart Blocks<small>Infrastructure intelligence</small>
+          Geo<b>Star</b>
+          <small>Site intelligence</small>
         </span>
       </Link>
       <div className="d2-sidebar-body">
@@ -150,12 +128,12 @@ export function Sidebar({
         <div className="d2-workspace-name">
           <PanelLeft size={17} />
           <span>
-            Planning studio<small>Local workspace · simulation</small>
+            This device<small>Saved locally · simulation</small>
           </span>
           <span className="d2-local-dot" />
         </div>
-        <Link href="/projects">
-          <ArrowLeft size={14} /> Original dashboard
+        <Link href="/studio">
+          <ArrowLeft size={14} /> Open the studio
         </Link>
       </div>
     </aside>

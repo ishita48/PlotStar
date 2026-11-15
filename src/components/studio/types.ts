@@ -1,4 +1,4 @@
-// Shapes returned by POST /studio/generate (services/api/app/layout_engine.py) and shared display helpers.
+// Shapes returned by POST /studio/generate (services/api/app/engine/layout_engine.py) and shared display helpers.
 import type { GateResult } from '@/lib/types';
 
 export type RoomType =

@@ -5,8 +5,8 @@ from typing import Any
 
 from fastapi import APIRouter
 
-from ..config import COSTAR_KIT_DIR
-from ..db import db_ready, session
+from app.config import COSTAR_KIT_DIR
+from app.db import db_ready, session
 
 router = APIRouter(tags=["data"])
 

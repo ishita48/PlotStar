@@ -19,6 +19,7 @@ const actions = z.enum([
   'ccw',
   'emergency',
 ]);
+const stick = z.number().min(-100).max(100).default(0);
 const captureName = /^[0-9]{8}-[0-9]{6}(-[0-9]{3})?(-sim)?\.jpg$/;
 type Context = { params: Promise<{ path: string[] }> };
 
@@ -101,6 +102,18 @@ export async function POST(req: Request, ctx: Context) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action }),
           timeoutMs: 25000,
+        }),
+      );
+    }
+    if (path === 'rc') {
+      // Hold-to-fly: stick positions, repeated while a control is held (see bridge/server.py).
+      const sticks = z.object({ right: stick, forward: stick, up: stick, clockwise: stick }).parse(await readJSON(req));
+      return relay(
+        await bridge('/api/rc', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(sticks),
+          timeoutMs: 1500,
         }),
       );
     }

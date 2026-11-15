@@ -311,3 +311,4 @@
 
 .st-top-nav .st-reset { color: var(--st-bad, #a04b34); border-color: #e8d2cb; }
 .st-top-nav .st-reset:hover { background: #fbe9e6; }
+.st-tour { background: #fff; width: 100%; cursor: pointer; font: inherit; text-align: left; }

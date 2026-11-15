@@ -53,7 +53,7 @@ function ActHead({ n, label, title, lede, light = false }: { n: string; label: s
   );
 }
 
-function TypeChips({ type, onType, light = false }: { type: TypeStory; onType: (id: TypeStory['id']) => void; light?: boolean }) {
+export function TypeChips({ type, onType, light = false }: { type: TypeStory; onType: (id: TypeStory['id']) => void; light?: boolean }) {
   return (
     <div className={`ps-chips ${light ? 'light' : ''}`} role="radiogroup" aria-label="Project type">
       {TYPES.map((t) => (
@@ -223,7 +223,7 @@ export function Design({ type, onType }: { type: TypeStory; onType: (id: TypeSto
                   {stage === 0 ? 'Edit the design' : 'Finalize'} <ArrowRight size={15} />
                 </button>
               ) : (
-                <Link href="/dashboard-2" className="ps-btn ps-btn-ink">Design yours <ArrowRight size={15} /></Link>
+                <Link href="/studio" className="ps-btn ps-btn-ink">Design yours <ArrowRight size={15} /></Link>
               )}
             </li>
           </ol>

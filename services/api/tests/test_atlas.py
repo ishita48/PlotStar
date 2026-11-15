@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 
-from app import atlas
+from app.sponsors.mongodb import atlas
 
 
 def test_every_schema_is_a_valid_object_validator():

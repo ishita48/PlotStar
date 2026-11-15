@@ -11,7 +11,7 @@ import type { Concept, Room, RoomType } from './types';
 import { ROUTE_COLOR } from './types';
 import type { Layers } from './plan2d';
 
-const VexcelContext = lazy(() => import('./vexcel-context'));
+const VexcelContext = lazy(() => import('../sponsors/vexcel/vexcel-context'));
 
 const WALL = 4.2;
 const FLOOR: Record<RoomType, string> = {

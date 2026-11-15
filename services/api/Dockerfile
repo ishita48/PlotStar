@@ -2,7 +2,7 @@
 # The CoStar kit and SQLite store are NOT baked in (licensed data): mount them and pass keys as env vars.
 #   docker run -p 8000:8000 -e COSTAR_KIT_DIR=/kit -e PLOTSTAR_DB=/data/plotstar.db \
 #     -e AWS_REGION=us-east-1 -e BEDROCK_MODEL_ID=<model id> -v <kit>:/kit:ro -v <data>:/data plotstar-api
-# Not built or deployed in this repo's CI; see docs/aws_deploy.md.
+# Not built or deployed in this repo's CI; see docs/sponsors/amazon.md.
 FROM python:3.12-slim
 WORKDIR /srv
 COPY requirements.txt .

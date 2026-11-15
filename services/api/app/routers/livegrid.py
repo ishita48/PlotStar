@@ -9,9 +9,9 @@ from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
-from .. import grid as G
-from .. import livegrid as L
-from .. import optimizer as O
+from app.engine import grid as G
+from app.engine import livegrid as L
+from app.engine import optimizer as O
 
 router = APIRouter(tags=["live-grid"])
 

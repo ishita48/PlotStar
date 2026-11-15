@@ -4,7 +4,7 @@ import {
   ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BatteryMedium, Sparkles, Camera, ChevronsDown, ChevronsUp, Drone, LoaderCircle,
   MoveVertical, OctagonX, PlaneLanding, PlaneTakeoff, RotateCcw, RotateCw, ScanLine, Thermometer,
 } from 'lucide-react';
-import { captureSrc, LABEL, SWEEP_STOPS, useDrone, type Action, type DroneStatus, type Phase } from './use-drone';
+import { captureSrc, isMove, LABEL, SWEEP_STOPS, useDrone, type Action, type DroneStatus, type Move, type Phase } from './use-drone';
 
 const PILL: Record<Phase, { text: string; tone: string }> = {
   checking: { text: 'Checking', tone: 'idle' }, 'bridge-offline': { text: 'Bridge offline', tone: 'off' },
@@ -21,10 +21,23 @@ export function DroneSurvey({ siteName, onContinue, busy = false }: { siteName: 
   const pill = PILL[phase];
   const lowBattery = status?.battery != null && status.battery < 20;
 
+  // Move controls fly while held and stop on release. A keyboard "click" (Space or Enter on a
+  // focused button) has no release event, so it gives a short nudge instead.
+  const holdProps = (move: Move) => ({
+    onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => { e.currentTarget.setPointerCapture(e.pointerId); d.hold(move); },
+    onPointerUp: () => d.release(move),
+    onPointerCancel: () => d.release(move),
+    onLostPointerCapture: () => d.release(move),
+    onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
+    onClick: (e: React.MouseEvent) => { if (e.detail === 0) { d.hold(move); setTimeout(() => d.release(move), 450); } },
+  });
+
   // A render helper, not a component: a nested component would remount every button (and drop focus) on each poll.
   const key = (action: Action, Icon: typeof ArrowUp, label = '', className = '') => (
-    <button type="button" className={`st-dr-key ${className}`} disabled={action === 'takeoff' ? locked || flying : moveLocked}
-      onClick={() => void d.send(action)} aria-label={LABEL[action]} title={LABEL[action]}>
+    <button type="button" className={`st-dr-key ${className} ${isMove(action) && d.holding.includes(action) ? 'is-held' : ''}`}
+      disabled={action === 'takeoff' ? locked || flying : moveLocked}
+      {...(isMove(action) ? holdProps(action) : { onClick: () => void d.send(action) })}
+      aria-label={LABEL[action]} title={isMove(action) ? `${LABEL[action]} (hold)` : LABEL[action]}>
       {pending === action ? <LoaderCircle className="st-dr-spin" size={16} /> : <Icon size={16} />}
       {label && <span>{label}</span>}
     </button>
@@ -84,7 +97,7 @@ export function DroneSurvey({ siteName, onContinue, busy = false }: { siteName: 
             <OctagonX size={14} /> {d.armStop ? 'Press again · drone will drop' : 'Stop motors'}
           </button>
           <p className={`st-dr-msg ${d.message?.error ? 'is-error' : ''}`} role="status" aria-live="polite">
-            {d.message?.text || (connected ? (flying ? 'Each press moves 30 cm or turns 45°.' : 'Take off to unlock movement.') : 'Controls unlock once the drone connects.')}
+            {d.message?.text || (connected ? (flying ? 'Hold a control to fly; release to hover.' : 'Take off to unlock movement.') : 'Controls unlock once the drone connects.')}
           </p>
           <dl className="st-dr-keys" aria-label="Keyboard shortcuts">
             {([[['W', 'A', 'S', 'D'], 'Move'], [['↑', '↓'], 'Height'], [['Q', 'E'], 'Turn'], [['T', 'L'], 'Take off · Land'], [['C'], 'Capture']] as const).map(([keys, label]) => (
@@ -133,7 +146,7 @@ function StageEmpty({ phase, status, onContinue, busy }: { phase: Phase; status:
   const copy: Record<Phase, { title: string; body: string }> = {
     checking: { title: 'Checking for the drone', body: 'One moment.' },
     'bridge-offline': { title: 'Drone bridge offline', body: 'Start bridge/server.py on this laptop. Setup is under Connection below.' },
-    searching: { title: 'Looking for the Tello', body: status?.error ? 'The drone isn’t answering. Check it’s switched on and this laptop is on its TELLO-XXXXXX Wi-Fi.' : 'Connecting…' },
+    searching: { title: 'Looking for the Tello', body: status?.error ? 'The bridge is searching this laptop’s Wi-Fi for the drone. Check it’s switched on and that this laptop is on the drone’s own Wi-Fi (TELLO-XXXXXX, or RMTT-XXXXXX with the expansion pack) or on the hotspot the drone joined.' : 'Connecting…' },
     'no-video': { title: 'Connected, waiting for video', body: 'Tello EDUs only stream video on their own TELLO-XXXXXX Wi-Fi, not after joining a router.' },
     test: { title: 'Opening the stream', body: 'One moment.' },
     live: { title: 'Opening the camera', body: 'The first frame usually takes a few seconds.' },
@@ -162,13 +175,13 @@ function Connection({ status, phase }: { status: DroneStatus | null; phase: Phas
       <summary>Connection <span aria-hidden="true"><i className={bridgeOk ? 'ok' : ''} /><i className={droneOk ? 'ok' : ''} /><i className={videoOk ? 'ok' : ''} /></span></summary>
       <ul>
         <li><i className={bridgeOk ? 'ok' : ''} /><b>Bridge</b><span>{bridgeOk ? `Running at ${status?.url}${status?.mock ? ' in test mode (--mock)' : ''}` : `Not reachable at ${status?.url || 'http://127.0.0.1:8010'}`}</span></li>
-        <li><i className={droneOk ? 'ok' : ''} /><b>Drone</b><span>{status?.mock ? 'No drone: the bridge is simulating one' : droneOk ? `Tello at ${status?.ip}` : status?.error ? `Not answering at ${status?.ip || '192.168.10.1'}` : '—'}</span></li>
+        <li><i className={droneOk ? 'ok' : ''} /><b>Drone</b><span>{status?.mock ? 'No drone: the bridge is simulating one' : droneOk ? `Tello at ${status?.ip}` : status?.error ? status.error : '—'}</span></li>
         <li><i className={videoOk ? 'ok' : ''} /><b>Video</b><span>{phase === 'live' ? 'Streaming from the drone camera' : phase === 'test' ? 'Bridge test pattern, not a camera' : phase === 'no-video' ? 'No frames yet' : '—'}</span></li>
       </ul>
       <div className="st-dr-setup">
         <b>Fly from this laptop</b>
         <ol>
-          <li>Power on the Tello and join its TELLO-XXXXXX Wi-Fi.</li>
+          <li>Power on the Tello and join its TELLO-XXXXXX Wi-Fi (RMTT-XXXXXX with the expansion pack).</li>
           <li><code>pip install -r bridge/requirements.txt</code></li>
           <li><code>python bridge/server.py --drone</code> (serves on port 8010)</li>
         </ol>

@@ -15,9 +15,9 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from .. import grid as G
-from .. import optimizer as O
-from .screen import Filters, SearchIn, ThresholdsIn, run_search
+from app.engine import grid as G
+from app.engine import optimizer as O
+from app.routers.screen import Filters, SearchIn, ThresholdsIn, run_search
 
 router = APIRouter(tags=["optimize"])
 

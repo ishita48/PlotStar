@@ -158,7 +158,7 @@ export function Flow() {
             </li>
           ))}
         </ol>
-        <Link href="/dashboard-2" className="ws-btn">Open Dashboard 2</Link>
+        <Link href="/studio" className="ws-btn">Open the workspace</Link>
         <button className="ws-btn primary" onClick={() => setShowAgent(true)}>Ask the agent</button>
       </header>
       {error && <div className="fl-error">{error}</div>}

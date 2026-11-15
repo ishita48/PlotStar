@@ -1,5 +1,6 @@
 import { Geist, Geist_Mono, Instrument_Serif } from 'next/font/google';
 import { Story } from '@/components/landing/story/story';
+import './studio/studio.css';
 import './story.css';
 
 const sans = Geist({ subsets: ['latin'], variable: '--ps-sans' });

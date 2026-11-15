@@ -241,13 +241,12 @@ export function DashboardTwo() {
             <b>{module[0].toUpperCase() + module.slice(1)}</b>
           </span>
           <span className="d2-edition">
-            DASHBOARD 02{' '}
             <span>
               {module === 'locate'
-                ? 'UI PREVIEW'
+                ? 'Sample sites'
                 : module === 'deploy'
-                  ? 'HAVEN · COMMAND CENTER'
-                  : 'HAVEN · SIMULATION'}
+                  ? 'HAVEN · Command center'
+                  : 'HAVEN · Simulation'}
             </span>
           </span>
         </header>
@@ -419,12 +418,12 @@ export function DashboardTwo() {
         </div>
         <footer className="d2-footer">
           <span>
-            Smart Blocks <i /> Infrastructure intelligence
+            GeoStar <i /> Find it. Design it. Protect it.
           </span>
           <span>
             {module === 'locate'
-              ? 'INTERFACE PREVIEW · SAMPLE DATA'
-              : 'HAVEN · SIMULATION ONLY · SQLITE WORKSPACE'}
+              ? 'Sample locations and fixed scores'
+              : 'Simulation only · local workspace'}
           </span>
         </footer>
       </main>

@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from app.costar import loader
+from app.sponsors.costar import loader
 
 ENUMS = {
     "PropertyType": {"0": "Unknown", "2": "Industrial", "3": "Land", "11": "Multifamily"},
