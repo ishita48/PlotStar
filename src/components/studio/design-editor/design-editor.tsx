@@ -11,7 +11,7 @@
 import './design-editor.css';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type * as THREE from 'three';
-import { PUBLIC_DATA_API } from '@/lib/plotstar-api';
+import { dataFetch, PUBLIC_DATA_API } from '@/lib/plotstar-api';
 import type { AddedItem, Concept, ConceptEdit, PlaceType, Room } from '../types';
 import type { Editor3D, EditRect } from '../model3d';
 import type { Editor2D } from '../plan2d';
@@ -125,7 +125,7 @@ export function useDesignUi({ editor, siteW, siteD, setback, selected, onSelect,
     if (!c || !text.trim()) return;
     setAsking(true); setAskError(null); setProposal(null);
     try {
-      const r = await fetch(`${PUBLIC_DATA_API}/design/propose`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      const r = await dataFetch(`${PUBLIC_DATA_API}/design/propose`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, concept: summarize(c, siteW, siteD, setback, selected) }) });
       const d = await r.json().catch(() => null);
       if (!r.ok) throw new Error(typeof d?.detail === 'string' ? d.detail : `The proposal failed (${r.status})`);

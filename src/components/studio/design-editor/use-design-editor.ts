@@ -4,7 +4,7 @@
 // arrives the views show the moved geometry ("Checking…") and the checks are marked stale, so nothing is shown as
 // valid that the engine has not measured. A change the engine rejects (422) is undone and the reason shown.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { PUBLIC_DATA_API } from '@/lib/plotstar-api';
+import { dataFetch, PUBLIC_DATA_API } from '@/lib/plotstar-api';
 import type { Concept, ConceptEdit, Edits, Room, StudioResult } from '../types';
 import { ASSET } from './assets';
 import { NO_EDIT } from './edit-actions';
@@ -30,7 +30,7 @@ export interface DesignEditor {
 class EngineError extends Error { constructor(msg: string, public status: number) { super(msg); } }
 
 async function postGenerate(body: unknown): Promise<StudioResult> {
-  const r = await fetch(`${PUBLIC_DATA_API}/studio/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  const r = await dataFetch(`${PUBLIC_DATA_API}/studio/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     signal: AbortSignal.timeout(45000) });
   if (!r.ok) {
     const d = await r.json().catch(() => null);

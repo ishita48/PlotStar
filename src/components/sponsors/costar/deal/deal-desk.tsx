@@ -4,7 +4,7 @@
 // Every figure comes from CoStar records and GeoStar's deterministic development model; nothing is computed here.
 import { useEffect, useState } from 'react';
 import { Activity, Loader2, Play, Printer, X } from 'lucide-react';
-import { PUBLIC_DATA_API } from '@/lib/plotstar-api';
+import { dataFetch, PUBLIC_DATA_API } from '@/lib/plotstar-api';
 import s from './deal.module.css';
 
 interface Row {
@@ -36,7 +36,7 @@ export function DealDesk({ market, mwIt, rackKw, onUseSite, onClose }: {
   useEffect(() => {
     if (tab !== 'audit') return;
     let alive = true;
-    const load = () => fetch(`${PUBLIC_DATA_API}/mcp/audit?limit=40`).then((r) => r.json()).then((d) => alive && setAudit(d.calls ?? [])).catch(() => {});
+    const load = () => dataFetch(`${PUBLIC_DATA_API}/mcp/audit?limit=40`).then((r) => r.json()).then((d) => alive && setAudit(d.calls ?? [])).catch(() => {});
     load();
     const t = setInterval(load, 3000);
     return () => { alive = false; clearInterval(t); };
@@ -47,7 +47,7 @@ export function DealDesk({ market, mwIt, rackKw, onUseSite, onClose }: {
     try {
       const body = { market: c.market, mw_it: c.mw_it, rack_kw: c.rack_kw, candidates: c.candidates, max_comp_age_years: c.max_comp_age_years,
         budget: c.budget ? Number(c.budget) * 1e6 : null, min_acres: c.min_acres ? Number(c.min_acres) : null };
-      const r = await fetch(`${PUBLIC_DATA_API}/deal/run`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const r = await dataFetch(`${PUBLIC_DATA_API}/deal/run`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const d = await r.json();
       if (!r.ok) throw new Error(typeof d?.detail === 'string' ? d.detail : `Deal run failed (${r.status})`);
       setRes(d); setTab('shortlist');

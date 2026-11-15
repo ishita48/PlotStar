@@ -1,7 +1,7 @@
 'use client';
 // Operating plan for one site (from the joint optimizer) and the optimization result strip.
 import { useEffect, useState } from 'react';
-import { PUBLIC_DATA_API } from '@/lib/plotstar-api';
+import { dataFetch, PUBLIC_DATA_API } from '@/lib/plotstar-api';
 import type { Combo, OptimizeResult } from './optimize-types';
 import { fmtMoney, fmtNum } from './types';
 
@@ -131,7 +131,7 @@ export function ResultStrip({ run }: { run: OptimizeResult }) {
   async function explain() {
     setAsking(true);
     try {
-      const r = await fetch(`${PUBLIC_DATA_API}/agent/explain`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ run_id: run.run_id }) });
+      const r = await dataFetch(`${PUBLIC_DATA_API}/agent/explain`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ run_id: run.run_id }) });
       setWhy(await r.json());
     } catch {
       setWhy({ answer: 'Explainer unavailable.', model: 'none' });

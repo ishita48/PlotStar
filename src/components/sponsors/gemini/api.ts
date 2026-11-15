@@ -1,6 +1,6 @@
 // Client for the Gemini endpoints of the GeoStar API (services/api/app/sponsors/gemini/routes.py) and the
 // mapped-obstacle store the Studio sends to POST /studio/generate.
-import { PUBLIC_DATA_API } from '@/lib/plotstar-api';
+import { dataFetch, PUBLIC_DATA_API } from '@/lib/plotstar-api';
 
 export type ObstacleKind = 'building' | 'structure' | 'trees' | 'water' | 'parking' | 'paving' | 'road';
 export interface Obstacle {
@@ -26,7 +26,7 @@ export const KIND_COLOR: Record<ObstacleKind, string> = {
 };
 
 export async function gemini<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${PUBLIC_DATA_API}/gemini${path}`, init);
+  const res = await dataFetch(`${PUBLIC_DATA_API}/gemini${path}`, init);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : `Gemini request failed (${res.status})`);
   return data as T;

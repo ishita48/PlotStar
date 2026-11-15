@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from 'react';
 import dynamic from 'next/dynamic';
 import { Box, CircleAlert, Crosshair, FileUp, Hammer, Loader2, MapPin, Maximize, MousePointer2, Move, Square, Trash2, X } from 'lucide-react';
-import { PUBLIC_DATA_API } from '@/lib/plotstar-api';
+import { dataFetch, PUBLIC_DATA_API } from '@/lib/plotstar-api';
 import type { StudioResult } from '../types';
 import s from './import.module.css';
 
@@ -36,7 +36,7 @@ const PALETTE = ['#264d39', '#3d7391', '#a8731c', '#6f5aa6', '#a5533a', '#4f7f55
 const ACCEPT = '.dxf,image/png,image/jpeg,image/webp,image/gif,application/pdf';
 
 async function post<T>(path: string, body: unknown): Promise<T> {
-  const r = await fetch(`${PUBLIC_DATA_API}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const r = await dataFetch(`${PUBLIC_DATA_API}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const d = await r.json().catch(() => null);
   if (!r.ok) throw new Error(typeof d?.detail === 'string' ? d.detail : `${path} failed (${r.status})`);
   return d as T;

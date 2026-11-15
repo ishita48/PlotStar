@@ -4,7 +4,7 @@
 // four digits. It never dials 911: the agent tells the contact to call 911 themselves if anyone is in danger.
 import { useEffect, useRef, useState } from 'react';
 import { Phone, PhoneCall, PhoneOff } from 'lucide-react';
-import { PUBLIC_DATA_API } from '@/lib/plotstar-api';
+import { dataFetch, PUBLIC_DATA_API } from '@/lib/plotstar-api';
 
 export interface DispatchStatus {
   live: boolean;
@@ -36,7 +36,7 @@ export function useDispatchStatus(): DispatchStatus | null {
   const [status, setStatus] = useState<DispatchStatus | null>(null);
   useEffect(() => {
     let alive = true;
-    fetch(`${PUBLIC_DATA_API}/haven/dispatch/status`)
+    dataFetch(`${PUBLIC_DATA_API}/haven/dispatch/status`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => alive && setStatus(d))
       .catch(() => alive && setStatus(null));
@@ -70,7 +70,7 @@ export function LiveEmergencyCall({ status, incident, facility }: {
     const started = Date.now();
     const tick = async () => {
       try {
-        const r = await fetch(`${PUBLIC_DATA_API}/haven/dispatch/call/${call.id}`);
+        const r = await dataFetch(`${PUBLIC_DATA_API}/haven/dispatch/call/${call.id}`);
         if (r.ok) {
           const d = await r.json();
           if (!alive) return;

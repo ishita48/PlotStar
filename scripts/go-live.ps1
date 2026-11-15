@@ -3,6 +3,8 @@
 #   powershell -ExecutionPolicy Bypass -File scripts\go-live.ps1          start local + tunnels + redeploy the live site
 #   powershell -ExecutionPolicy Bypass -File scripts\go-live.ps1 -Local   only localhost (API on 8000, website on 3000)
 #   powershell -ExecutionPolicy Bypass -File scripts\go-live.ps1 -Stop    close the public tunnels (live site loses data)
+#   powershell -ExecutionPolicy Bypass -File scripts\go-live.ps1 -Watch   keep it all up: check every minute and repair
+#                                                                         (restart what died, new tunnel + redeploy)
 #
 # The live site (Vercel) has its own database (Neon Postgres) and keys. Only the CoStar data service stays on this
 # laptop (the kit cannot leave it); the site reaches it through a temporary Cloudflare tunnel to port 8000.
@@ -10,7 +12,7 @@
 # is still working is reused, and nothing is redeployed.
 # While the tunnels are open, anyone with the site link can see the CoStar data and use the AI features.
 # The drone and real emergency calls stay local: they refuse anything that arrives through a tunnel.
-param([switch]$Local, [switch]$Stop)
+param([switch]$Local, [switch]$Stop, [switch]$Watch)
 
 $repo = Split-Path -Parent $PSScriptRoot
 $run = Join-Path $repo ".geostar-live"                             # logs and the last deployed addresses (gitignored)
@@ -35,10 +37,11 @@ function EnsureTunnel($name, $port, $probe) {
   $log = Join-Path $run "tunnel-$name.log"
   $pidFile = Join-Path $run "tunnel-$name.pid"
   $url = TunnelUrl $log
-  if ($url -and (Reachable "$url$probe")) { return $url }
+  # Venue Wi-Fi drops for seconds at a time: only replace a tunnel that stays unreachable for half a minute.
+  if ($url -and (WaitFor "$url$probe" 30)) { return $url }
   if (Test-Path $pidFile) { Stop-Process -Id (Get-Content $pidFile) -Force -ErrorAction SilentlyContinue }
   Remove-Item $log -ErrorAction SilentlyContinue
-  $p = Start-Process -FilePath "cloudflared" -ArgumentList "tunnel", "--no-autoupdate", "--url", "http://127.0.0.1:$port" `
+  $p = Start-Process -FilePath "cloudflared" -ArgumentList "tunnel", "--no-autoupdate", "--protocol", "http2", "--url", "http://127.0.0.1:$port" `
     -WindowStyle Hidden -RedirectStandardOutput (Join-Path $run "tunnel-$name.out.log") -RedirectStandardError $log -PassThru
   Set-Content $pidFile $p.Id
   $url = $null
@@ -54,7 +57,21 @@ function PublicEnv($name) {
   if ($m) { $m.Matches[0].Groups[1].Value.Trim().Trim('"') }
 }
 
+if ($Watch) {
+  "Watching: every minute this checks the data service, the website and the tunnel, and repairs what is down."
+  while ($true) {
+    $stamp = Get-Date -Format "HH:mm:ss"
+    $out = & powershell -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath 2>&1 | Out-String
+    $line = ($out -split "`r?`n" | Where-Object { $_ -match "Redeploying|Live site:|did not|not reachable|Refusing|Public data address" } | Select-Object -Last 2) -join " | "
+    Add-Content (Join-Path $run "watch.log") "$stamp $line"
+    Start-Sleep 60
+  }
+}
+
 if ($Stop) {
+  Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" |
+    Where-Object { $_.CommandLine -match 'go-live\.ps1.*-Watch' -and $_.ProcessId -ne $PID } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
   Get-Process cloudflared -ErrorAction SilentlyContinue | Stop-Process -Force
   Get-ChildItem $run -Filter "tunnel-*" -ErrorAction SilentlyContinue | Remove-Item -Force
   Remove-Item (Join-Path $run "live-url.txt") -ErrorAction SilentlyContinue

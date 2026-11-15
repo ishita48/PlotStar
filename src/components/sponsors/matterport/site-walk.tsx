@@ -9,7 +9,7 @@
 // on this address) the plain viewer still plays and notes and measurements are saved without a 3D position.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Box, CircleAlert, Crosshair, Eye, Layers, MapPin, Ruler, Trash2, X } from 'lucide-react';
-import { PUBLIC_DATA_API } from '@/lib/plotstar-api';
+import { dataFetch, PUBLIC_DATA_API } from '@/lib/plotstar-api';
 import type { ConversionResp } from '../costar/existing-vs-proposed';
 import s from './site-walk.module.css';
 
@@ -33,7 +33,7 @@ const COLORS: Record<string, [number, number, number]> = {
 };
 const hex = (c: [number, number, number]) => `rgb(${c.map((v) => Math.round(v * 255)).join(',')})`;
 const ft = (m: number) => `${(m * 3.28084).toFixed(1)} ft`;
-const api = (path: string, init?: RequestInit) => fetch(`${PUBLIC_DATA_API}${path}`, init).then(async (r) => {
+const api = (path: string, init?: RequestInit) => dataFetch(`${PUBLIC_DATA_API}${path}`, init).then(async (r) => {
   const d = await r.json().catch(() => null);
   if (!r.ok) throw new Error(typeof d?.detail === 'string' ? d.detail : `Request failed (${r.status})`);
   return d;

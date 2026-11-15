@@ -6,7 +6,7 @@
 // Rows open the CoStar dossier; "Use this site" picks the parcel as the project site. The Deal desk modal stays as it is.
 import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, CircleAlert, CircleCheck, Loader2, Printer, Search, SlidersHorizontal } from 'lucide-react';
-import { PUBLIC_DATA_API } from '@/lib/plotstar-api';
+import { dataFetch, PUBLIC_DATA_API } from '@/lib/plotstar-api';
 import { CostarDossier } from './dossier';
 import { openInvestmentMemo } from './deal/memo';
 import s from './ranked-sites.module.css';
@@ -56,7 +56,7 @@ export function RankedSites({ market: market0, mwIt, rackKw, selectedId, onUseSi
   const loadList = useCallback(async (market: Market, minAcres: string) => {
     setBusy('list'); setErr(null);
     try {
-      const r = await fetch(`${PUBLIC_DATA_API}/costar/portfolio?market=${encodeURIComponent(market)}${minAcres ? `&min_acres=${Number(minAcres)}` : ''}`);
+      const r = await dataFetch(`${PUBLIC_DATA_API}/costar/portfolio?market=${encodeURIComponent(market)}${minAcres ? `&min_acres=${Number(minAcres)}` : ''}`);
       const d = await r.json();
       if (!r.ok) throw new Error(typeof d?.detail === 'string' ? d.detail : `HTTP ${r.status}`);
       setData(d);
@@ -73,7 +73,7 @@ export function RankedSites({ market: market0, mwIt, rackKw, selectedId, onUseSi
     try {
       const body = { market: f.market, mw_it: f.mw, rack_kw: rackKw, candidates: f.candidates, max_comp_age_years: f.compYears,
         budget: f.budget ? Number(f.budget) * 1e6 : null, min_acres: f.minAcres ? Number(f.minAcres) : null };
-      const r = await fetch(`${PUBLIC_DATA_API}/deal/run`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const r = await dataFetch(`${PUBLIC_DATA_API}/deal/run`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const d = await r.json();
       if (!r.ok) throw new Error(typeof d?.detail === 'string' ? d.detail : `Deal run failed (${r.status})`);
       setDeal(d);
@@ -84,7 +84,7 @@ export function RankedSites({ market: market0, mwIt, rackKw, selectedId, onUseSi
   async function use(pid: string) {
     setUsing(pid);
     try {
-      const r = await fetch(`${PUBLIC_DATA_API}/costar/portfolio/site/${encodeURIComponent(pid)}`);
+      const r = await dataFetch(`${PUBLIC_DATA_API}/costar/portfolio/site/${encodeURIComponent(pid)}`);
       const d = await r.json();
       if (!r.ok) throw new Error(typeof d?.detail === 'string' ? d.detail : `HTTP ${r.status}`);
       onUseSite(d);

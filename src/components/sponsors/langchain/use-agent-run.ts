@@ -2,7 +2,7 @@
 // One agent run, live: starts it (site evaluation or a conversation turn), follows its server-sent events and keeps the
 // graph, plan, findings, evidence, score and answer. Every node comes from a real runtime callback on the server.
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { PUBLIC_DATA_API } from '@/lib/plotstar-api';
+import { dataFetch, PUBLIC_DATA_API } from '@/lib/plotstar-api';
 
 export type NodeKind = 'agent' | 'model' | 'tool' | 'mcp' | 'compute' | 'verify' | 'plan';
 export type NodeStatus = 'running' | 'done' | 'error';
@@ -119,7 +119,7 @@ export function useAgentRun() {
   const start = useCallback(async (path: '/agents/site-evaluation' | '/agents/chat' | '/agents/debate', body: unknown, title: string) => {
     setState({ ...EMPTY, status: 'starting', title });
     try {
-      const r = await fetch(`${PUBLIC_DATA_API}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const r = await dataFetch(`${PUBLIC_DATA_API}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const d = await r.json();
       if (!r.ok) throw new Error(typeof d?.detail === 'string' ? d.detail : `Request failed (${r.status})`);
       follow(d.run_id, path === '/agents/chat' ? 'conversation' : path === '/agents/debate' ? 'debate' : 'site-evaluation', title);
@@ -132,7 +132,7 @@ export function useAgentRun() {
 
   const decide = useCallback(async (approve: boolean) => {
     if (!state.runId) return;
-    await fetch(`${PUBLIC_DATA_API}/agents/runs/${state.runId}/approval`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    await dataFetch(`${PUBLIC_DATA_API}/agents/runs/${state.runId}/approval`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ approve }) });
   }, [state.runId]);
 

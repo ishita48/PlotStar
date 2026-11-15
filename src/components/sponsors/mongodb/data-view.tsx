@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Activity, ArrowRight, Boxes, Clock, Database, GitBranch, Layers, MapPin, Search, Sparkles, Table } from 'lucide-react';
 import { Brand } from '../../brand';
-import { PUBLIC_DATA_API } from '@/lib/plotstar-api';
+import { dataFetch, PUBLIC_DATA_API } from '@/lib/plotstar-api';
 import { BarChart, LineChart, OTHER, ScatterChart, SLOT } from '../../ui/charts';
 
 interface ChartData {
@@ -39,7 +39,7 @@ interface Analytics {
 interface Decision { project_id: string; event: string; at: string; by: string | null; status: string | null; mw_it?: number }
 interface Ev { type: string; collection?: string; doc?: Record<string, unknown>; at: string; error?: string }
 
-const api = (p: string) => fetch(`${PUBLIC_DATA_API}${p}`).then(async (r) => { if (!r.ok) throw new Error((await r.json().catch(() => null))?.detail || `${r.status}`); return r.json(); });
+const api = (p: string) => dataFetch(`${PUBLIC_DATA_API}${p}`).then(async (r) => { if (!r.ok) throw new Error((await r.json().catch(() => null))?.detail || `${r.status}`); return r.json(); });
 const money = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 1 }).format(n);
 const num = (n: number | null | undefined, d = 0) => (n == null ? '—' : new Intl.NumberFormat('en-US', { maximumFractionDigits: d }).format(n));
 const SAMPLE_Q = ['greens', 'presidents park', 'navigation', 'rankin'];

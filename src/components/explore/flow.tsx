@@ -5,7 +5,7 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { ArrowLeft, ArrowRight, Check } from 'lucide-react';
 import { Brand } from '../brand';
-import { PUBLIC_DATA_API } from '@/lib/plotstar-api';
+import { dataFetch, PUBLIC_DATA_API } from '@/lib/plotstar-api';
 import { DecisionView } from './decision-view';
 import { DesignStep, type DesignSite } from './design-step';
 import type { MapMode } from './explore-map';
@@ -24,7 +24,7 @@ interface SearchResult { count: number; counts: { Pass: number; 'Needs review': 
 const STEPS = ['Your project', 'Sites', 'Recommendation', 'Design', 'What if', 'Live test'];
 
 async function post<T>(path: string, body: unknown): Promise<T> {
-  const r = await fetch(`${PUBLIC_DATA_API}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const r = await dataFetch(`${PUBLIC_DATA_API}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   if (!r.ok) throw new Error(`${path} failed (${r.status})`);
   return r.json();
 }

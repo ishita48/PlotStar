@@ -6,6 +6,27 @@ export const DATA_API = process.env.PLOTSTAR_API_URL || process.env.NEXT_PUBLIC_
 /** Browser-side base URL. */
 export const PUBLIC_DATA_API = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
+// The data API is reached through a tunnel over venue Wi-Fi, which drops for a few seconds now and then.
+// A network error, or the tunnel's own "origin unreachable" answers (502/503/504, Cloudflare 530), is retried with a
+// short backoff before anyone sees an error. Only the data API's reads and pure computations go through this.
+// Reads retry on any of those; writes only when the tunnel says the request never reached the service (530, network).
+const RETRY_READ = new Set([502, 503, 504, 530]);
+const RETRY_WRITE = new Set([530]);
+const BACKOFF_MS = [600, 1500, 3500];
+export async function dataFetch(input: string, init?: RequestInit): Promise<Response> {
+  const read = !init?.method || init.method.toUpperCase() === 'GET';
+  const retry = read ? RETRY_READ : RETRY_WRITE;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const r = await fetch(input, init);
+      if (!retry.has(r.status) || attempt >= BACKOFF_MS.length) return r;
+    } catch (error) {
+      if (attempt >= BACKOFF_MS.length || init?.signal?.aborted) throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, BACKOFF_MS[attempt]));
+  }
+}
+
 export const MARKETS = ['Houston', 'Los Angeles'] as const;
 export type Market = (typeof MARKETS)[number];
 

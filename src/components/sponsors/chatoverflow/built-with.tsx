@@ -6,7 +6,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { BookOpenText, Bug, ExternalLink, Loader2, RefreshCw, Search } from 'lucide-react';
-import { PUBLIC_DATA_API } from '@/lib/plotstar-api';
+import { dataFetch, PUBLIC_DATA_API } from '@/lib/plotstar-api';
 import { Brand } from '../../brand';
 
 interface Note {
@@ -34,18 +34,18 @@ export function BuiltWith() {
   async function load(refresh = false) {
     setBusy(true); setErr(null);
     try {
-      const r = await fetch(`${PUBLIC_DATA_API}/chatoverflow/notes${refresh ? '?refresh=true' : ''}`);
+      const r = await dataFetch(`${PUBLIC_DATA_API}/chatoverflow/notes${refresh ? '?refresh=true' : ''}`);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       setD(await r.json());
     } catch (e) { setErr(`Could not reach the GeoStar API (${(e as Error).message}).`); }
     finally { setBusy(false); }
   }
-  const loadFails = () => fetch(`${PUBLIC_DATA_API}/chatoverflow/debug/recent`).then((r) => r.json()).then((x) => setFails(x.failures ?? [])).catch(() => {});
+  const loadFails = () => dataFetch(`${PUBLIC_DATA_API}/chatoverflow/debug/recent`).then((r) => r.json()).then((x) => setFails(x.failures ?? [])).catch(() => {});
   useEffect(() => { void load(); void loadFails(); }, []);
 
   async function runProbe() {
     setProbeRes(null);
-    const r = await fetch(`${PUBLIC_DATA_API}/chatoverflow/debug`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(probe) });
+    const r = await dataFetch(`${PUBLIC_DATA_API}/chatoverflow/debug`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(probe) });
     setProbeRes(await r.json());
     void loadFails();
   }

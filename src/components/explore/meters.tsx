@@ -3,7 +3,7 @@
 // and curtails to the plan's depth during a grid event. One chart, one table, one event, one verdict.
 import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, RotateCcw } from 'lucide-react';
-import { PUBLIC_DATA_API } from '@/lib/plotstar-api';
+import { dataFetch, PUBLIC_DATA_API } from '@/lib/plotstar-api';
 import type { DataLabel } from '@/lib/types';
 import { fmtNum } from './types';
 
@@ -72,19 +72,19 @@ export function Meters({ priceDate }: { priceDate?: string | null }) {
       if (d.emergency.active) seenEvent.current = true;
       else if (seenEvent.current) {
         seenEvent.current = false;
-        fetch(`${PUBLIC_DATA_API}/passport/latest`).then((r) => (r.ok ? r.json() : null)).then((p) => p && setPassport(p)).catch(() => {});
+        dataFetch(`${PUBLIC_DATA_API}/passport/latest`).then((r) => (r.ok ? r.json() : null)).then((p) => p && setPassport(p)).catch(() => {});
       }
     });
     es.onerror = () => setErr(`No stream from ${PUBLIC_DATA_API}`);
-    fetch(`${PUBLIC_DATA_API}/passport/latest`).then((r) => (r.ok ? r.json() : null)).then((p) => p && setPassport(p)).catch(() => {});
+    dataFetch(`${PUBLIC_DATA_API}/passport/latest`).then((r) => (r.ok ? r.json() : null)).then((p) => p && setPassport(p)).catch(() => {});
     return () => es.close();
   }, []);
 
   async function triggerEvent() {
-    await fetch(`${PUBLIC_DATA_API}/hardware/emergency`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ duration_s: 20, source: 'software' }) });
+    await dataFetch(`${PUBLIC_DATA_API}/hardware/emergency`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ duration_s: 20, source: 'software' }) });
   }
   async function reset() {
-    await fetch(`${PUBLIC_DATA_API}/hardware/reset`, { method: 'POST' });
+    await dataFetch(`${PUBLIC_DATA_API}/hardware/reset`, { method: 'POST' });
     setSamples([]); setPassport(null);
   }
 

@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
-import { PUBLIC_DATA_API } from '@/lib/plotstar-api';
+import { dataFetch, PUBLIC_DATA_API } from '@/lib/plotstar-api';
 import type { OptimizeResult } from './optimize-types';
 import { bestPlanFor } from './plan-panel';
 import type { ExploreSite } from './types';
@@ -67,7 +67,7 @@ export function AssumptionsDrawer({ overrides, onApply, onClose }: { overrides: 
   const [list, setList] = useState<Assumption[]>([]);
   const [draft, setDraft] = useState<Record<string, number>>(overrides);
   useEffect(() => {
-    fetch(`${PUBLIC_DATA_API}/assumptions`).then((r) => r.json()).then(setList).catch(() => setList([]));
+    dataFetch(`${PUBLIC_DATA_API}/assumptions`).then((r) => r.json()).then(setList).catch(() => setList([]));
   }, []);
   return (
     <div className="ws-drawer-bg" onClick={onClose}>

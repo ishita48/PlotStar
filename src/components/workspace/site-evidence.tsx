@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Box, CircleCheck, CircleHelp, CircleX, ExternalLink, Zap } from 'lucide-react';
 import type { DataLabel, GateResult, Site } from '@/lib/types';
-import { matterportEmbedUrl, PUBLIC_DATA_API, siteDetailUrl, vexcelMetaUrl, vexcelOrthoUrl } from '@/lib/plotstar-api';
+import { dataFetch, matterportEmbedUrl, PUBLIC_DATA_API, siteDetailUrl, vexcelMetaUrl, vexcelOrthoUrl } from '@/lib/plotstar-api';
 
 export function LabelTag({ label }: { label: DataLabel }) {
   return <span className={`data-label data-label-${label.toLowerCase().replace(/[^a-z]/g, '')}`}>{label}</span>;
@@ -144,7 +144,7 @@ export function MatterportPanel({ site }: { site: Site }) {
         const list: string[] = d.matterport_model_ids ?? [];
         setIds(list);
         if (list[0])
-          fetch(`${PUBLIC_DATA_API}/matterport/models/${list[0]}`)
+          dataFetch(`${PUBLIC_DATA_API}/matterport/models/${list[0]}`)
             .then((r) => (r.ok ? r.json() : null))
             .then((m) => alive && setThumb(m?.image?.url ?? null))
             .catch(() => {});

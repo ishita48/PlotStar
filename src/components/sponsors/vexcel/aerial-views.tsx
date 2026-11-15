@@ -6,7 +6,7 @@
 //   Heights      neighbouring structures (Vexcel footprints) coloured by measured height: DSM minus DTM
 import { useEffect, useState } from 'react';
 import { LoaderCircle } from 'lucide-react';
-import { PUBLIC_DATA_API, vexcelOrthoUrl } from '@/lib/plotstar-api';
+import { dataFetch, PUBLIC_DATA_API, vexcelOrthoUrl } from '@/lib/plotstar-api';
 import s from './aerial-views.module.css';
 
 type Mode = 'top' | 'change' | 'oblique' | 'heights';
@@ -16,7 +16,7 @@ type Frame = { west: number; east: number; south: number; north: number; exact: 
 
 const BUFFER = 220;
 const enc = encodeURIComponent;
-const api = <T,>(path: string) => fetch(`${PUBLIC_DATA_API}/vexcel${path}`).then(async (r) => {
+const api = <T,>(path: string) => dataFetch(`${PUBLIC_DATA_API}/vexcel${path}`).then(async (r) => {
   const d = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(typeof d.detail === 'string' ? d.detail : `Vexcel request failed (${r.status})`);
   return d as T;

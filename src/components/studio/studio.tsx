@@ -10,7 +10,7 @@ import {
   Briefcase, Building2, Database, FileText, FileUp, House, LayoutGrid, MapPin, Move, Network, Plus, Radio, RotateCcw, RotateCw, Sparkles, Square, Star, Trash2, Users,
 } from 'lucide-react';
 import { Star as GeoStarMark } from '../brand';
-import { PUBLIC_DATA_API, siteDetailUrl, vexcel3dRootUrl, vexcelMetaUrl } from '@/lib/plotstar-api';
+import { dataFetch, PUBLIC_DATA_API, siteDetailUrl, vexcel3dRootUrl, vexcelMetaUrl } from '@/lib/plotstar-api';
 import type { GateResult } from '@/lib/types';
 import type { ExploreSite } from '../explore/types';
 import { verdict } from '../explore/types';
@@ -94,7 +94,7 @@ const isUser = (s: ExploreSite) => (s.source as string | undefined) === 'user';
 const isFallback = (s: ExploreSite) => !!(s as { fallback?: boolean }).fallback;
 
 async function api<T>(path: string, body?: unknown, method = 'POST'): Promise<T> {
-  const r = await fetch(`${PUBLIC_DATA_API}${path}`, body === undefined ? undefined
+  const r = await dataFetch(`${PUBLIC_DATA_API}${path}`, body === undefined ? undefined
     : { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   if (!r.ok) {
     const d = await r.json().catch(() => null);

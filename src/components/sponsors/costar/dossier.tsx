@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import dynamic from 'next/dynamic';
 import { Building2, CircleAlert, Home, Landmark, LineChart, Scale, X } from 'lucide-react';
-import { PUBLIC_DATA_API } from '@/lib/plotstar-api';
+import { dataFetch, PUBLIC_DATA_API } from '@/lib/plotstar-api';
 import { BarChart, Histogram } from './charts';
 import { ExistingVsProposed } from './existing-vs-proposed';
 import type { MapPoint } from './mini-map';
@@ -34,7 +34,7 @@ function useApi<T>(path: string | null, postPath?: string): Api<T> {
   const run = useCallback((body?: unknown) => {
     if (!path) return;
     setSt((x) => ({ ...x, loading: true, error: null }));
-    fetch(`${PUBLIC_DATA_API}${body === undefined ? path : (postPath ?? path)}`, body === undefined ? undefined : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    dataFetch(`${PUBLIC_DATA_API}${body === undefined ? path : (postPath ?? path)}`, body === undefined ? undefined : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       .then(async (r) => {
         const d = await r.json().catch(() => null);
         if (r.status === 404 && (!d || d.detail === 'Not Found')) return setSt({ data: null, error: null, missing: true, loading: false });
@@ -136,7 +136,7 @@ function CompsTab({ id, onUse }: { id: string; onUse?: (v: number, l: string, b:
   const [kept, setKept] = useState<'idle' | 'saved' | 'error'>('idle');
   async function keepSelection(d: CompsResp) {
     try {
-      const r = await fetch(`${PUBLIC_DATA_API}/deal-room`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      const r = await dataFetch(`${PUBLIC_DATA_API}/deal-room`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ kind: 'comp_selection', parcel_id: id, confirm: true,
           payload: { excluded: (d.excluded ?? d.comps.filter((c) => c.excluded).map((c) => c.comp_id)).map(String), basis: d.basis } }) });
       setKept(r.ok ? 'saved' : 'error');

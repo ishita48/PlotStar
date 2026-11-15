@@ -3,7 +3,7 @@
 // The panel shows its plan and every tool call as it happens.
 import { useRef, useState } from 'react';
 import { Send, X } from 'lucide-react';
-import { PUBLIC_DATA_API } from '@/lib/plotstar-api';
+import { dataFetch, PUBLIC_DATA_API } from '@/lib/plotstar-api';
 
 type Step = { kind: 'approval'; actions: { name: string; args: Record<string, unknown> }[]; decided?: string } | { kind: 'plan'; todos: { content: string; status: string }[] } | { kind: 'tool'; label: string; done: boolean };
 interface Turn { role: 'user' | 'assistant'; content: string; steps?: Step[]; model?: string }
@@ -38,7 +38,7 @@ export function AgentDrawer({ runId, onClose }: { runId: string | null; onClose:
     setInput(''); setBusy(true);
     const patch = (f: (t: Turn) => Turn) => setTurns((ts) => ts.map((t, i) => (i === ts.length - 1 ? f(t) : t)));
     try {
-      const r = await fetch(`${PUBLIC_DATA_API}/agent/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      const r = await dataFetch(`${PUBLIC_DATA_API}/agent/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(resume ? { run_id: runId, thread_id: thread.current, resume } : { run_id: runId, thread_id: thread.current, messages: [{ role: 'user', content: text }] }) });
       if (!r.ok || !r.body) throw new Error(`agent failed (${r.status})`);
       const reader = r.body.getReader(), dec = new TextDecoder();

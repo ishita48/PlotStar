@@ -5,7 +5,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { ArrowRight, ArrowUpRight, Check, CircleAlert, Database, Satellite, ShieldCheck } from 'lucide-react';
-import { PUBLIC_DATA_API } from '@/lib/plotstar-api';
+import { dataFetch, PUBLIC_DATA_API } from '@/lib/plotstar-api';
 import { Plan2D, type Layers } from '@/components/studio/plan2d';
 import type { StudioResult } from '@/components/studio/types';
 import { TypeChips } from './acts';
@@ -31,7 +31,7 @@ export function useLive(): Live {
   const [live, setLive] = useState<Live>({ result: null, gates: [], decisions: null, down: false });
   useEffect(() => {
     const ctl = new AbortController();
-    const post = (path: string, body: unknown) => fetch(`${PUBLIC_DATA_API}${path}`, { method: 'POST', signal: ctl.signal,
+    const post = (path: string, body: unknown) => dataFetch(`${PUBLIC_DATA_API}${path}`, { method: 'POST', signal: ctl.signal,
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then((r) => (r.ok ? r.json() : Promise.reject(r.status)));
     post('/sites/evaluate', { lat: LAT, lon: LON, acres: 20, market: 'Houston', thresholds: { min_home_distance_m: 300 }, name: 'Landing parcel' })
       .then((s) => {
@@ -41,7 +41,7 @@ export function useLive(): Live {
       })
       .then((result) => setLive((l) => ({ ...l, result })))
       .catch(() => setLive((l) => ({ ...l, down: true })));
-    fetch(`${PUBLIC_DATA_API}/atlas/decisions`, { signal: ctl.signal }).then((r) => (r.ok ? r.json() : Promise.reject()))
+    dataFetch(`${PUBLIC_DATA_API}/atlas/decisions`, { signal: ctl.signal }).then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((d) => setLive((l) => ({ ...l, decisions: (d.decisions ?? []).slice(0, 5) })))
       .catch(() => setLive((l) => ({ ...l, decisions: [] })));
     return () => ctl.abort();

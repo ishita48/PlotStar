@@ -3,7 +3,7 @@
 // measurable commitments. Every figure comes from the screening data, the design, or the impact model.
 import { useEffect, useState } from 'react';
 import { Printer, X } from 'lucide-react';
-import { PUBLIC_DATA_API } from '@/lib/plotstar-api';
+import { dataFetch, PUBLIC_DATA_API } from '@/lib/plotstar-api';
 import type { DesignSite } from './design-step';
 import { fmtNum } from './types';
 
@@ -14,7 +14,7 @@ export function CommunitySheet({ site, mw, cooling, depth, gensets, batteryMin, 
 }) {
   const [imp, setImp] = useState<Impact | null>(null);
   useEffect(() => {
-    fetch(`${PUBLIC_DATA_API}/impact`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mw_it: mw, cooling }) })
+    dataFetch(`${PUBLIC_DATA_API}/impact`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mw_it: mw, cooling }) })
       .then((r) => r.json()).then(setImp).catch(() => setImp(null));
   }, [mw, cooling]);
   const g = (name: string) => site.screen?.gates.find((x) => x.gate === name);

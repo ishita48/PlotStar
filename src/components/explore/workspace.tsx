@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { Activity, Bell, Bookmark, Box, Columns3, Eraser, Map as MapIcon, MapPin, PenLine, Satellite, Search, SlidersHorizontal } from 'lucide-react';
 import { Brand } from '../brand';
-import { PUBLIC_DATA_API } from '@/lib/plotstar-api';
+import { dataFetch, PUBLIC_DATA_API } from '@/lib/plotstar-api';
 import type { MapMode } from './explore-map';
 import type { OptimizeResult } from './optimize-types';
 import { ResultStrip } from './plan-panel';
@@ -25,7 +25,7 @@ interface Saved { id: number; name: string; count: number; shared_with: string[]
 interface Alert { type: string; name: string; detail: string }
 
 async function post<T>(path: string, body: unknown): Promise<T> {
-  const r = await fetch(`${PUBLIC_DATA_API}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const r = await dataFetch(`${PUBLIC_DATA_API}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   if (!r.ok) throw new Error(`${path} failed (${r.status})`);
   return r.json();
 }
@@ -99,7 +99,7 @@ export function Workspace() {
     } catch (e) { setError((e as Error).message); } finally { setRunBusy(false); }
   }, [run]);
 
-  const loadSaved = useCallback(() => { fetch(`${PUBLIC_DATA_API}/searches`).then((r) => (r.ok ? r.json() : [])).then(setSaved).catch(() => {}); }, []);
+  const loadSaved = useCallback(() => { dataFetch(`${PUBLIC_DATA_API}/searches`).then((r) => (r.ok ? r.json() : [])).then(setSaved).catch(() => {}); }, []);
   useEffect(() => { void runAll(); }, [polygon, market, overrides]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(loadSaved, [loadSaved]);
   useEffect(() => { if (run?.run_id) void post('/livegrid/plan', { run_id: run.run_id }).catch(() => {}); }, [run?.run_id]);
@@ -121,7 +121,7 @@ export function Workspace() {
     setSaveOpen(false); loadSaved();
   }
   async function checkAlerts(id: number) {
-    const r = await fetch(`${PUBLIC_DATA_API}/searches/${id}/alerts?update_snapshot=true`);
+    const r = await dataFetch(`${PUBLIC_DATA_API}/searches/${id}/alerts?update_snapshot=true`);
     const d = await r.json(); setAlerts(d.alerts ?? []); loadSaved();
   }
   const toggleCompare = (id: string) => setCompare((c) => { const n = new Set(c); if (n.has(id)) n.delete(id); else if (n.size < 5) n.add(id); return n; });

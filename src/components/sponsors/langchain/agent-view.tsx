@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowRight, Bot, Brain, Calculator, Database, GitBranch, Layers, Loader2, Play, Send, ShieldCheck, Workflow } from 'lucide-react';
 import { Brand } from '../../brand';
-import { PUBLIC_DATA_API } from '@/lib/plotstar-api';
+import { dataFetch, PUBLIC_DATA_API } from '@/lib/plotstar-api';
 import { AgentIntel } from './agent-intel';
 import { isActive, useAgentRun } from './use-agent-run';
 
@@ -37,10 +37,10 @@ export function AgentView() {
   const busy = isActive(run.state);
 
   useEffect(() => {
-    fetch(`${PUBLIC_DATA_API}/agents/architecture`).then((r) => r.json()).then(setArch).catch(() => setArchErr(`Can't reach the GeoStar API at ${PUBLIC_DATA_API}.`));
+    dataFetch(`${PUBLIC_DATA_API}/agents/architecture`).then((r) => r.json()).then(setArch).catch(() => setArchErr(`Can't reach the GeoStar API at ${PUBLIC_DATA_API}.`));
   }, []);
   useEffect(() => {
-    const load = () => fetch(`${PUBLIC_DATA_API}/agents/runs`).then((r) => r.json()).then((d) => setRecent(d.runs ?? [])).catch(() => {});
+    const load = () => dataFetch(`${PUBLIC_DATA_API}/agents/runs`).then((r) => r.json()).then((d) => setRecent(d.runs ?? [])).catch(() => {});
     void load();
     const t = setInterval(load, 4000);
     return () => clearInterval(t);

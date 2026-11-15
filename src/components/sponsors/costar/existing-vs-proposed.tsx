@@ -3,7 +3,7 @@
 // The two are never mixed: each half carries its own strict label, and the scan's coverage is stated from measured area.
 import { useEffect, useState, type ReactNode } from 'react';
 import { Box, CircleAlert, MapPin, Play, Ruler } from 'lucide-react';
-import { PUBLIC_DATA_API } from '@/lib/plotstar-api';
+import { dataFetch, PUBLIC_DATA_API } from '@/lib/plotstar-api';
 import { SiteWalk } from '../matterport/site-walk';
 import s from './dossier.module.css';
 
@@ -57,7 +57,7 @@ export function ExistingVsProposed({ parcelId, conceptSlot, mwIt, rackKw, onNote
   const [saving, setSaving] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   useEffect(() => {
     let alive = true;
-    fetch(`${PUBLIC_DATA_API}/deal-room?parcel_id=${encodeURIComponent(parcelId)}`).then((r) => r.json())
+    dataFetch(`${PUBLIC_DATA_API}/deal-room?parcel_id=${encodeURIComponent(parcelId)}`).then((r) => r.json())
       .then((d) => alive && setSaved(d.inspection_notes ?? [])).catch(() => {});
     return () => { alive = false; };
   }, [parcelId]);
@@ -65,7 +65,7 @@ export function ExistingVsProposed({ parcelId, conceptSlot, mwIt, rackKw, onNote
     if (!note.trim()) return;
     setSaving('saving');
     try {
-      const r = await fetch(`${PUBLIC_DATA_API}/deal-room/notes`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      const r = await dataFetch(`${PUBLIC_DATA_API}/deal-room/notes`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ parcel_id: parcelId, note }) });
       if (!r.ok) throw new Error();
       setSaved((x) => [{ note, created_at: new Date().toISOString() }, ...x]); setSaving('saved');
@@ -78,7 +78,7 @@ export function ExistingVsProposed({ parcelId, conceptSlot, mwIt, rackKw, onNote
     if (given) { setData(given); return; }
     let alive = true;
     setData(null); setErr(null);
-    fetch(`${PUBLIC_DATA_API}/costar/building/${encodeURIComponent(parcelId)}`)
+    dataFetch(`${PUBLIC_DATA_API}/costar/building/${encodeURIComponent(parcelId)}`)
       .then(async (r) => { const d = await r.json(); if (!r.ok) throw new Error(d?.detail ?? r.status); return d; })
       .then((d) => alive && setData(d)).catch((e) => alive && setErr(String(e.message ?? e)));
     return () => { alive = false; };
@@ -87,7 +87,7 @@ export function ExistingVsProposed({ parcelId, conceptSlot, mwIt, rackKw, onNote
   useEffect(() => {
     if (!mwIt) return;
     let alive = true;
-    fetch(`${PUBLIC_DATA_API}/costar/conversion/${encodeURIComponent(parcelId)}?mw_it=${mwIt}&rack_kw=${rackKw ?? 20}`)
+    dataFetch(`${PUBLIC_DATA_API}/costar/conversion/${encodeURIComponent(parcelId)}?mw_it=${mwIt}&rack_kw=${rackKw ?? 20}`)
       .then((r) => (r.ok ? r.json() : null)).then((d) => alive && setConv(d)).catch(() => {});
     return () => { alive = false; };
   }, [parcelId, mwIt, rackKw]);
@@ -164,7 +164,7 @@ export function ExistingVsProposed({ parcelId, conceptSlot, mwIt, rackKw, onNote
       </div>
       <small className={s.src}>{data.source}. {data.embed_note}</small>
       {walking && m && <SiteWalk parcelId={parcelId} modelId={m.model_id} siteName={data.name || data.address || parcelId} mwIt={mwIt} rackKw={rackKw}
-        onClose={() => { setWalking(false); if (mwIt) fetch(`${PUBLIC_DATA_API}/costar/conversion/${encodeURIComponent(parcelId)}?mw_it=${mwIt}&rack_kw=${rackKw ?? 20}`).then((r) => (r.ok ? r.json() : null)).then((d) => d && setConv(d)).catch(() => {}); }} />}
+        onClose={() => { setWalking(false); if (mwIt) dataFetch(`${PUBLIC_DATA_API}/costar/conversion/${encodeURIComponent(parcelId)}?mw_it=${mwIt}&rack_kw=${rackKw ?? 20}`).then((r) => (r.ok ? r.json() : null)).then((d) => d && setConv(d)).catch(() => {}); }} />}
     </div>
   );
 }

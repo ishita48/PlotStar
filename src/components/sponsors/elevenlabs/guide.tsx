@@ -9,7 +9,7 @@ import {
   type MessagePayload,
 } from '@elevenlabs/react';
 import { AudioLines, Check, Loader2, Maximize2, Mic, MicOff, Minimize2, PhoneOff, Send, X } from 'lucide-react';
-import { PUBLIC_DATA_API } from '@/lib/plotstar-api';
+import { dataFetch, PUBLIC_DATA_API } from '@/lib/plotstar-api';
 import type { BriefPatch } from '../langchain/copilot';
 import { Screen, realClick } from './screen';
 import s from './guide.module.css';
@@ -163,7 +163,7 @@ function GuideInner({ body, conceptId, selected, stage, market, hasSite, onApply
     const { body: b, conceptId: cid, selected: sel, stage: st, market: mk } = latest.current;
     if (!b) return 'There are no layouts yet, so there is nothing to compute. Suggest finishing Define and generating layouts first.';
     try {
-      const r = await fetch(`${PUBLIC_DATA_API}/copilot/ask`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      const r = await dataFetch(`${PUBLIC_DATA_API}/copilot/ask`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...b, question: String(question).slice(0, 600), concept_id: cid, selected: sel, stage: st, market: mk, thread_id: 'voice-guide' }) });
       const d = await r.json();
       if (!r.ok) return `The copilot could not answer: ${typeof d?.detail === 'string' ? d.detail : r.status}.`;
@@ -175,7 +175,7 @@ function GuideInner({ body, conceptId, selected, stage, market, hasSite, onApply
 
   useConversationClientTool('agents_status', async () => {
     try {
-      const d = await (await fetch(`${PUBLIC_DATA_API}/guide/agents`)).json();
+      const d = await (await dataFetch(`${PUBLIC_DATA_API}/guide/agents`)).json();
       const run = lastRun.current;
       return JSON.stringify({ services: d.services, last_copilot_run: run ? { planned_by: run.planned_by, tools: run.tools.map((t) => `${t.name} ${t.ms} ms`), total_ms: run.ms } : 'none yet in this conversation' });
     } catch { return 'The GeoStar API is not reachable, so I cannot list the services.'; }
@@ -204,7 +204,7 @@ function GuideInner({ body, conceptId, selected, stage, market, hasSite, onApply
   async function start() {
     setError(null); setOpen(true);
     try {
-      const r = await fetch(`${PUBLIC_DATA_API}/guide/session`);
+      const r = await dataFetch(`${PUBLIC_DATA_API}/guide/session`);
       const d = await r.json().catch(() => null);
       if (!r.ok) throw new Error(typeof d?.detail === 'string' ? d.detail : `Voice guide unavailable (${r.status})`);
       await navigator.mediaDevices.getUserMedia({ audio: true }).then((m) => m.getTracks().forEach((t) => t.stop()));

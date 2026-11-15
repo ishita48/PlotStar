@@ -3,7 +3,7 @@
 // Every figure comes from the optimizer run; nothing here is computed by a language model.
 import { useEffect, useRef, useState } from 'react';
 import { Activity, MapPin, Volume2, VolumeX } from 'lucide-react';
-import { PUBLIC_DATA_API } from '@/lib/plotstar-api';
+import { dataFetch, PUBLIC_DATA_API } from '@/lib/plotstar-api';
 import type { Combo, OptimizeResult } from './optimize-types';
 import type { ExploreSite } from './types';
 import { fmtMoney, fmtNum } from './types';
@@ -39,7 +39,7 @@ function drivers(run: OptimizeResult): string[] {
 
 async function speak(text: string, audioRef: React.MutableRefObject<HTMLAudioElement | null>): Promise<string> {
   try {
-    const r = await fetch(`${PUBLIC_DATA_API}/voice/speak`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+    const r = await dataFetch(`${PUBLIC_DATA_API}/voice/speak`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
     if (r.ok) {
       const a = new Audio(URL.createObjectURL(await r.blob()));
       audioRef.current = a;
@@ -91,7 +91,7 @@ export function DecisionView({ run, sites, mw, busy, changedFrom, hideExtras = f
     setVoice('Loading…');
     let text = why.join(' ');
     try {
-      const r = await fetch(`${PUBLIC_DATA_API}/agent/explain`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ run_id: run!.run_id }) });
+      const r = await dataFetch(`${PUBLIC_DATA_API}/agent/explain`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ run_id: run!.run_id }) });
       if (r.ok) text = (await r.json()).answer || text;
     } catch { /* keep local text */ }
     setVoice(await speak(text, audioRef));

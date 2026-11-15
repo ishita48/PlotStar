@@ -1,6 +1,6 @@
 // Printable investment memo for one CoStar property: POST /intel/tools/generate_investment_memo, rendered as a clean
 // page the browser can print or save as PDF. Every figure comes from the tool's result; nothing is computed here.
-import { PUBLIC_DATA_API } from '@/lib/plotstar-api';
+import { dataFetch, PUBLIC_DATA_API } from '@/lib/plotstar-api';
 
 const usd = (n: unknown) => (typeof n === 'number' ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 1 }).format(n) : 'Unknown');
 const esc = (t: unknown) => String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -19,7 +19,7 @@ export async function openInvestmentMemo(parcelId: string, mwIt: number, rackKw:
   if (!w) return 'The browser blocked the memo window. Allow pop-ups for this page.';
   w.document.write('<p style="font:14px system-ui;margin:40px">Building the investment memo from CoStar records…</p>');
   try {
-    const r = await fetch(`${PUBLIC_DATA_API}/intel/tools/generate_investment_memo`, {
+    const r = await dataFetch(`${PUBLIC_DATA_API}/intel/tools/generate_investment_memo`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ parcel_id: parcelId, mw_it: mwIt, rack_kw: rackKw }) });
     const env = await r.json();
     if (!r.ok || !env.ok) throw new Error(env?.error ?? env?.detail ?? `HTTP ${r.status}`);

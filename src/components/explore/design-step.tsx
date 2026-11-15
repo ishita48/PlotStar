@@ -6,7 +6,7 @@ import { Canvas, useLoader } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { RotateCw, Sparkles, Trash2 } from 'lucide-react';
-import { PUBLIC_DATA_API, vexcelOrthoUrl } from '@/lib/plotstar-api';
+import { dataFetch, PUBLIC_DATA_API, vexcelOrthoUrl } from '@/lib/plotstar-api';
 import type { SiteScreen } from '@/lib/types';
 import { CommunitySheet } from './community-sheet';
 
@@ -40,7 +40,7 @@ const TYPES: Record<CType, { name: string; color: string; w: number; d: number; 
 };
 
 async function post<T>(path: string, body: unknown): Promise<T> {
-  const r = await fetch(`${PUBLIC_DATA_API}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const r = await dataFetch(`${PUBLIC_DATA_API}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   if (!r.ok) throw new Error(`${path} failed (${r.status})`);
   return r.json();
 }
@@ -153,7 +153,7 @@ export function DesignStep({ site, mw, cooling, depth, onNext }: { site: DesignS
   useEffect(() => {
     let alive = true;
     setCtx(null);
-    fetch(`${PUBLIC_DATA_API}/context?lat=${site.lat}&lon=${site.lng}&state=${site.lng < -110 ? 'CA' : 'TX'}`).then((r) => (r.ok ? r.json() : null)).then((d) => alive && setCtx(d)).catch(() => {});
+    dataFetch(`${PUBLIC_DATA_API}/context?lat=${site.lat}&lon=${site.lng}&state=${site.lng < -110 ? 'CA' : 'TX'}`).then((r) => (r.ok ? r.json() : null)).then((d) => alive && setCtx(d)).catch(() => {});
     return () => { alive = false; };
   }, [site.lat, site.lng]);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
