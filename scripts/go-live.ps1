@@ -115,6 +115,13 @@ $flags += "--env"; $flags += "PLOTSTAR_API_URL=$url"
 $flags += "--build-env"; $flags += "GEOSTAR_WEB_ORIGIN=$web"   # next.config.ts forwards the database and AI routes there
 
 Push-Location $deploy
+# Keep Vercel's stored settings in step too, so deploys started by a git push use the current addresses.
+foreach ($pair in @(@("NEXT_PUBLIC_API_URL", $url), @("PLOTSTAR_API_URL", $url), @("GEOSTAR_WEB_ORIGIN", $web))) {
+  foreach ($target in "production", "preview") {
+    $extra = @(); if ($target -eq "preview") { $extra = @("") }
+    $pair[1] | & vercel env add $pair[0] $target @extra --force 2>&1 | Out-Null
+  }
+}
 "Redeploying the live site (about 2 minutes)..."
 $out = & vercel deploy --prod --yes @flags 2>&1 | Out-String
 Pop-Location
