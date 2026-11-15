@@ -4,6 +4,16 @@ GET /vexcel/ortho/{parcel_id}.jpg   orthophoto around a parcel (resized, disk-ca
 GET /vexcel/ortho/{parcel_id}/meta  capture dates, GSD, collection, camera (from the image's XMP)
 GET /vexcel/3d/root?lat=&lon=       which 3D-cities collection covers a point -> proxied tileset URL
 GET /vexcel/3d/{tileset|tile}?...   OGC 3D Tiles proxy; JSON root links are rewritten to this proxy
+GET /vexcel/captures/{parcel_id}    every ortho capture over the point (collection, layer, dates, GSD), newest first;
+                                    /ortho/{id}.jpg?collection=&layer= then serves that capture (before / after)
+GET /vexcel/oblique/{parcel_id}/list which oblique directions exist (north/east/south/west) in the newest collection
+GET /vexcel/oblique/{parcel_id}.jpg?dir=   one oblique (angled) photo of the site, Vexcel product oblique-<dir>
+GET /vexcel/neighbours/{parcel_id}  nearby structures (Vexcel footprints) with measured heights: DSM minus DTM sampled
+                                    inside each footprint; positions in metres east/north of the site centre
+
+The ortho's ground footprint is exact: its XMP carries `pixel-bbox` in zoom-`max-zoom` Web Mercator pixels, which
+ortho_frame() turns into metres east/north of the requested point (checked on cached images: centred on the point to
+within a pixel, 2 x buffer wide).
 
 Everything fetched is cached under data/cache/vexcel so the demo works offline after one warm-up.
 """
@@ -75,14 +85,19 @@ def _parcel_point(parcel_id: str) -> tuple[float, float]:
     return row["lat"], row["lon"]
 
 
-def _ortho(parcel_id: str, buffer_m: int) -> tuple[bytes, dict[str, str]]:
+def _ortho(parcel_id: str, buffer_m: int, collection: str | None = None,
+           layer: str | None = None) -> tuple[bytes, dict[str, str]]:
+    """The ortho around a site (newest capture, or one named collection) and its metadata."""
     lat, lon = _parcel_point(parcel_id)
-    raw_path = _cache_path("ortho", f"{parcel_id}:{buffer_m}", ".jpg")
+    key = f"{parcel_id}:{buffer_m}" + (f":{collection}:{layer or ''}" if collection else "")
+    raw_path = _cache_path("ortho", key, ".jpg")
     meta_path = raw_path.with_suffix(".json")
     if raw_path.exists() and meta_path.exists():
         return raw_path.read_bytes(), json.loads(meta_path.read_text())
-    r = _upstream(f"{BASE}/ortho/extract",
-                  {"wkt": f"POINT({lon} {lat})", "srid": "4326", "buffer-meter": str(buffer_m)}, timeout=90)
+    params = {"wkt": f"POINT({lon} {lat})", "srid": "4326", "buffer-meter": str(buffer_m)}
+    if collection:
+        params.update({"collection": collection, "layer": layer or "urban"})
+    r = _upstream(f"{BASE}/ortho/extract", params, timeout=90)
     meta = parse_xmp(r.content)
     meta.update({"center_lat": lat, "center_lon": lon, "buffer_m": buffer_m, "source": LABEL_SOURCE,
                  "label": "Sourced"})
@@ -102,10 +117,22 @@ def _ortho(parcel_id: str, buffer_m: int) -> tuple[bytes, dict[str, str]]:
     return data, meta
 
 
+_SLUG = re.compile(r"^[A-Za-z0-9_.-]{1,80}$")
+_LAYERS = ("urban", "urban-r", "urban-g", "wide-area", "graysky")
+
+
+def _check_collection(collection: str | None, layer: str | None) -> None:
+    if collection and not _SLUG.match(collection):
+        raise HTTPException(422, "bad collection")
+    if layer and layer not in _LAYERS:
+        raise HTTPException(422, "bad layer")
+
+
 @router.get("/ortho/{parcel_id}.jpg")
-def ortho_image(parcel_id: str, buffer_m: int = 200) -> Response:
+def ortho_image(parcel_id: str, buffer_m: int = 200, collection: str | None = None, layer: str | None = None) -> Response:
     buffer_m = max(50, min(buffer_m, 600))
-    data, meta = _ortho(parcel_id, buffer_m)
+    _check_collection(collection, layer)
+    data, meta = _ortho(parcel_id, buffer_m, collection, layer)
     return Response(data, media_type="image/jpeg", headers={
         "Cache-Control": "public, max-age=86400",
         "X-Vexcel-Collection": meta.get("collection", ""),
@@ -114,9 +141,274 @@ def ortho_image(parcel_id: str, buffer_m: int = 200) -> Response:
 
 
 @router.get("/ortho/{parcel_id}/meta")
-def ortho_meta(parcel_id: str, buffer_m: int = 200) -> dict[str, Any]:
+def ortho_meta(parcel_id: str, buffer_m: int = 200, collection: str | None = None,
+               layer: str | None = None) -> dict[str, Any]:
     buffer_m = max(50, min(buffer_m, 600))
-    return _ortho(parcel_id, buffer_m)[1]
+    _check_collection(collection, layer)
+    data, meta = _ortho(parcel_id, buffer_m, collection, layer)
+    return {**meta, "frame": ortho_frame(meta, _image_size(data))}
+
+
+# ---------------------------------------------------------------- the ortho's ground footprint
+
+EARTH_M_PER_PX0 = 156543.03392804097  # Web Mercator metres per pixel at zoom 0 on the equator
+R_EARTH = 6378137.0
+
+
+def _image_size(data: bytes) -> tuple[int, int] | None:
+    try:
+        from PIL import Image
+        return Image.open(io.BytesIO(data)).size
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def ortho_frame(meta: dict[str, Any], size: tuple[int, int] | None) -> dict[str, Any]:
+    """Where the served ortho image sits on the ground, in metres east and north of the requested point.
+
+    Exact when the XMP has `pixel-bbox` (global Web Mercator pixels at `max-zoom`): west/east/south/north edges and
+    metres per pixel of the served (resized) image. Otherwise a square 2 x buffer wide centred on the point, flagged
+    exact=False."""
+    lat = float(meta.get("center_lat") or 0)
+    lon = float(meta.get("center_lon") or 0)
+    buf = float(meta.get("buffer_m") or 200)
+    fallback = {"west": -buf, "east": buf, "south": -buf, "north": buf, "exact": False,
+                "m_per_px": (2 * buf / size[0]) if size else None, "width_px": size[0] if size else None,
+                "height_px": size[1] if size else None,
+                "method": "Assumed: a square 2 x buffer wide centred on the point (no usable pixel-bbox in the image metadata)."}
+    try:
+        bx, by, bw, bh = (float(v) for v in str(meta["pixel-bbox"]).split(","))
+        z = int(meta.get("max-zoom") or meta.get("min-zoom") or 21)
+    except (KeyError, ValueError):
+        return fallback
+    world = 256.0 * 2 ** z
+    la = math.radians(lat)
+    cx = (lon + 180.0) / 360.0 * world
+    cy = (1 - math.log(math.tan(la) + 1 / math.cos(la)) / math.pi) / 2 * world
+    mpp = EARTH_M_PER_PX0 * math.cos(la) / 2 ** z  # ground metres per global pixel at this latitude
+    west, east = (bx - cx) * mpp, (bx + bw - cx) * mpp
+    north, south = -(by - cy) * mpp, -(by + bh - cy) * mpp
+    if abs((east - west) - 2 * buf) > 0.25 * 2 * buf:  # not the footprint we asked for: do not trust it
+        return fallback
+    w_px, h_px = size if size else (int(bw), int(bh))
+    return {"west": round(west, 2), "east": round(east, 2), "south": round(south, 2), "north": round(north, 2),
+            "exact": True, "m_per_px": round((east - west) / w_px, 4), "width_px": w_px, "height_px": h_px,
+            "method": f"From the image's pixel-bbox (zoom-{z} Web Mercator pixels), scaled to the served image."}
+
+
+def local_m(lat: float, lon: float, lat0: float, lon0: float) -> tuple[float, float]:
+    """Metres east and north of (lat0, lon0), on the same Web Mercator scale as ortho_frame()."""
+    k = math.cos(math.radians(lat0))
+    e = R_EARTH * math.radians(lon - lon0) * k
+    n = R_EARTH * (math.log(math.tan(math.pi / 4 + math.radians(lat) / 2))
+                   - math.log(math.tan(math.pi / 4 + math.radians(lat0) / 2))) * k
+    return e, n
+
+
+def lonlat_of(e: float, n: float, lat0: float, lon0: float) -> tuple[float, float]:
+    """Inverse of local_m: (lon, lat) of a point e metres east and n metres north of (lat0, lon0)."""
+    k = R_EARTH * math.cos(math.radians(lat0))
+    mlat = math.log(math.tan(math.pi / 4 + math.radians(lat0) / 2)) + n / k
+    return lon0 + math.degrees(e / k), math.degrees(2 * math.atan(math.exp(mlat)) - math.pi / 2)
+
+
+# ---------------------------------------------------------------- capture history (before / after)
+
+@router.get("/captures/{parcel_id}")
+def captures(parcel_id: str) -> dict[str, Any]:
+    """Every ortho capture Vexcel holds over the site, newest first (what the account returns, nothing assumed)."""
+    lat, lon = _parcel_point(parcel_id)
+    body = _cached_json("captures", f"{BASE}/ortho/collections",
+                        {"wkt": f"POINT({lon:.6f} {lat:.6f})", "srid": "4326", "layer": "urban,urban-r",
+                         "include": "layer,collection,first-capture-date,last-capture-date,min-gsd"})
+    seen, out = set(), []
+    for f in body.get("features", []):
+        p = f.get("properties") or {}
+        c = p.get("collection")
+        if not c or c in seen:
+            continue
+        seen.add(c)
+        out.append({"collection": c, "layer": p.get("layer"), "first_capture": p.get("first-capture-date"),
+                    "last_capture": p.get("last-capture-date"),
+                    "gsd_cm": round(float(p["min-gsd"]) * 100, 1) if p.get("min-gsd") else None})
+    out.sort(key=lambda x: x.get("last_capture") or "", reverse=True)
+    return {"captures": out, "count": len(out), "source": LABEL_SOURCE, "label": "Sourced"}
+
+
+# ---------------------------------------------------------------- oblique views
+
+DIRECTIONS = ("north", "east", "south", "west")
+
+
+@router.get("/oblique/{parcel_id}/list")
+def oblique_list(parcel_id: str) -> dict[str, Any]:
+    """Oblique directions available over the site, from the newest collection that has any."""
+    lat, lon = _parcel_point(parcel_id)
+    body = _cached_json("oblique", f"{BASE}/oriented/collections",
+                        {"wkt": f"POINT({lon:.6f} {lat:.6f})", "srid": "4326", "layer": "urban",
+                         "product-type": "oblique", "include": "product-type,collection,last-capture-date"})
+    rows = [(f.get("properties") or {}) for f in body.get("features", [])]
+    rows = [r for r in rows if str(r.get("product-type", "")).startswith("oblique-")]
+    if not rows:
+        return {"directions": [], "collection": None, "source": LABEL_SOURCE, "label": "Unknown"}
+    newest = max(rows, key=lambda r: r.get("last-capture-date") or "")
+    col = newest.get("collection")
+    dirs = sorted({r["product-type"].removeprefix("oblique-") for r in rows if r.get("collection") == col},
+                  key=lambda d: DIRECTIONS.index(d) if d in DIRECTIONS else 9)
+    return {"directions": dirs, "collection": col, "captured": newest.get("last-capture-date"),
+            "collections": sorted({r.get("collection") for r in rows if r.get("collection")}),
+            "source": LABEL_SOURCE, "label": "Sourced"}
+
+
+@router.get("/oblique/{parcel_id}.jpg")
+def oblique_image(parcel_id: str, dir: str = "north", buffer_m: int = 150) -> Response:  # noqa: A002
+    """One oblique (angled) photo of the site: Vexcel product `oblique-<dir>` from the newest collection that has it."""
+    if dir not in DIRECTIONS:
+        raise HTTPException(422, "dir must be north, east, south or west")
+    buffer_m = max(40, min(buffer_m, 400))
+    lat, lon = _parcel_point(parcel_id)
+    listing = oblique_list(parcel_id)
+    if dir not in listing["directions"]:
+        raise HTTPException(404, f"No oblique-{dir} image over this site")
+    path = _cache_path("oblique", f"{parcel_id}:{dir}:{buffer_m}:{listing['collection']}", ".jpg")
+    if path.exists():
+        data = path.read_bytes()
+    else:
+        r = _upstream(f"{BASE}/oriented/extract",
+                      {"wkt": f"POINT({lon:.6f} {lat:.6f})", "srid": "4326", "layer": "urban",
+                       "buffer-meter": str(buffer_m), "product-type": f"oblique-{dir}",
+                       "collection": listing["collection"], "rotation": "natural", "image-format": "jpeg"}, timeout=90)
+        data = r.content
+        try:
+            from PIL import Image
+            im = Image.open(io.BytesIO(data))
+            im.thumbnail((1600, 1600))
+            buf = io.BytesIO()
+            im.convert("RGB").save(buf, "JPEG", quality=85)
+            data = buf.getvalue()
+        except Exception:  # noqa: BLE001
+            pass
+        path.write_bytes(data)
+    return Response(data, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400",
+                                                             "X-Vexcel-Collection": listing["collection"] or ""})
+
+
+# ---------------------------------------------------------------- neighbour heights (DSM - DTM)
+
+def _ring(wkt: str) -> list[tuple[float, float]]:
+    """The outer ring of a WKT POLYGON / MULTIPOLYGON as (lon, lat) pairs."""
+    m = re.search(r"\(\(+([^()]+)\)", wkt or "")
+    if not m:
+        return []
+    pts = []
+    for pair in m.group(1).split(","):
+        xy = pair.split()
+        if len(xy) >= 2:
+            pts.append((float(xy[0]), float(xy[1])))
+    return pts
+
+
+def _inside(x: float, y: float, poly: list[tuple[float, float]]) -> bool:
+    hit = False
+    for (x1, y1), (x2, y2) in zip(poly, poly[1:] + poly[:1]):
+        if (y1 > y) != (y2 > y) and x < (x2 - x1) * (y - y1) / ((y2 - y1) or 1e-12) + x1:
+            hit = not hit
+    return hit
+
+
+def _samples(poly: list[tuple[float, float]], n: int = 5) -> list[tuple[float, float]]:
+    """Up to n points spread inside a footprint (local metres), 1.5 m in from its edges where the DSM meets the ground."""
+    xs, ys = [p[0] for p in poly], [p[1] for p in poly]
+    x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+    grid = (0.5, 0.3, 0.7, 0.2, 0.8, 0.4, 0.6)
+    pts = [(x0 + fx * (x1 - x0), y0 + fy * (y1 - y0)) for fy in grid for fx in grid]
+    pts = [(x, y) for x, y in pts
+           if _inside(x, y, poly) and all(_inside(x + dx, y + dy, poly) for dx, dy in ((1.5, 0), (-1.5, 0), (0, 1.5), (0, -1.5)))]
+    if len(pts) > n:
+        step = len(pts) / n
+        pts = [pts[int(i * step)] for i in range(n)]
+    return pts
+
+
+_Z = re.compile(r"(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)")
+
+
+def _elevations(kind: str, pts_lonlat: list[tuple[float, float]]) -> list[float | None]:
+    """Vexcel DSM or DTM heights (m) for many points, one call per 150 points (MULTIPOINT in, MULTIPOINT Z out)."""
+    out: list[float | None] = []
+    for i in range(0, len(pts_lonlat), 150):
+        chunk = pts_lonlat[i:i + 150]
+        wkt = "MULTIPOINT(" + ",".join(f"({lo:.7f} {la:.7f})" for lo, la in chunk) + ")"
+        body = _upstream(f"{BASE}/{kind}/elevation",
+                         {"wkt": wkt, "srid": "4326", "layer": "urban" if kind == "dsm" else "urban,wide-area"}).json()
+        zs: list[float | None] = [float(m.group(3)) for m in _Z.finditer(body.get("wkt", ""))]
+        out += (zs + [None] * len(chunk))[:len(chunk)]
+    return out
+
+
+def _median(v: list[float | None]) -> float | None:
+    s = sorted(x for x in v if x is not None)
+    if not s:
+        return None
+    m = len(s) // 2
+    return s[m] if len(s) % 2 else (s[m - 1] + s[m]) / 2
+
+
+def neighbour_heights(parcel_id: str, radius_m: int = 200) -> dict[str, Any]:
+    """Structures within radius_m of the site centre with Vexcel-measured heights (cached on disk)."""
+    radius_m = max(50, min(radius_m, 400))
+    lat0, lon0 = _parcel_point(parcel_id)
+    cache = _cache_path("neighbours", f"{parcel_id}:{radius_m}", ".json")
+    if cache.exists():
+        return json.loads(cache.read_text())
+    body = _upstream(f"{BASE}/structure/extract", {"wkt": f"POINT({lon0:.6f} {lat0:.6f})", "srid": "4326",
+                                                    "buffer-meter": str(radius_m), "total-records": "120"}, timeout=90).json()
+    structures: list[dict[str, Any]] = []
+    sample_ll: list[tuple[float, float]] = []
+    owners: list[int] = []
+    for f in body.get("features", []):
+        p = f.get("properties") or {}
+        ring = _ring(p.get("footprint.wkt", ""))
+        if len(ring) < 3:
+            continue
+        local = [local_m(la, lo, lat0, lon0) for lo, la in ring]
+        cx = sum(x for x, _ in local) / len(local)
+        cy = sum(y for _, y in local) / len(local)
+        pts = _samples(local) or [(cx, cy)]  # a sliver too thin to sample away from its edges: its vertex centroid
+        k = len(structures)
+        for x, y in pts:
+            sample_ll.append(lonlat_of(x, y, lat0, lon0))
+            owners.append(k)
+        structures.append({"id": f"V{k + 1}", "footprint": [[round(x, 1), round(y, 1)] for x, y in local],
+                           "centre": [round(cx, 1), round(cy, 1)], "area_m2": round(float(p.get("footprint.area") or 0)),
+                           "building_type": p.get("building-type.class"),
+                           "roof": p.get("roof-characteristics.material.class"),
+                           "roof_shape": p.get("roof-characteristics.shape.value"),
+                           "captured": p.get("metadata.ortho-date-estimate"), "collection": p.get("metadata.collection"),
+                           "samples": len(pts), "height_m": None, "ground_m": None, "storeys_est": None})
+    measured = 0
+    if sample_ll:
+        dsm, dtm = _elevations("dsm", sample_ll), _elevations("dtm", sample_ll)
+        for k, s in enumerate(structures):
+            top = _median([dsm[i] for i, o in enumerate(owners) if o == k])
+            ground = _median([dtm[i] for i, o in enumerate(owners) if o == k])
+            if top is None or ground is None:
+                continue
+            h = round(max(0.0, top - ground), 1)
+            s.update(height_m=h, ground_m=round(ground, 1), storeys_est=max(1, round(h / 4.0)) if h >= 2.5 else None)
+            measured += 1
+    structures.sort(key=lambda s: math.hypot(*s["centre"]))
+    out = {"structures": structures, "count": len(structures), "measured": measured, "radius_m": radius_m,
+           "method": "Footprints from Vexcel structure/extract. Height = median Vexcel DSM (surface) minus median DTM "
+                     "(bare earth) at up to 5 points inside each footprint, 1.5 m in from its edges. Storeys assume 4 m each.",
+           "frame": "Metres east (x) and north (y) of the site centre.", "source": LABEL_SOURCE, "label": "Measured"}
+    cache.write_text(json.dumps(out))
+    return out
+
+
+@router.get("/neighbours/{parcel_id}")
+def neighbours(parcel_id: str, radius_m: int = 200) -> dict[str, Any]:
+    return neighbour_heights(parcel_id, radius_m)
 
 
 # ---------------------------------------------------------------- 3D Tiles

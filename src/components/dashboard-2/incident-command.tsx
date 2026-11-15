@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { PrimaryCard } from './shell';
 import { FacilityTwin } from './facility-twin';
+import { LiveEmergencyCall, useDispatchStatus } from '@/components/sponsors/elevenlabs/emergency-call';
 import {
   activeIncidents,
   buildingHealth,
@@ -447,8 +448,31 @@ function EmergencyDispatch({
   act: Act;
 }) {
   const primary = primaryIncident(state);
+  const dispatch = useDispatchStatus();
   if (!primary || (primary.kind !== 'fire' && primary.kind !== 'leak')) return null;
   const call = state.call?.incidentId === primary.id ? state.call : null;
+  if (dispatch?.live)
+    return (
+      <section className="cc-dispatch" aria-label="Emergency contact call">
+        <div className="cc-label">
+          <h3>Emergency contact</h3>
+          <span className="cc-badge red">LIVE CALL</span>
+        </div>
+        <LiveEmergencyCall
+          status={dispatch}
+          incident={{
+            incident_id: primary.id,
+            incident: primary.name,
+            zone: primary.zone,
+            severity: primary.severity,
+            detail: primary.message,
+            actions: primary.recommendation,
+            facility: state.facility.name,
+            city: state.facility.city,
+          }}
+        />
+      </section>
+    );
   return (
     <section className="cc-dispatch" aria-label="Emergency services simulation">
       <div className="cc-label">
@@ -457,6 +481,12 @@ function EmergencyDispatch({
       </div>
       <p className="cc-note">
         A local, scripted conversation. No real emergency number or provider is connected.
+        {dispatch?.contact && dispatch.reason && (
+          <>
+            {' '}
+            Live calls to {dispatch.contact} turn on once this is fixed: {dispatch.reason}.
+          </>
+        )}
       </p>
       <button
         className="cc-emergency"

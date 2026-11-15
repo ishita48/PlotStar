@@ -30,13 +30,13 @@ def no_model(monkeypatch):
 
 
 def test_consequences_match_two_engine_runs():
-    a = L.generate(BRIEF, SITE, GRID, {})
-    b = L.generate({**BRIEF, "rack_kw": 40}, SITE, GRID, {})
-    cons = C.consequences(a, b, "service-bands")
+    a = L.generate(BRIEF, SITE, GRID, {}, keep=["service-bands"])
+    b = L.generate({**BRIEF, "rack_kw": 40}, SITE, GRID, {}, keep=["service-bands"])
+    cons = C.consequences(a, b, "service-bands-r0-east")
     rows = {r["metric"]: r for r in cons["rows"]}
     assert rows["Racks"]["before"] == 1000 and rows["Racks"]["after"] == 500
-    cb = next(c for c in a["concepts"] if c["id"] == "service-bands")
-    ca = next(c for c in b["concepts"] if c["id"] == "service-bands")
+    cb = next(c for c in a["concepts"] if c["id"] == "service-bands-r0-east")
+    ca = next(c for c in b["concepts"] if c["id"] == "service-bands-r0-east")
     assert rows["Cost to build"]["before"] == cb["money"]["capex"] and rows["Cost to build"]["after"] == ca["money"]["capex"]
     assert rows["Building footprint"]["delta"] == ca["metrics"]["footprint_m2"] - cb["metrics"]["footprint_m2"]
     assert rows["IT capacity"]["changed"] is False  # same MW, fewer, denser racks

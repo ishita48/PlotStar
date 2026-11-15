@@ -50,6 +50,19 @@ class SiteIn(BaseModel):
     land_cost: float | None = Field(None, ge=0, le=5e9)
     land_label: str | None = Field(None, max_length=20)
     land_basis: str | None = Field(None, max_length=200)
+    # keep-out areas mapped on the site (e.g. existing buildings found on the aerial), metres in the site frame
+    obstacles: list["Obstacle"] = Field(default_factory=list, max_length=60)
+
+
+class Obstacle(BaseModel):
+    x: float = Field(..., ge=-3000, le=8000)
+    y: float = Field(..., ge=-3000, le=8000)
+    w: float = Field(..., gt=0, le=3000)
+    d: float = Field(..., gt=0, le=3000)
+    kind: str | None = Field(None, max_length=40)
+    label: str | None = Field(None, max_length=80)
+    confidence: float | None = Field(None, ge=0, le=1)
+    source: str | None = Field(None, max_length=80)
 
 
 class Offset(BaseModel):
@@ -64,16 +77,21 @@ class Pos(BaseModel):
 
 class Added(Pos):
     code: str = Field(..., max_length=24, pattern=r"^[A-Za-z0-9-]+$")
-    type: Literal["yard_bess", "yard_solar", "yard_water", "yard_parking", "yard_wall", "yard_trees", "yard_guard"]
-    w: float = Field(..., ge=1, le=800)
-    d: float = Field(..., ge=1, le=800)
+    type: Literal["yard_bess", "yard_solar", "yard_water", "yard_parking", "yard_wall", "yard_trees", "yard_guard",
+                  "yard_fence", "yard_cooling", "sensor", "custom"]
+    w: float = Field(..., ge=0.3, le=800)
+    d: float = Field(..., ge=0.3, le=800)
+    name: str | None = Field(None, max_length=60)
+    h: float | None = Field(None, gt=0, le=120)
+    source: str | None = Field(None, max_length=80)
 
 
 class ConceptEdit(BaseModel):
     building: Offset = Field(default_factory=Offset)
     rotate: bool = False
     yard: dict[str, Pos] = Field(default_factory=dict)
-    added: list[Added] = Field(default_factory=list, max_length=24)
+    added: list[Added] = Field(default_factory=list, max_length=60)
+    removed: list[str] = Field(default_factory=list, max_length=20)
 
 
 class GenerateIn(BaseModel):
@@ -82,6 +100,7 @@ class GenerateIn(BaseModel):
     site: SiteIn = Field(default_factory=SiteIn)
     priorities: dict[str, float] = Field(default_factory=dict)
     assumptions: dict[str, float] = Field(default_factory=dict)
+    keep: list[str] = Field(default_factory=list, max_length=3)  # concept ids to keep among the three shown
 
 
 _refreshing = False
@@ -112,7 +131,8 @@ def generate(q: GenerateIn) -> dict[str, Any]:
         raise HTTPException(422, f"Unknown assumption keys: {', '.join(bad)}")
     try:
         return layout_engine.generate(q.brief.model_dump(), q.site.model_dump(), _grid(),
-                                      q.priorities, q.assumptions, {k: e.model_dump() for k, e in q.edits.items()})
+                                      q.priorities, q.assumptions, {k: e.model_dump() for k, e in q.edits.items()},
+                                      keep=q.keep)
     except ValueError as e:
         raise HTTPException(422, str(e)) from e
 

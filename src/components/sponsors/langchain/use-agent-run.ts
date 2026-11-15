@@ -34,18 +34,39 @@ export interface Verification { grounded: boolean; numbers_checked: number; unve
 export interface Proposal { patch: Record<string, unknown>; concept_id: string; consequences: unknown }
 export interface Approval { actions: { name: string; args: Record<string, unknown>; description?: string }[]; decision: string | null }
 export type RunStatus = 'idle' | 'starting' | 'running' | 'awaiting_approval' | 'done' | 'error';
+/** A CoStar figure in the answer tied to its record and field (deep_agents/citations.py). */
+export interface Citation {
+  kind: 'figure' | 'evidence'; figure: string | null; evidence_id: string; tool: string; record_id: string; field: string;
+  label: string; value: number | null; tag: string; source: string | null; audit: boolean;
+}
+/** A layout change a person approved; the Studio applies `edit` to edits[concept_id] (deep_agents/design_agent.py). */
+export interface DesignEdit {
+  concept_id: string; concept: string; edit: Record<string, unknown>; reason: string; added: string[];
+  applied: { change: string; applied: boolean }[]; failed_checks: string[]; feasible: boolean; headline: string;
+  changed: { metric: string; before_text: string; after_text: string }[]; check_flips: { name: string; after: boolean; detail: string }[];
+}
+export interface DebateClaim { id: string; text: string; facts: string[]; stance: 'support' | 'rebut' | 'concede'; responds_to: string | null; grounded: boolean; unknown_facts: string[]; unverified_numbers: string[] }
+export interface DebateTurn { round: number; agent: string; title: string; lens: string; position: string; position_name: string; claims: DebateClaim[] }
+export interface DebateFact { id: string; owner: string; concept_id: string | null; concept: string; metric: string; value: number; unit: string; text: string; label: string }
+export interface Debate {
+  question: string; mode: 'model' | 'rule-based'; note: string; facts: DebateFact[]; concepts: { id: string; name: string; rank: number }[];
+  rounds: { round: number; turns: DebateTurn[] }[];
+  summary: { recommendation: string; recommendation_name: string; text: string; agreements: string[]; open_disagreements: string[]; facts: string[]; grounded: boolean; unverified_numbers: string[] } | null;
+}
 
 export interface RunState {
-  runId: string | null; kind: 'site-evaluation' | 'conversation' | null; title: string; status: RunStatus;
+  runId: string | null; kind: 'site-evaluation' | 'conversation' | 'debate' | null; title: string; status: RunStatus;
   nodes: Record<string, AgentNode>; order: string[]; plan: { content: string; status: string }[];
   findings: Record<string, Finding>; evidence: Record<string, Evidence>; score: Score | null; answer: string | null;
   verification: Verification | null; proposal: Proposal | null; approval: Approval | null; error: string | null;
   traceId: string | null; startedAt: number | null; message: string | null;
+  citations: Citation[]; designEdits: DesignEdit[]; debate: Debate | null;
 }
 
 const EMPTY: RunState = {
   runId: null, kind: null, title: '', status: 'idle', nodes: {}, order: [], plan: [], findings: {}, evidence: {}, score: null,
   answer: null, verification: null, proposal: null, approval: null, error: null, traceId: null, startedAt: null, message: null,
+  citations: [], designEdits: [], debate: null,
 };
 
 type Ev = { type: string; t: number; [k: string]: unknown };
@@ -64,7 +85,10 @@ function reduce(s: RunState, e: Ev): RunState {
     case 'evidence': { const v = e.evidence as Evidence; return { ...s, evidence: { ...s.evidence, [v.id]: v } }; }
     case 'score': return { ...s, score: e.score as Score };
     case 'proposal': return { ...s, proposal: e.proposal as Proposal };
-    case 'answer': return { ...s, answer: e.answer as string, verification: e.verification as Verification, proposal: (e.proposal as Proposal) ?? s.proposal };
+    case 'answer': return { ...s, answer: e.answer as string, verification: e.verification as Verification, proposal: (e.proposal as Proposal) ?? s.proposal,
+      citations: (e.citations as Citation[]) ?? [] };
+    case 'design_edit': return { ...s, designEdits: [...s.designEdits, e.design_edit as DesignEdit] };
+    case 'debate': return { ...s, debate: e.debate as Debate };
     case 'status': {
       const st = e.status as RunStatus;
       return { ...s, status: st, approval: st === 'awaiting_approval' ? { actions: e.actions as Approval['actions'], decision: null } : s.approval };
@@ -92,13 +116,13 @@ export function useAgentRun() {
     src.onerror = () => { /* EventSource reconnects with Last-Event-ID; the server resumes from there */ };
   }, []);
 
-  const start = useCallback(async (path: '/agents/site-evaluation' | '/agents/chat', body: unknown, title: string) => {
+  const start = useCallback(async (path: '/agents/site-evaluation' | '/agents/chat' | '/agents/debate', body: unknown, title: string) => {
     setState({ ...EMPTY, status: 'starting', title });
     try {
       const r = await fetch(`${PUBLIC_DATA_API}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const d = await r.json();
       if (!r.ok) throw new Error(typeof d?.detail === 'string' ? d.detail : `Request failed (${r.status})`);
-      follow(d.run_id, path === '/agents/chat' ? 'conversation' : 'site-evaluation', title);
+      follow(d.run_id, path === '/agents/chat' ? 'conversation' : path === '/agents/debate' ? 'debate' : 'site-evaluation', title);
       return d.run_id as string;
     } catch (e) {
       setState((s) => ({ ...s, status: 'error', error: (e as Error).message }));

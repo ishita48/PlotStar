@@ -1,0 +1,9 @@
+/* CoStar citation chips under an agent answer. */
+.row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 6px 0 2px; }
+.lead { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: #6b776e; margin-right: 2px; font-family: var(--ps-mono, monospace); }
+.chip { display: inline-flex; align-items: center; gap: 4px; font: inherit; font-size: 10.5px; line-height: 1; padding: 3px 7px; border-radius: 999px; border: 1px solid #b9d2bf; background: #eef5e3; color: #1f4a36; cursor: pointer; }
+.chip:hover { background: #1f4a36; color: #fff; border-color: #1f4a36; }
+.chip:hover code { color: #c9ec7a; }
+.chip b { font-weight: 600; }
+.chip code { font-family: var(--ps-mono, monospace); font-size: 9.5px; color: #4f7f5b; }
+.ev { background: #fff; }

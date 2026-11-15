@@ -4,12 +4,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
+import { AccountControls } from '../account/account-controls';
 import {
   ArrowLeft, ArrowRight, Box as BoxIcon, LoaderCircle, Check, CircleAlert, CircleCheck, Coins, Columns2, Download, Droplets, Leaf, Lock,
   Briefcase, Building2, Database, FileText, FileUp, House, LayoutGrid, MapPin, Move, Network, Plus, Radio, RotateCcw, RotateCw, Sparkles, Square, Star, Trash2, Users,
 } from 'lucide-react';
 import { Star as GeoStarMark } from '../brand';
-import { PUBLIC_DATA_API, siteDetailUrl, vexcel3dRootUrl, vexcelMetaUrl, vexcelOrthoUrl } from '@/lib/plotstar-api';
+import { PUBLIC_DATA_API, siteDetailUrl, vexcel3dRootUrl, vexcelMetaUrl } from '@/lib/plotstar-api';
 import type { GateResult } from '@/lib/types';
 import type { ExploreSite } from '../explore/types';
 import { verdict } from '../explore/types';
@@ -22,11 +23,21 @@ import { SiteWalk } from '../sponsors/matterport/site-walk';
 import { AgentStatusPill } from '../sponsors/langchain/status-pill';
 import { isActive, useAgentRun } from '../sponsors/langchain/use-agent-run';
 import { Guide } from '../sponsors/elevenlabs/guide';
+import { HeyGeo } from '../hey-geo/hey-geo';
 import { ImportDesign, type NotePreview } from './import/import-design';
 import { CostarDossier } from '../sponsors/costar/dossier';
 import { ExistingVsProposed } from '../sponsors/costar/existing-vs-proposed';
 import { DealDesk } from '../sponsors/costar/deal/deal-desk';
+import { RankedSites } from '../sponsors/costar/ranked-sites';
+import { DebateButton } from '../sponsors/langchain/debate-button';
+import { useAgentDesignEdits } from '../sponsors/langchain/use-design-edits';
+import { apiErrorText } from '@/lib/chatoverflow-hints';
 import { KindPicker } from './kind-picker';
+import { ObstacleTool } from '../sponsors/gemini/obstacle-tool';
+import { ZoningDocuments } from '../sponsors/gemini/zoning-documents';
+import { ConceptRender } from '../sponsors/gemini/concept-render';
+import { mappedObstacles } from '../sponsors/gemini/api';
+import { AerialViews } from '../sponsors/vexcel/aerial-views';
 import { DroneSurvey } from './discover/drone-survey';
 import { FacilityModel } from './design/facility-model';
 import { KINDS } from './kind-picker';
@@ -35,8 +46,16 @@ import { DeployedProjects, ProjectCommandCenter } from '../dashboard-2/deployed-
 import { useProtection } from '../dashboard-2/use-protection';
 import type { Facility } from '@/lib/haven/engine';
 import { openInvestmentMemo } from '../sponsors/costar/deal/memo';
-import type { AddedType, Brief, Concept, ConceptEdit, Edits, Factor, Room, StudioResult } from './types';
-import { COOLING_LABEL, ROUTE_COLOR, TYPE_STYLE, WHY, download, money, num, pct, toDxf } from './types';
+import { useDesignEditor } from './design-editor/use-design-editor';
+import { useDesignUi } from './design-editor/design-editor';
+import { DesignBar, DesignSidePanel } from './design-editor/design-panels';
+import { ExploreBar } from './design-editor/explore-bar';
+import { ElementInspector } from './design-editor/element-inspector';
+import { CompareSystems } from './design-editor/compare-systems';
+import { DeliverExports } from './design-editor/deliver-exports';
+import { moveBy } from './design-editor/edit-actions';
+import type { Brief, Concept, ConceptEdit, Edits, Factor, StudioResult } from './types';
+import { COOLING_LABEL, money, num, pct } from './types';
 
 const ExploreMap = dynamic(() => import('../explore/explore-map'), { ssr: false, loading: () => <div className="st-loading">Loading map…</div> });
 const Model3D = dynamic(() => import('./model3d'), { ssr: false, loading: () => <div className="st-loading">Loading 3D model…</div> });
@@ -64,13 +83,6 @@ const GATE_FACTOR: Record<string, Factor> = {
 };
 const DEFAULT: Brief = { kind: 'data-center', vision: '', name: 'Houston 20 MW', market: 'Houston', mw: 20, rackKw: 20, redundancy: 'N+1', cooling: 'liquid', halls: null, siteW: 320, siteD: 240, setback: 8, expansion: 10, flex: 30, storeys: 1, rent: null };
 const SAVE_KEY = 'plotstar-studio-v1';
-const NO_EDIT: ConceptEdit = { building: { dx: 0, dy: 0 }, rotate: false, yard: {}, added: [] };
-const ADD: Record<AddedType, { prefix: string; w: number; d: number; label: string }> = {
-  yard_bess: { prefix: 'BESS', w: 26, d: 12, label: 'Battery storage' }, yard_solar: { prefix: 'PV', w: 36, d: 24, label: 'Solar canopy' },
-  yard_water: { prefix: 'TANK', w: 14, d: 14, label: 'Water tank' }, yard_parking: { prefix: 'PARK', w: 42, d: 17, label: 'Parking' },
-  yard_wall: { prefix: 'WALL', w: 1, d: 40, label: 'Noise wall' }, yard_trees: { prefix: 'TREES', w: 48, d: 12, label: 'Tree buffer' },
-  yard_guard: { prefix: 'GATE', w: 6, d: 5, label: 'Gatehouse' },
-};
 interface SavedProject { id: string; name: string; mw_it: number; status: string; decided_by?: string; updated_at?: string; site?: { id?: string; name?: string; address?: string } }
 type SiteExtra = { landCost?: number; landCostBasis?: string; labels?: { landCost?: string } };
 // copilot patches use the engine's field names; map them back to Brief
@@ -86,7 +98,7 @@ async function api<T>(path: string, body?: unknown, method = 'POST'): Promise<T>
     : { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   if (!r.ok) {
     const d = await r.json().catch(() => null);
-    throw new Error(typeof d?.detail === 'string' ? d.detail : `${path} failed (${r.status})`);
+    throw new Error(apiErrorText(d, `${path} failed (${r.status})`));
   }
   return r.json();
 }
@@ -135,6 +147,7 @@ export function Studio() {
   const [importing, setImporting] = useState(false);
   const [dossier, setDossier] = useState<null | 'comps' | 'building'>(null);
   const [dealDesk, setDealDesk] = useState(false);
+  const [siteView, setSiteView] = useState<'map' | 'list'>('map');
   const [inspection, setInspection] = useState('');
   const [landDirty, setLandDirty] = useState(false);
   const [projectId, setProjectId] = useState(() => `p-${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`);
@@ -154,7 +167,7 @@ export function Studio() {
   const site = sites.find((s) => s.id === siteId) ?? null;
   const racks = Math.ceil((brief.mw * 1000) / brief.rackKw);
   const halls = brief.halls ?? Math.min(12, Math.max(1, Math.round(brief.mw / 5)));
-  const concept = result?.concepts.find((c) => c.id === activeId) ?? result?.concepts[0] ?? null;
+  const rawConcept = result?.concepts.find((c) => c.id === activeId) ?? result?.concepts[0] ?? null;
   const chosen = result?.concepts.find((c) => c.id === preferred) ?? null;
 
   // CoStar candidates for the market, already screened by the hard gates
@@ -267,7 +280,8 @@ export function Studio() {
   const body = useCallback((b: Brief, ed: Edits = edits) => ({
     brief: { name: b.name, mw_it: b.mw, rack_kw: b.rackKw, redundancy: b.redundancy, cooling: b.cooling, halls: b.halls, site_w: b.siteW, site_d: b.siteD, setback_m: b.setback, expansion_pct: b.expansion, flexible_share: b.flex / 100, storeys: b.storeys, rent_kw_month: b.rent },
     site: site ? { id: site.id, name: site.name, lat: site.lat, lon: site.lng, gates: site.screen?.gates ?? [], land_cost: (site as SiteExtra).landCost || null,
-      land_label: (site as SiteExtra).labels?.landCost ?? null, land_basis: (site as SiteExtra).landCostBasis ?? null } : {},
+      land_label: (site as SiteExtra).labels?.landCost ?? null, land_basis: (site as SiteExtra).landCostBasis ?? null,
+      obstacles: mappedObstacles(site.parcelId ?? `pt:${site.lat.toFixed(6)},${site.lng.toFixed(6)}`, b.siteW, b.siteD) } : {},
     priorities: prio,
     edits: ed,
   }), [site, prio, edits]);
@@ -275,13 +289,14 @@ export function Studio() {
   const generate = useCallback(async (b: Brief, keepBase: boolean, ed?: Edits) => {
     setBusy(true); setError(null);
     try {
-      const r = await api<StudioResult>('/studio/generate', body(b, keepBase ? ed : {}));
+      const keep = keepBase ? [activeId, preferred].filter((x): x is string => !!x) : [];
+      const r = await api<StudioResult>('/studio/generate', { ...body(b, keepBase ? ed : {}), keep });
       setResult(r); setSummary(null);
       if (!keepBase) { setBase(r); setPreferred(null); setDecidedAt(null); setSel(null); setEdits({}); }
       setActiveId((cur) => (keepBase && r.concepts.some((c) => c.id === cur) ? cur : r.concepts.find((c) => c.rank === 1)!.id));
       return r;
     } catch (e) { setError((e as Error).message); return null; } finally { setBusy(false); }
-  }, [body]);
+  }, [body, activeId, preferred]);
 
   async function summarize(id: string) {
     setSummary({ id, text: '', by: '' });
@@ -297,58 +312,18 @@ export function Studio() {
     setBrief(b); void generate(b, true);
   }
 
-  // edits to the active concept: each one is sent back so the engine re-measures and re-checks the layout
-  function commitEdits(all: Edits) { setEdits(all); void generate(brief, true, all); }
-  const applyMove = useCallback((m: MoveEdit) => {
-    if (!concept) return;
-    const cur = edits[concept.id] ?? NO_EDIT;
-    let next: ConceptEdit;
-    if (m.code === 'BUILDING') next = { ...cur, building: { dx: cur.building.dx + m.dx, dy: cur.building.dy + m.dy } };
-    else {
-      const it = concept.yard.find((y) => y.code === m.code);
-      if (!it) return;
-      next = it.added ? { ...cur, added: cur.added.map((a) => (a.code === m.code ? { ...a, x: a.x + m.dx, y: a.y + m.dy } : a)) }
-        : { ...cur, yard: { ...cur.yard, [m.code]: { x: it.x + m.dx, y: it.y + m.dy } } };
-    }
-    const all = { ...edits, [concept.id]: next };
-    setEdits(all); void generate(brief, true, all);
-  }, [concept, edits, brief, generate]);
-  function addItem(type: AddedType) {
-    if (!concept || !result) return;
-    const cur = edits[concept.id] ?? NO_EDIT, a = ADD[type], sb = result.brief.setback_m;
-    let n = 1;
-    while (cur.added.some((x) => x.code === `${a.prefix}-${n}`)) n++;
-    // first free strip west of the building, stacking northwards
-    const x = Math.max(sb + 1, concept.building.x - a.w - 8);
-    const y = Math.min(result.brief.site_d - sb - a.d - 1, Math.max(sb + 1, concept.building.y) + cur.added.reduce((s, i) => s + i.d + 4, 0));
-    commitEdits({ ...edits, [concept.id]: { ...cur, added: [...cur.added, { code: `${a.prefix}-${n}`, type, x: Math.round(x), y: Math.round(y), w: a.w, d: a.d }] } });
-    setSel(`${a.prefix}-${n}`);
-  }
-  function removeItem(code: string) {
-    if (!concept) return;
-    const cur = edits[concept.id] ?? NO_EDIT;
-    commitEdits({ ...edits, [concept.id]: { ...cur, added: cur.added.filter((x) => x.code !== code) } });
-    setSel(null);
-  }
-  function rotateBuilding() {
-    if (!concept) return;
-    const cur = edits[concept.id] ?? NO_EDIT;
-    commitEdits({ ...edits, [concept.id]: { ...cur, rotate: !cur.rotate, building: { dx: 0, dy: 0 } } });
-  }
-  function setGeom(code: string, patch: Partial<Record<'x' | 'y' | 'w' | 'd', number>>) {
-    if (!concept) return;
-    const it = concept.yard.find((y) => y.code === code);
-    if (!it) return;
-    const cur = edits[concept.id] ?? NO_EDIT;
-    const safe = { ...patch, ...(patch.w != null ? { w: Math.max(1, Math.min(800, patch.w)) } : {}), ...(patch.d != null ? { d: Math.max(1, Math.min(800, patch.d)) } : {}) };
-    commitEdits({ ...edits, [concept.id]: it.added ? { ...cur, added: cur.added.map((a) => (a.code === code ? { ...a, ...safe } : a)) }
-      : { ...cur, yard: { ...cur.yard, [code]: { x: patch.x ?? it.x, y: patch.y ?? it.y } } } });
-  }
-  function resetEdits() {
-    if (!concept) return;
-    const { [concept.id]: _dropped, ...rest } = edits;
-    commitEdits(rest);
-  }
+  // edits to the active concept go through the design editor: undo history, debounced re-check by the engine
+  // (keeping this concept in the returned set), and the not-yet-checked geometry drawn in the meantime
+  const design = useDesignEditor({ concept: rawConcept, edits, setEdits, request: (ed) => body(brief, ed), onResult: (r) => {
+    setResult(r); setSummary(null);
+    setActiveId((cur) => (r.concepts.some((c) => c.id === cur) ? cur : r.concepts.find((c) => c.rank === 1)!.id));
+  } });
+  const concept = design.concept;
+  const designUi = useDesignUi({ editor: design, siteW: result?.brief.site_w ?? brief.siteW, siteD: result?.brief.site_d ?? brief.siteD,
+    setback: result?.brief.setback_m ?? brief.setback, selected: sel, onSelect: setSel, onActivate: setActiveId, project: brief.name, enabled: editMode && step === 2,
+    onOpen: () => { setEditMode(true); setStep(2); setView((v) => (v === 'existing' ? '3d' : v)); } });
+  function commitEdits(all: Edits) { design.commit(all); }
+  const applyMove = useCallback((m: MoveEdit) => design.change((e, c) => moveBy(e, c, m.code, m.dx, m.dy)), [design]);
   const aerialId = site ? (site.parcelId ?? `pt:${site.lat.toFixed(6)},${site.lng.toFixed(6)}`) : null;
 
   // CoStar dossier: use a comps-derived land value for this site, then regenerate once the site state has updated
@@ -381,8 +356,8 @@ export function Studio() {
   const refreshSaved = useCallback(() => {
     api<{ projects: SavedProject[] }>('/studio/projects').then((d) => {
       setSaved(d.projects);
-      d.projects.forEach((p) => {
-        const id = p.site?.id;
+      // one lookup per distinct site (many saved projects share a site)
+      [...new Set(d.projects.map((p) => p.site?.id))].forEach((id) => {
         if (id && id.startsWith('costar:')) fetch(siteDetailUrl(id)).then((r) => (r.ok ? r.json() : null)).then((x) => {
           const pr = x?.parcel ?? {};
           if (pr.name || pr.address) setSiteNames((n) => ({ ...n, [id]: [pr.address || pr.name, pr.city].filter(Boolean).join(', ') }));
@@ -479,6 +454,8 @@ export function Studio() {
 
   // Deep Agents: one shared run for the site evaluation and the conversation, shown live in Agent Intelligence
   const agentRun = useAgentRun();
+  // the Design Editor agent's approved changes arrive as full edits for one concept
+  useAgentDesignEdits<ConceptEdit>(agentRun.state, (cid, ed) => { setActiveId(cid); commitEdits({ ...edits, [cid]: ed }); });
   const [intelOpen, setIntelOpen] = useState(false);
   const [walkModel, setWalkModel] = useState<string | null>(null);
   const [evalSite, setEvalSite] = useState<string | null>(null);
@@ -530,6 +507,7 @@ export function Studio() {
             <Link href="/studio/data"><Database size={16} /><span><b>Data</b><small>MongoDB Atlas, live</small></span></Link>
             <button type="button" onClick={() => setDealDesk(true)}><Briefcase size={16} /><span><b>Deal desk</b><small>CoStar sites and comps</small></span></button>
             <Link href="/explore"><Radio size={16} /><span><b>Live operations</b><small>Grid and hardware</small></span></Link>
+            <Link href="/studio/built-with"><Sparkles size={16} /><span><b>How we built it</b><small>ChatOverflow field notes</small></span></Link>
           </nav>
           <div className="st-rail-foot">
             {dc ? <><b>{racks.toLocaleString()} racks · {halls} halls</b><span>{brief.redundancy} · {COOLING_LABEL[brief.cooling]}</span></>
@@ -542,6 +520,7 @@ export function Studio() {
         <header className="st-top">
           <div className="st-top-title"><b>Studio</b><span>{dc ? `${brief.name} · ${brief.mw} MW IT${site ? ` · ${siteLabel(site)}` : ''}` : `${kindLabel} · ${brief.market} · concept model`}</span></div>
           <AgentStatusPill s={agentRun.state} onOpen={() => setIntelOpen(true)} />
+          <span className="st-top-account"><AccountControls /></span>
         </header>
 
         <main className="st-main">
@@ -611,19 +590,24 @@ export function Studio() {
                   <Field label={`Work that can wait: ${brief.flex}%`} hint="Share of computing that can move to cheaper, cleaner hours.">
                     <input type="range" min={0} max={60} step={5} value={brief.flex} onChange={(e) => set('flex', +e.target.value)} />
                   </Field>
+                  <ZoningDocuments />
                   <div className="st-form-foot"><button className="st-btn primary" onClick={() => setSub(2)}>Next: Site <ArrowRight size={14} /></button></div>
                 </div>
               )}
 
               {sub === 2 && (
                 <div className="st-site">
+                  {siteView === 'list' ? <div className="st-map"><RankedSites market={brief.market} mwIt={brief.mw} rackKw={brief.rackKw} selectedId={siteId}
+                    viewToggle={<div className="st-seg"><button onClick={() => setSiteView('map')}>Map</button><button className="on">Ranked list</button></div>}
+                    onUseSite={(raw) => { const s = { ...raw, letter: sites.find((x) => x.id === raw.id)?.letter ?? '•' } as unknown as ExploreSite; const next = sites.some((x) => x.id === s.id) ? sites : [s, ...sites]; setSites(next); setSiteView('map'); void pickSite(s.id, next); }} /></div> : (
                   <div className="st-map">
                     <ExploreMap market={brief.market} sites={sites} selectedId={siteId} onSelect={(id) => void pickSite(id)} mode={mode} polygon={null}
                       onPolygon={() => {}} onPin={(lng, lat) => void onPin(lng, lat)} basemap="map" />
                     <div className="st-map-tools">
+                      <div className="st-seg"><button className="on">Map</button><button onClick={() => setSiteView('list')}>Ranked list</button></div>
                       <button className={`st-btn ${mode === 'pin' ? 'on' : ''}`} onClick={() => setMode(mode === 'pin' ? 'browse' : 'pin')}><MapPin size={13} /> {mode === 'pin' ? 'Click the map…' : 'Use my own location'}</button>
                     </div>
-                  </div>
+                  </div>)}
                   <div className="st-card st-site-panel">
                     {!site ? (
                       <>
@@ -653,8 +637,7 @@ export function Studio() {
                         {tours.length > 0 && <button type="button" className="st-tour" onClick={() => setWalkModel(tours[0])}><BoxIcon size={14} /> Site walk: pin notes and measure the existing building · {tours.length} Matterport scan{tours.length > 1 ? 's' : ''}</button>}
                         {aerialId && (
                           <figure className="st-aerial">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={vexcelOrthoUrl(aerialId, 220)} alt={`Vexcel aerial photo of ${siteLabel(site)}`} />
+                            <AerialViews aerialId={aerialId} alt={`Vexcel aerial photo of ${siteLabel(site)}`} />
                             <figcaption><Tag label="Sourced" /> Vexcel aerial{aerialMeta?.['last-capture-date'] ? ` · captured ${aerialMeta['last-capture-date'].slice(0, 10)}` : ''}{aerialMeta?.['min-gsd'] ? ` · ${(Number(aerialMeta['min-gsd']) * 100).toFixed(0)} cm per pixel` : ''}{ctx ? ' · 3D mesh available' : ''}</figcaption>
                           </figure>
                         )}
@@ -712,9 +695,6 @@ export function Studio() {
           {step === 2 && result && concept && (
             <section className="st-explore">
               <div className="st-toolbar">
-                <div className="st-seg">
-                  {result.concepts.map((c) => <button key={c.id} className={c.id === concept.id ? 'on' : ''} onClick={() => { setActiveId(c.id); setSel(null); }}>{c.rank === 1 && <Star size={12} />}{c.name}</button>)}
-                </div>
                 <div className="st-tools">
                   {result.brief.storeys > 1 && (
                     <div className="st-seg">
@@ -722,11 +702,10 @@ export function Studio() {
                       {Array.from({ length: result.brief.storeys }, (_, i) => <button key={i} className={layers.level === i ? 'on' : ''} onClick={() => setLayers({ ...layers, level: i })}>L{i + 1}</button>)}
                     </div>
                   )}
+                  <ObstacleTool aerialId={aerialId} siteW={result.brief.site_w} siteD={result.brief.site_d} busy={busy} onApply={() => void generate(brief, true, edits)} />
                   <button className={`st-btn ${editMode ? 'primary' : ''}`} onClick={() => { setEditMode(!editMode); if (view === '2d') setView('3d'); }}><Move size={13} /> {editMode ? 'Editing layout' : 'Edit layout'}</button>
-                  <div className="st-seg">
-                    <button onClick={() => setCam({ preset: 'iso', n: cam.n + 1 })}>Angle view</button>
-                    <button onClick={() => setCam({ preset: 'top', n: cam.n + 1 })}>Top view</button>
-                  </div>
+                </div>
+                <div className="st-tools">
                   <div className="st-seg">
                     <button className={view === '2d' ? 'on' : ''} onClick={() => setView('2d')}><Square size={13} /> 2D plan</button>
                     <button className={view === '3d' ? 'on' : ''} onClick={() => setView('3d')}><BoxIcon size={13} /> 3D model</button>
@@ -735,25 +714,21 @@ export function Studio() {
                   </div>
                 </div>
               </div>
-              {editMode && (
-                <div className="st-editbar">
-                  <span><b>Edit mode.</b> Drag the building or any outdoor item in the 3D model. Checks and numbers update when you let go.</span>
-                  <select className="st-add" value="" onChange={(e) => { if (e.target.value) addItem(e.target.value as AddedType); }} disabled={busy} aria-label="Add an item">
-                    <option value="">Add an item…</option>
-                    {(Object.keys(ADD) as AddedType[]).map((k) => <option key={k} value={k}>{ADD[k].label}</option>)}
-                  </select>
-                  <button className="st-btn" onClick={rotateBuilding} disabled={busy}><RotateCw size={13} /> Rotate building</button>
-                  <button className="st-btn" onClick={resetEdits} disabled={busy || !edits[concept.id]}><RotateCcw size={13} /> Undo all edits</button>
-                </div>
-              )}
+              {editMode && <DesignBar ui={designUi} />}
               <div className="st-explore-body">
+                {editMode && view !== 'existing' && <DesignSidePanel ui={designUi} />}
                 <div className={`st-views ${view}`}>
                   {view === 'existing' && parcelId && <div className="st-view st-view-existing"><ExistingVsProposed parcelId={parcelId} mwIt={brief.mw} rackKw={brief.rackKw} onNote={setInspection}
                     conceptSlot={<Model3D concept={concept} siteW={result.brief.site_w} siteD={result.brief.site_d} setback={result.brief.setback_m} layers={layers} selected={sel} onSelect={setSel} aerialId={aerialId} edit={false} onMove={applyMove} view={cam} context={null} />} /></div>}
-                  {view !== '2d' && view !== 'existing' && <div className="st-view"><Model3D concept={concept} siteW={result.brief.site_w} siteD={result.brief.site_d} setback={result.brief.setback_m} layers={layers} selected={sel} onSelect={setSel} aerialId={aerialId} edit={editMode} onMove={applyMove} view={cam} context={layers.context ? ctx : null} /></div>}
-                  {view !== '3d' && view !== 'existing' && <div className="st-view st-view-plan"><Plan2D concept={concept} siteW={result.brief.site_w} siteD={result.brief.site_d} setback={result.brief.setback_m} layers={layers} selected={sel} onSelect={setSel} aerialId={aerialId} /></div>}
+                  {view !== '2d' && view !== 'existing' && <div className="st-view"><Model3D concept={concept} siteW={result.brief.site_w} siteD={result.brief.site_d} setback={result.brief.setback_m} layers={layers} selected={sel} onSelect={setSel} aerialId={aerialId} edit={editMode} onMove={applyMove} view={cam} context={layers.context ? ctx : null} editor={designUi.model3d(editMode)}
+                    cooling={result.brief.cooling} compassRef={designUi.compassRef} envelope={{ w: result.brief.env_w, d: result.brief.env_d }}
+                    comps={layers.comps && site ? { parcelId, lat: site.lat, lon: site.lng } : null} /></div>}
+                  {view !== '3d' && view !== 'existing' && <div className="st-view st-view-plan"><Plan2D concept={concept} siteW={result.brief.site_w} siteD={result.brief.site_d} setback={result.brief.setback_m} layers={layers} selected={sel} onSelect={setSel} aerialId={aerialId} editor={designUi.plan2d(editMode, view === '2d')} /></div>}
+                  {view !== 'existing' && <ExploreBar layers={layers} setLayers={setLayers} cam={cam} setCam={setCam} concepts={result.concepts} activeId={concept.id}
+                    onPick={(id) => { setActiveId(id); setSel(null); }} cooling={result.brief.cooling} hasContext={!!ctx} onExportDxf={designUi.exportDxf}
+                    onExportGlb={() => void designUi.exportGlb()} canGlb={view !== '2d'} view3d={view !== '2d'} compassRef={designUi.compassRef} hasSite={!!site} />}
                 </div>
-                <Inspector concept={concept} sel={sel} layers={layers} setLayers={setLayers} edit={editMode} onRemove={removeItem} onGeom={setGeom} hasContext={!!ctx} />
+                <ElementInspector concept={concept} sel={sel} edit={edits[concept.id]} faults={designUi.shownFaults} cooling={COOLING_LABEL[result.brief.cooling as Brief['cooling']] ?? result.brief.cooling} />
               </div>
             </section>
           )}
@@ -789,7 +764,7 @@ export function Studio() {
           {step === 4 && result && (
             <section className="st-page st-glass-in">
               <small className="st-eyebrow">04 · Analyze</small>
-              <h1>Three ways to build the same brief</h1>
+              <div className="st-head-row"><h1>Three ways to build the same brief</h1><DebateButton body={body(brief)} agent={agentRun} onOpen={() => setIntelOpen(true)} disabled={busy} /></div>
               {subTabs}
               <p className="st-lede">{result.ranking.note}</p>
               {result.ranking.close && <div className="st-card st-warn st-flexnote"><b>No clear winner.</b> {result.ranking.method} Pick on the specific trade-offs, or change cooling, storeys or redundancy to see a bigger difference.</div>}
@@ -798,6 +773,7 @@ export function Studio() {
                   <article key={c.id} className={`st-card st-concept ${preferred === c.id ? 'pref' : ''}`}>
                     <div className="st-concept-plan"><Plan2D concept={c} siteW={result.brief.site_w} siteD={result.brief.site_d} setback={result.brief.setback_m} mini /></div>
                     <div className="st-concept-head"><h3>{c.name}</h3><span className="st-rank">{c.feasible ? `Rank ${c.rank}` : 'Does not fit'}</span></div>
+                    {c.why && <p className="st-small st-concept-why">{c.why}</p>}
                     <p className="st-muted st-small">{c.strategy}</p>
                     <div className="st-scores">{FACTORS.map((f) => <div key={f.key}><span>{f.label}</span><i><b style={{ width: `${c.scores[f.key]}%` }} /></i><em>{c.scores[f.key].toFixed(0)}</em></div>)}</div>
                     <p className="st-small"><b>Advantage.</b> {c.advantage}</p>
@@ -805,10 +781,12 @@ export function Studio() {
                     <div className="st-concept-foot">
                       <button className={`st-btn ${preferred === c.id ? 'primary' : ''}`} onClick={() => setPreferred(c.id)}><Star size={13} /> {preferred === c.id ? 'Preferred' : 'Select as preferred'}</button>
                       <button className="st-btn" onClick={() => { setActiveId(c.id); setStep(2); }}>Explore plan</button>
+                      <button className="st-btn" onClick={() => { setActiveId(c.id); setStep(3); }}>Analysis</button>
                     </div>
                   </article>
                 ))}
               </div>
+              <CompareSystems r={result} />
               <CompareTable r={result} />
             </section>
           )}
@@ -850,16 +828,8 @@ export function Studio() {
               <small className="st-eyebrow">05 · Deliver</small>
               <h1>{chosen.name}</h1>
               <p className="st-lede">{result.brief.halls} halls · {result.brief.racks.toLocaleString()} racks · {result.brief.mw_it} MW IT at {site ? siteLabel(site) : 'the chosen site'}.</p>
-              <div className="st-card">
-                <h3>Continue in CAD</h3>
-                <p className="st-muted">A layered 2D drawing of the chosen concept: site, building, rooms, rack rows, generators and routes. Units are metres in local site coordinates.</p>
-                <button className="st-btn primary" onClick={() => download(`${brief.name.replace(/\W+/g, '-').toLowerCase()}-${chosen.id}.dxf`, toDxf(chosen, result.brief.site_w, result.brief.site_d), 'application/dxf')}><Download size={14} /> Export DXF</button>
-              </div>
-              <div className="st-card">
-                <h3>Decision evidence</h3>
-                <p className="st-muted">The saved decision with the brief, site gates and their sources, every computed quantity, and every assumption with its basis. This is planning evidence, not certified engineering.</p>
-                <button className="st-btn" onClick={() => download(`${brief.name.replace(/\W+/g, '-').toLowerCase()}-decision.json`, JSON.stringify(report, null, 2), 'application/json')}><Download size={14} /> Download decision report</button>
-              </div>
+              <DeliverExports result={result} chosen={chosen} report={report as unknown as Record<string, unknown>} project={brief.name} />
+              <ConceptRender concept={chosen} brief={result.brief as unknown as Record<string, unknown>} setting={brief.market} />
               {parcelId && (
                 <div className="st-card">
                   <h3>Investment memo (CoStar evidence)</h3>
@@ -933,6 +903,7 @@ export function Studio() {
       {intelOpen && <AgentIntel s={agentRun.state} onClose={() => setIntelOpen(false)} onDecide={(a) => void agentRun.decide(a)} />}
       <Guide body={result ? body(brief) : null} conceptId={concept?.id ?? null} selected={sel} stage={PAGES[step]} market={brief.market}
         hasSite={!!site} onApply={applyPatch} />
+      <HeyGeo studio={{ body: body(brief), conceptId: concept?.id ?? null, stage: PAGES[step], market: brief.market, selected: sel, facilityId: step >= 7 ? facility.id : null, applyEdits: commitEdits, applyPatch, agent: agentRun, openGraph: () => setIntelOpen(true), lastScore: siteScore ? { verdict: siteScore.verdict, score: siteScore.score } : null }} />
       {dossier && <CostarDossier parcelId={parcelId} lotAcres={site?.lotAcres ?? null} mwIt={brief.mw} rackKw={brief.rackKw} initialTab={dossier}
         onUseLandValue={useLandValue} onNote={setInspection} onClose={() => setDossier(null)} />}
       {dealDesk && <DealDesk market={brief.market} mwIt={brief.mw} rackKw={brief.rackKw} onClose={() => setDealDesk(false)}
@@ -976,74 +947,6 @@ function SubTabs({ label, items, active, from, onPick }: { label: string; items:
   );
 }
 
-function Inspector({ concept, sel, layers, setLayers, edit, onRemove, onGeom, hasContext }: {
-  concept: Concept; sel: string | null; layers: Layers; setLayers: (l: Layers) => void; edit: boolean; onRemove: (code: string) => void;
-  onGeom: (code: string, patch: Partial<Record<'x' | 'y' | 'w' | 'd', number>>) => void; hasContext: boolean;
-}) {
-  const yardItem = concept.yard.find((x) => x.code === sel);
-  const storeys = concept.building.storeys;
-  const r: Room | undefined = [...concept.rooms, ...concept.yard].find((x) => x.code === sel);
-  const toggles: [Exclude<keyof Layers, 'roof' | 'level' | 'explode'>, string, string?][] = [['racks', 'Rack rows'], ['tags', 'Name tags'], ['yard', 'Outdoor plant'], ['aerial', 'Vexcel aerial'], ['labels', 'Plan labels'], ['site', 'Whole site in plan'], ['power', 'Power routes', ROUTE_COLOR.power], ['cooling', 'Cooling routes', ROUTE_COLOR.cooling], ['data', 'Data routes', ROUTE_COLOR.data]];
-  const m = concept.metrics;
-  return (
-    <aside className="st-inspector">
-      <h4>Layers</h4>
-      <div className="st-layers">
-        {toggles.map(([k, label, color]) => (
-          <label key={k}><input type="checkbox" checked={layers[k]} onChange={(e) => setLayers({ ...layers, [k]: e.target.checked })} />{color && <i style={{ background: color }} />}{label}</label>
-        ))}
-      </div>
-      {hasContext && <label className="st-ctx"><input type="checkbox" checked={layers.context} onChange={(e) => setLayers({ ...layers, context: e.target.checked })} />Vexcel 3D surroundings (real captured mesh)</label>}
-      <label className="st-roof"><span>Roof and rooftop solar</span><input type="range" min={0} max={1} step={0.05} value={layers.roof} onChange={(e) => setLayers({ ...layers, roof: +e.target.value })} /></label>
-      {storeys > 1 && <label className="st-roof"><span>Pull the storeys apart</span><input type="range" min={0} max={1} step={0.05} value={layers.explode} onChange={(e) => setLayers({ ...layers, explode: +e.target.value })} disabled={layers.level !== null} /></label>}
-      <h4>{r ? 'Inspector' : 'This concept'}</h4>
-      {r ? (
-        <>
-          <p className="st-insp-title"><i style={{ background: TYPE_STYLE[r.type].fill, borderColor: TYPE_STYLE[r.type].stroke }} /><b>{r.code}</b> {r.name}</p>
-          <dl className="st-dl">
-            <dt>Type</dt><dd>{TYPE_STYLE[r.type].label}</dd>
-            <dt>Size</dt><dd>{r.w.toFixed(1)} × {r.d.toFixed(1)} m</dd>
-            <dt>Area</dt><dd>{num(r.w * r.d)} m²</dd>
-            {r.need_m2 != null && <><dt>Area required</dt><dd>{num(r.need_m2)} m²</dd></>}
-            {r.racks != null && <><dt>Racks placed</dt><dd>{num(r.racks)}</dd><dt>Rack positions</dt><dd>{num(r.positions)}</dd><dt>IT load</dt><dd>{r.mw} MW</dd></>}
-            {r.hall != null && <><dt>Serves</dt><dd>Data hall {r.hall}</dd></>}
-            {storeys > 1 && r.level != null && <><dt>Storey</dt><dd>Level {r.level + 1}</dd></>}
-          </dl>
-          <p className="st-why"><b>Why is this here?</b> {WHY[r.type]}</p>
-          {edit && yardItem && (
-            <div className="st-geom">
-              {((yardItem.added ? ['x', 'y', 'w', 'd'] : ['x', 'y']) as ('x' | 'y' | 'w' | 'd')[]).map((k) => (
-                <label key={k}>{{ x: 'East (m)', y: 'North (m)', w: 'Width (m)', d: 'Depth (m)' }[k]}
-                  <input type="number" key={`${yardItem.code}${k}${yardItem[k]}`} defaultValue={Math.round(yardItem[k])}
-                    onBlur={(e) => { const v = +e.target.value; if (Number.isFinite(v) && v !== Math.round(yardItem[k])) onGeom(yardItem.code, { [k]: v }); }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />
-                </label>
-              ))}
-              {yardItem.added && <button className="st-btn" onClick={() => onGeom(yardItem.code, { w: yardItem.d, d: yardItem.w })}><RotateCw size={13} /> Turn 90°</button>}
-              {yardItem.added && <button className="st-btn st-remove" onClick={() => onRemove(yardItem.code)}><Trash2 size={13} /> Remove</button>}
-            </div>
-          )}
-        </>
-      ) : (
-        <>
-          <dl className="st-dl">
-            <dt>Building</dt><dd>{concept.building.w.toFixed(0)} × {concept.building.d.toFixed(0)} m</dd>
-            <dt>Footprint</dt><dd>{num(m.footprint_m2)} m²</dd>
-            <dt>Racks placed</dt><dd>{num(m.placed_racks)}</dd>
-            <dt>Spare positions</dt><dd>{num(m.spare_positions + m.expansion_bay_positions)}</dd>
-            <dt>Power route</dt><dd>{num(m.power_route_m)} m</dd>
-            <dt>Cooling route</dt><dd>{num(m.cooling_route_m)} m</dd>
-            <dt>Generators</dt><dd>{m.generators}</dd>
-          </dl>
-          <p className="st-why">Click any room in the plan or the model to see its size and why it is there.</p>
-        </>
-      )}
-      <h4>Checks</h4>
-      <ul className="st-checks">{concept.checks.map((k) => <li key={k.name} className={k.ok ? 'ok' : 'bad'}>{k.ok ? <CircleCheck size={14} /> : <CircleAlert size={14} />}<div><b>{k.name}</b><span>{k.detail}</span></div></li>)}</ul>
-    </aside>
-  );
-}
-
 function Delta({ now, was, unit, lowerIsBetter = true, fmt }: { now: number; was: number | undefined; unit?: string; lowerIsBetter?: boolean; fmt: (n: number) => string }) {
   if (was == null || Math.abs(now - was) < Math.abs(was) * 0.0005) return null;
   const d = now - was;
@@ -1080,7 +983,8 @@ function Analysis({ c, r, base }: { c: Concept; r: StudioResult; base: Concept |
           <h3><Users size={16} /> People</h3>
           <Stat label="Nearest home" value={c.people.home_distance_m != null ? `${num(c.people.home_distance_m)} m` : 'Unknown'} sub={homes?.status === 'Pass' ? 'Clear of the limit' : homes?.reason} tag={homes?.label ?? 'Unknown'} />
           <Stat label="Generator noise at that home" value={c.people.noise_at_home_dba != null ? `${c.people.noise_at_home_dba} dBA` : 'Unknown'} sub="During tests and outages only" tag={c.people.noise_at_home_dba != null ? 'Estimated' : 'Unknown'} />
-          <Stat label="Noise at the site boundary" value={`${c.people.noise_at_boundary_dba} dBA`} sub={`Generators ${c.people.generator_to_boundary_m} m from the boundary`} tag="Estimated" />
+          <Stat label="Noise at the site boundary" value={c.people.noise_at_boundary_dba != null ? `${c.people.noise_at_boundary_dba} dBA` : 'No generators'}
+            sub={c.people.generator_to_boundary_m != null ? `Generators ${c.people.generator_to_boundary_m} m from the boundary` : 'The generator yard was removed from this layout'} tag={c.people.noise_at_boundary_dba != null ? 'Estimated' : 'Unknown'} />
           <Stat label="Local jobs" value="Unknown" sub="No sourced jobs figure is loaded" tag="Unknown" />
         </div>
         <div className="st-card st-factor">
@@ -1131,7 +1035,7 @@ function CompareTable({ r }: { r: StudioResult }) {
     ['Room for future racks', (c) => c.resources.spare_positions, (n) => num(n), false],
     ['Power route length', (c) => c.metrics.power_route_m, (n) => `${num(n)} m`, true],
     ['Cooling route length', (c) => c.metrics.cooling_route_m, (n) => `${num(n)} m`, true],
-    ['Noise at the boundary', (c) => c.people.noise_at_boundary_dba, (n) => `${n} dBA`, true],
+    ['Noise at the boundary', (c) => c.people.noise_at_boundary_dba ?? NaN, (n) => (Number.isNaN(n) ? 'No generators' : `${n} dBA`), true],
     ['Carbon to build the shell', (c) => c.planet.embodied_t, (n) => `${num(n)} t`, true],
     ['Solar potential', (c) => c.planet.roof_solar_kwp, (n) => `${num(n)} kWp`, false],
     ['Site left open', (c) => c.resources.open_land_share, (n) => pct(n), false],

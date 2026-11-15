@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, Check, CircleAlert, GitBranch, Loader2, Send, ShieldCheck, Sparkles, X } from 'lucide-react';
 import { Markdown } from './markdown';
 import { activeAgents, type RunState, type Verification } from './use-agent-run';
+import { RunTimeline } from '../../hey-geo/run-timeline';
 import s from './copilot.module.css';
 
 /** Brief fields a what-if may change, in the API's names (services/api/app/routers/studio.py Brief). */
@@ -114,6 +115,11 @@ export function Copilot({ body, conceptId, selected, stage, market, facilityId, 
             {live && n > 0 && <b> · {n} agent{n === 1 ? '' : 's'} working</b>}
             <span className={s.watch}><GitBranch size={12} /> Watch live</span>
           </button>
+        )}
+        {/* the run as it happens: orchestrator, specialists and their tool calls (the full graph is one click away) */}
+        {live && st.order.length > 0 && (
+          <RunTimeline run={{ status: st.status, nodes: st.order.map((id) => st.nodes[id]).filter(Boolean), approval: st.approval, citations: [], verification: null, error: st.error }}
+            onOpenGraph={onOpenGraph} />
         )}
         <div ref={end} />
       </div>

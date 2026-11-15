@@ -2,9 +2,13 @@
 // Detailed 3D model of one concept on the real Vexcel aerial of the site. Everything is built from the same
 // geometry as the 2D plan: storeys, individual racks, aisle containment, cable trays, equipment in each room, outdoor plant.
 // In edit mode the building and each outdoor item can be dragged; the parent re-checks the numbers on release.
+// The design editor adds: resize and rotate handles on placed objects, red highlights with the engine's reason on
+// objects a failing check is about, translucent AI proposals ("ghosts"), click/drag-to-place, and the scene for glTF export.
 import { Component, Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Canvas, useLoader, useThree, type ThreeEvent } from '@react-three/fiber';
-import { Line, OrbitControls } from '@react-three/drei';
+import { Html, Line, OrbitControls } from '@react-three/drei';
+import { useFrame } from '@react-three/fiber';
+import { columnsOf, coolingUnitsOf, doorsOf, exitsOf, DOOR_M } from './design-editor/geometry';
 import * as THREE from 'three';
 import { vexcelOrthoUrl } from '@/lib/plotstar-api';
 import type { Concept, Room, RoomType } from './types';
@@ -12,22 +16,45 @@ import { ROUTE_COLOR } from './types';
 import type { Layers } from './plan2d';
 
 const VexcelContext = lazy(() => import('../sponsors/vexcel/vexcel-context'));
+const CostarComps3D = lazy(() => import('../sponsors/costar/comps-3d'));
 
 const WALL = 4.2;
 const FLOOR: Record<RoomType, string> = {
   data_hall: '#dde5dc', electrical: '#efe2c4', battery: '#ecd3c8', mechanical: '#cfe1ea', corridor: '#c6d4c1', support: '#e4e0ee',
   network: '#dbd3ea', loading: '#e6e0d0', reserve: '#eef0ea', yard_sub: '#b9bdb6', yard_gen: '#cfc8b4', yard_cool: '#c5d6de',
   yard_water: '#c9d6dc', yard_bess: '#d6dad3', yard_solar: '#c9d3c4', yard_parking: '#565b58', yard_wall: '#aab1aa',
-  yard_trees: '#b7c9ae', yard_guard: '#cfc8b4',
+  yard_trees: '#b7c9ae', yard_guard: '#cfc8b4', yard_fence: '#c9cec8', yard_cooling: '#c5d6de', sensor: '#dfe9c9', custom: '#e2dcec',
 };
 /** Rough height of what stands on each outdoor item, used only for its ground shadow. */
-const SHADOW_H: Partial<Record<RoomType, number>> = { yard_sub: 3.6, yard_cool: 2.6, yard_water: 8, yard_bess: 2.9, yard_solar: 3.7, yard_wall: 6, yard_trees: 6, yard_guard: 3.5 };
+const SHADOW_H: Partial<Record<RoomType, number>> = { yard_sub: 3.6, yard_cool: 2.6, yard_water: 8, yard_bess: 2.9, yard_solar: 3.7, yard_wall: 6, yard_trees: 6, yard_guard: 3.5, yard_cooling: 2.6, yard_fence: 2.4 };
 /** One box in site coordinates: x east, y north, z up (metres), from its minimum corner. */
 interface B { x: number; y: number; z: number; w: number; d: number; h: number; color: string; code?: string }
 interface Cyl { x: number; y: number; r: number; h: number; color: string }
 interface Rect { x: number; y: number; w: number; d: number }
 export interface MoveEdit { code: string; dx: number; dy: number }
-export type ViewPreset = { preset: 'iso' | 'top'; n: number };
+export type EditRect = { x: number; y: number; w: number; d: number };
+/** Design editor hooks into the 3D model. Everything is optional; without it the model behaves as before. */
+export interface Editor3D {
+  /** failing-check reasons per object code ('BUILDING' for the building) */
+  bad?: Record<string, string[]>;
+  /** AI proposals shown translucent until accepted */
+  ghosts?: Room[];
+  /** codes whose size can be changed (placed objects); others only move */
+  resizable?: (code: string) => boolean;
+  onResize?: (code: string, r: EditRect) => void;
+  onRotate?: (code: string) => void;
+  /** an object being placed: follows the pointer, dropped on release over the ground */
+  placing?: { w: number; d: number; label: string } | null;
+  onPlace?: (x: number, y: number) => void;
+  onScene?: (scene: THREE.Scene) => void;
+  /** small toolbar drawn next to the selected object */
+  toolbar?: ReactNode;
+  /** Accept / Reject, drawn on the first proposal */
+  ghostBar?: ReactNode;
+}
+export type ViewPreset = { preset: 'iso' | 'top' | 'front' | 'section' | 'fit' | 'zoomIn' | 'zoomOut'; n: number };
+/** What buildBuilding draws, from Explore's Layers popover. */
+interface Draw { racks: boolean; walls: boolean; columns: boolean; slabs: boolean; isolate: boolean; units: boolean; equipment: boolean; cooling: string }
 
 /** Deterministic 0..1 value, so dressing (cars, trees) does not change between renders. */
 const rnd = (a: number, b: number) => { const s = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return s - Math.floor(s); };
@@ -46,18 +73,32 @@ function fill(out: B[], r: Room, z: number, u: { w: number; d: number; h: number
     }
 }
 
-function buildBuilding(c: Concept, racks: boolean, only: number | null, zOf: (level: number) => number) {
-  const solid: B[] = [], glass: B[] = [], glow: B[] = [];
-  const t = 0.25, b = c.building;
+function buildBuilding(c: Concept, draw: Draw, only: number | null, zOf: (level: number) => number) {
+  const solid: B[] = [], glass: B[] = [], glow: B[] = [], cols: B[] = [];
+  const t = 0.25, b = c.building, racks = draw.racks && !draw.isolate, kit = draw.equipment && !draw.isolate;
   const levels = Array.from({ length: b.storeys }, (_, i) => i).filter((l) => only === null || l === only);
+  const doors = doorsOf(c);
+  /** a wall from (x0,y0) running along x ('h') or y ('v') for len metres, with door gaps cut out */
+  const wall = (o: 'h' | 'v', x0: number, y0: number, len: number, z: number, code: string, gaps: number[]) => {
+    let a = 0;
+    for (const g of [...gaps.sort((p, q) => p - q), len + DOOR_M]) {
+      const e = Math.min(len, g - DOOR_M / 2);
+      if (e - a > 0.05) solid.push(o === 'h' ? { x: x0 + a, y: y0, z, w: e - a, d: t, h: WALL, color: '#eceee9', code } : { x: x0, y: y0 + a, z, w: t, d: e - a, h: WALL, color: '#eceee9', code });
+      a = g + DOOR_M / 2;
+    }
+  };
   for (const r of c.rooms) {
     const lvl = r.level ?? 0;
     if (!levels.includes(lvl)) continue;
     const z = zOf(lvl);
-    solid.push({ x: r.x, y: r.y, z, w: r.w, d: r.d, h: 0.12, color: FLOOR[r.type], code: r.code });
-    if (r.type === 'corridor' || r.type === 'reserve') continue;
-    for (const w of [{ x: r.x, y: r.y, w: r.w, d: t }, { x: r.x, y: r.y + r.d - t, w: r.w, d: t }, { x: r.x, y: r.y, w: t, d: r.d }, { x: r.x + r.w - t, y: r.y, w: t, d: r.d }])
-      solid.push({ ...w, z, h: WALL, color: '#eceee9', code: r.code });
+    if (!draw.isolate) solid.push({ x: r.x, y: r.y, z, w: r.w, d: r.d, h: 0.12, color: FLOOR[r.type], code: r.code });
+    if (r.type === 'corridor' || r.type === 'reserve' || !draw.walls || draw.isolate) continue;
+    const my = doors.filter((d) => d.room === r.code);
+    const on = (o: 'h' | 'v', at: number, k: 'x' | 'y') => my.filter((d) => d.o === o && Math.abs((o === 'h' ? d.y : d.x) - at) < 0.8).map((d) => d[k] - (k === 'x' ? r.x : r.y));
+    wall('h', r.x, r.y, r.w, z, r.code, on('h', r.y, 'x'));
+    wall('h', r.x, r.y + r.d - t, r.w, z, r.code, on('h', r.y + r.d, 'x'));
+    wall('v', r.x, r.y, r.d, z, r.code, on('v', r.x, 'y'));
+    wall('v', r.x + r.w - t, r.y, r.d, z, r.code, on('v', r.x + r.w, 'y'));
     if (r.type === 'data_hall' && racks) {
       const rows = r.rows ?? [];
       rows.forEach((w, j) => {
@@ -72,8 +113,11 @@ function buildBuilding(c: Concept, racks: boolean, only: number | null, zOf: (le
         }
         if (j % 2 === 0 && nx && w.n && nx.n)
           glass.push(w.v ? { x: w.x + w.w, y: w.y, z: z + 0.12, w: nx.x - w.x - w.w, d: w.d, h: 2.25, color: '#7fc4e8' } : { x: w.x, y: w.y + w.d, z: z + 0.12, w: w.w, d: nx.y - w.y - w.d, h: 2.25, color: '#7fc4e8' });
+        else if (nx && w.n && nx.n) // the open aisle between two contained pairs is the hot aisle
+          solid.push(w.v ? { x: w.x + w.w, y: w.y, z: z + 0.125, w: nx.x - w.x - w.w, d: w.d, h: 0.02, color: '#efb9a6', code: r.code } : { x: w.x, y: w.y + w.d, z: z + 0.125, w: w.w, d: nx.y - w.y - w.d, h: 0.02, color: '#efb9a6', code: r.code });
       });
-    } else if (r.type === 'electrical') {
+    } else if (!kit) continue;
+    else if (r.type === 'electrical') {
       if (r.code.startsWith('SWG')) fill(solid, r, z, { w: 1.0, d: 1.6, h: 2.3, color: '#8d9398' }, 24);
       else fill(solid, r, z, { w: 0.8, d: 0.9, h: 2.0, color: '#5f7384' }, 40);
     } else if (r.type === 'battery') fill(solid, r, z, { w: 0.6, d: 1.0, h: 1.9, color: '#3f6b54' }, 60, 1.2);
@@ -90,17 +134,29 @@ function buildBuilding(c: Concept, racks: boolean, only: number | null, zOf: (le
       if (r.code.startsWith('NOC')) glow.push({ x: r.x + 0.6, y: r.y + r.d - 0.5, z: z + 1.1, w: Math.min(r.w - 1.2, 9), d: 0.1, h: 1.9, color: '#3ea6ff' });
     }
   }
-  // structure: a slab under every upper storey, and the outer wall of each storey with a darker base band
+  // in-hall cooling units (CDU / CRAH), counted from each hall's MW
+  if (draw.units && !draw.isolate)
+    for (const u of coolingUnitsOf(c, draw.cooling)) {
+      const lvl = u.r.level ?? 0;
+      if (!levels.includes(lvl)) continue;
+      solid.push({ x: u.x, y: u.y, z: zOf(lvl) + 0.12, w: u.w, d: u.d, h: u.h, color: '#3f8f5e', code: u.r.code });
+      solid.push({ x: u.x + 0.1, y: u.y + 0.1, z: zOf(lvl) + 0.12 + u.h, w: u.w - 0.2, d: u.d - 0.2, h: 0.05, color: '#c9ec7a', code: u.r.code });
+    }
+  // columns on the structural grid, one per storey
+  if (draw.columns || draw.isolate)
+    for (const lvl of levels) for (const p of columnsOf(c))
+      cols.push({ x: p.x - 0.25, y: p.y - 0.25, z: zOf(lvl), w: 0.5, d: 0.5, h: WALL + 0.8, color: draw.isolate ? '#7d8a80' : '#c7cdc5' });
+  // structure: a slab under every storey, and the outer wall of each storey with a darker base band
   const e = 0.45, hx = WALL + 0.8;
   for (const lvl of levels) {
     const z = zOf(lvl);
-    if (lvl > 0) solid.push({ x: b.x - e, y: b.y - e, z: z - 0.45, w: b.w + 2 * e, d: b.d + 2 * e, h: 0.45, color: '#a8afa7' });
+    if (draw.slabs || draw.isolate) solid.push({ x: b.x - e, y: b.y - e, z: z - (lvl > 0 ? 0.45 : 0.2), w: b.w + 2 * e, d: b.d + 2 * e, h: lvl > 0 ? 0.45 : 0.2, color: lvl > 0 ? '#a8afa7' : '#b9beb6' });
     for (const w of [{ x: b.x - e, y: b.y - e, w: b.w + 2 * e, d: e }, { x: b.x - e, y: b.y + b.d, w: b.w + 2 * e, d: e }, { x: b.x - e, y: b.y, w: e, d: b.d }, { x: b.x + b.w, y: b.y, w: e, d: b.d }]) {
       solid.push({ ...w, z, h: hx, color: '#d2d8cf' });
       solid.push({ x: w.x - 0.06, y: w.y - 0.06, z, w: w.w + 0.12, d: w.d + 0.12, h: 0.7, color: '#8f988f' });
     }
   }
-  return { solid, glass, glow };
+  return { solid, glass, glow, cols };
 }
 
 function buildRoof(c: Concept, z: number) {
@@ -142,7 +198,7 @@ function buildYard(r: Room, c: Concept) {
       { x: r.x + 3, y: gy, z: 8.8, w: r.w - 6, d: 0.4, h: 0.4, color: '#8a918b', code: r.code });
     for (const w of [{ x: r.x, y: r.y, w: r.w, d: 0.1 }, { x: r.x, y: r.y + r.d - 0.1, w: r.w, d: 0.1 }, { x: r.x, y: r.y, w: 0.1, d: r.d }, { x: r.x + r.w - 0.1, y: r.y, w: 0.1, d: r.d }])
       solid.push({ ...w, z: 0.1, h: 2.4, color: '#7b857e', code: r.code });
-  } else if (r.type === 'yard_cool') {
+  } else if (r.type === 'yard_cool' || r.type === 'yard_cooling') {
     grid(2.4, 6, 1.4, 1.6, 80, (x, y) => {
       solid.push({ x, y, z: 0.1, w: 2.4, d: 6, h: 2.5, color: '#dfe7ea', code: r.code });
       for (const k of [0.6, 3.5]) solid.push({ x: x + 0.3, y: y + k, z: 2.6, w: 1.8, d: 1.8, h: 0.12, color: '#2e3b42', code: r.code });
@@ -183,6 +239,18 @@ function buildYard(r: Room, c: Concept) {
         const jx = (rnd(x, y) - 0.5) * 2.4, jy = (rnd(y, x) - 0.5) * 2.4, s = 0.8 + rnd(x + 3, y + 5) * 0.5;
         cones.push({ x: x + jx, y: y + jy, r: 2.3 * s, h: 6.5 * s, color: rnd(x, y + 1) < 0.5 ? '#4f7f55' : '#5f8f5c' });
       }
+  } else if (r.type === 'yard_fence') {
+    const along = r.w >= r.d, len = along ? r.w : r.d;
+    for (let a = 0; a <= len + 0.01; a += Math.max(2, len / Math.ceil(len / 3)))
+      solid.push(along ? { x: r.x + Math.min(a, r.w - 0.1), y: r.y + r.d / 2 - 0.05, z: 0, w: 0.1, d: 0.1, h: 2.4, color: '#5d665f', code: r.code }
+        : { x: r.x + r.w / 2 - 0.05, y: r.y + Math.min(a, r.d - 0.1), z: 0, w: 0.1, d: 0.1, h: 2.4, color: '#5d665f', code: r.code });
+    for (const z of [0.9, 2.2]) solid.push(along ? { x: r.x, y: r.y + r.d / 2 - 0.03, z, w: r.w, d: 0.06, h: 0.06, color: '#7b857e', code: r.code }
+      : { x: r.x + r.w / 2 - 0.03, y: r.y, z, w: 0.06, d: r.d, h: 0.06, color: '#7b857e', code: r.code });
+  } else if (r.type === 'sensor') {
+    solid.push({ x: r.x + r.w / 2 - 0.08, y: r.y + r.d / 2 - 0.08, z: 0, w: 0.16, d: 0.16, h: 2.2, color: '#59625c', code: r.code });
+    solid.push({ x: r.x + r.w / 2 - 0.3, y: r.y + r.d / 2 - 0.3, z: 2.2, w: 0.6, d: 0.6, h: 0.35, color: '#6fa24e', code: r.code });
+  } else if (r.type === 'custom') {
+    solid.push({ x: r.x + 0.1, y: r.y + 0.1, z: 0.1, w: Math.max(0.2, r.w - 0.2), d: Math.max(0.2, r.d - 0.2), h: Math.max(0.2, r.h ?? 3), color: '#cbc3dd', code: r.code });
   } else if (r.type === 'yard_guard') {
     solid.push({ x: r.x + 0.5, y: r.y + 0.5, z: 0.1, w: r.w - 1, d: r.d - 1, h: 3, color: '#e3ddcb', code: r.code });
     solid.push({ x: r.x, y: r.y, z: 3.1, w: r.w, d: r.d, h: 0.25, color: '#59625c', code: r.code });
@@ -191,8 +259,10 @@ function buildYard(r: Room, c: Concept) {
   return { solid, cyl, cones, shadows };
 }
 
-function Boxes({ boxes, cx, cz, kind = 'solid', onPick, onDown }: {
+function Boxes({ boxes, cx, cz, kind = 'solid', onPick, onDown, clip = null }: {
   boxes: B[]; cx: number; cz: number; kind?: 'solid' | 'glass' | 'glow'; onPick?: (code: string | null) => void;
+  /** section cut: only what is on the kept side of these planes is drawn */
+  clip?: THREE.Plane[] | null;
   onDown?: (e: ThreeEvent<PointerEvent>, code: string | undefined) => void;
 }) {
   const ref = useRef<THREE.InstancedMesh>(null);
@@ -205,6 +275,7 @@ function Boxes({ boxes, cx, cz, kind = 'solid', onPick, onDown }: {
       mesh.setMatrixAt(i, m);
       mesh.setColorAt(i, col.set(b.color));
     });
+    mesh.userData.codes = boxes.map((b) => b.code ?? '');
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     mesh.computeBoundingSphere();
@@ -215,9 +286,9 @@ function Boxes({ boxes, cx, cz, kind = 'solid', onPick, onDown }: {
       onClick={onPick ? (e) => { e.stopPropagation(); onPick(boxes[e.instanceId ?? 0]?.code ?? null); } : undefined}
       onPointerDown={onDown ? (e) => onDown(e, boxes[e.instanceId ?? 0]?.code) : undefined}>
       <boxGeometry args={[1, 1, 1]} />
-      {kind === 'glow' ? <meshBasicMaterial toneMapped={false} />
-        : kind === 'glass' ? <meshStandardMaterial transparent opacity={0.26} roughness={0.15} depthWrite={false} />
-          : <meshStandardMaterial roughness={0.8} metalness={0.05} />}
+      {kind === 'glow' ? <meshBasicMaterial toneMapped={false} clippingPlanes={clip} />
+        : kind === 'glass' ? <meshStandardMaterial transparent opacity={0.26} roughness={0.15} depthWrite={false} clippingPlanes={clip} />
+          : <meshStandardMaterial roughness={0.8} metalness={0.05} clippingPlanes={clip} side={clip ? THREE.DoubleSide : THREE.FrontSide} />}
     </instancedMesh>
   );
 }
@@ -238,7 +309,7 @@ function GroundShadow({ r, h, cx, cz }: { r: Rect; h: number; cx: number; cz: nu
   );
 }
 
-function Tag({ text, at, strong }: { text: string; at: [number, number, number]; strong?: boolean }) {
+function Tag({ text, at, strong, tone }: { text: string; at: [number, number, number]; strong?: boolean; tone?: 'bad' | 'ghost' }) {
   const { tex, aspect } = useMemo(() => {
     const c = document.createElement('canvas'), g = c.getContext('2d')!;
     const font = '600 30px Arial, Helvetica, sans-serif';
@@ -246,17 +317,17 @@ function Tag({ text, at, strong }: { text: string; at: [number, number, number];
     const w = Math.ceil(g.measureText(text).width) + 44, h = 60;
     c.width = w; c.height = h;
     g.font = font;
-    g.fillStyle = strong ? '#264d39' : '#ffffff';
-    g.strokeStyle = strong ? '#264d39' : '#9fb0a3';
+    g.fillStyle = tone === 'bad' ? '#b3362b' : tone === 'ghost' ? '#c9ec7a' : strong ? '#264d39' : '#ffffff';
+    g.strokeStyle = tone === 'bad' ? '#8f2a21' : tone === 'ghost' ? '#1f4a36' : strong ? '#264d39' : '#9fb0a3';
     g.lineWidth = 3;
     g.beginPath(); g.roundRect(2, 2, w - 4, h - 4, 12); g.fill(); g.stroke();
-    g.fillStyle = strong ? '#ffffff' : '#18231d';
+    g.fillStyle = tone === 'bad' || (strong && !tone) ? '#ffffff' : '#18231d';
     g.textBaseline = 'middle';
     g.fillText(text, 22, h / 2 + 1);
     const t = new THREE.CanvasTexture(c);
     t.colorSpace = THREE.SRGBColorSpace;
     return { tex: t, aspect: w / h };
-  }, [text, strong]);
+  }, [text, strong, tone]);
   useEffect(() => () => tex.dispose(), [tex]);
   return (
     // constant size on screen, so tags stay readable without growing when you zoom in
@@ -283,24 +354,119 @@ function Aerial({ id, half }: { id: string; half: number }) {
   );
 }
 
-function Rig({ view, target, span }: { view: ViewPreset; target: [number, number, number]; span: number }) {
-  const { camera, controls } = useThree();
+function Rig({ view, target, span, sec }: { view: ViewPreset; target: [number, number, number]; span: number; sec: { x: number; z: number; w: number } }) {
+  const { camera, controls, gl } = useThree();
   useEffect(() => {
-    if (view.preset === 'top') camera.position.set(target[0], span * 1.7, target[2] + 0.01);
-    else camera.position.set(target[0] + span * 0.62, span * 0.72, target[2] + span * 0.86);
     const c = controls as unknown as { target: THREE.Vector3; update: () => void } | null;
+    if (view.preset === 'zoomIn' || view.preset === 'zoomOut') {
+      const t = c?.target ?? new THREE.Vector3(...target);
+      camera.position.sub(t).multiplyScalar(view.preset === 'zoomIn' ? 0.75 : 1.33).add(t);
+      c?.update();
+      return;
+    }
+    gl.localClippingEnabled = true; // the section cut clips the building's own materials, not the whole scene
+    if (view.preset === 'section') { // look north at the cut face, from just south of it
+      camera.position.set(sec.x, Math.max(10, sec.w * 0.2), sec.z + sec.w * 1.3 + 24);
+      c?.target.set(sec.x, 3, sec.z);
+      c?.update();
+      return;
+    }
+    if (view.preset === 'top') camera.position.set(target[0], span * 1.7, target[2] + 0.01);
+    else if (view.preset === 'front') camera.position.set(target[0], span * 0.32, target[2] + span * 1.25);
+    else camera.position.set(target[0] + span * 0.62, span * 0.72, target[2] + span * 0.86);
     c?.target.set(...target);
     c?.update();
-  }, [view, camera, controls, target, span]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, camera, controls, target, span, gl]);
   return null;
+}
+
+/** Turns the toolbar's north arrow to match the camera. Writes to the DOM directly, no React renders per frame. */
+function CompassSync({ el }: { el?: React.RefObject<HTMLElement | null> }) {
+  const v = useMemo(() => new THREE.Vector3(), []);
+  useFrame(({ camera }) => {
+    if (!el?.current) return;
+    camera.getWorldDirection(v);
+    const a = Math.atan2(v.x, -v.z); // 0 when looking north
+    el.current.style.transform = `rotate(${-a}rad)`;
+  });
+  return null;
+}
+
+/** A measure line on the ground with end ticks and a label. */
+function Measure({ a, b, label, cx, cz, y = 0.2, color = '#1f4a36' }: { a: [number, number]; b: [number, number]; label: string; cx: number; cz: number; y?: number; color?: string }) {
+  const P = (p: [number, number]): [number, number, number] => [p[0] - cx, y, cz - p[1]];
+  const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1, nx = (-dy / L) * 1.5, ny = (dx / L) * 1.5;
+  return (
+    <group userData={{ noExport: true }}>
+      <Line points={[P(a), P(b)]} color={color} lineWidth={1.6} />
+      <Line points={[P([a[0] - nx, a[1] - ny]), P([a[0] + nx, a[1] + ny])]} color={color} lineWidth={1.6} />
+      <Line points={[P([b[0] - nx, b[1] - ny]), P([b[0] + nx, b[1] + ny])]} color={color} lineWidth={1.6} />
+      <Tag text={label} at={P([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2])} />
+    </group>
+  );
 }
 
 const TAGGED: RoomType[] = ['data_hall', 'reserve'];
 
-export default function Model3D({ concept, siteW, siteD, setback, layers, selected, onSelect, aerialId, edit, onMove, view, context }: {
+/** Hands the live scene to the parent (glTF export). */
+function Grab({ onScene }: { onScene?: (s: THREE.Scene) => void }) {
+  const scene = useThree((st) => st.scene);
+  useEffect(() => { onScene?.(scene); }, [scene, onScene]);
+  return null;
+}
+
+/** A translucent box over a footprint, with an outline on the ground: selection, failure, proposal or live resize. */
+function Shell({ r, h, color, opacity, cx, cz, outline }: { r: EditRect; h: number; color: string; opacity: number; cx: number; cz: number; outline?: string }) {
+  const x0 = r.x - cx, x1 = r.x + r.w - cx, z0 = cz - r.y, z1 = cz - r.y - r.d;
+  return (
+    <group userData={{ noExport: true }}>
+      <mesh position={[(x0 + x1) / 2, h / 2 + 0.05, (z0 + z1) / 2]} renderOrder={5}>
+        <boxGeometry args={[r.w + 0.3, h, r.d + 0.3]} />
+        <meshStandardMaterial color={color} transparent opacity={opacity} depthWrite={false} />
+      </mesh>
+      {outline && <Line points={[[x0, 0.15, z0], [x1, 0.15, z0], [x1, 0.15, z1], [x0, 0.15, z1], [x0, 0.15, z0]]} color={outline} lineWidth={2.5} />}
+    </group>
+  );
+}
+
+type Side = 'e' | 'w' | 'n' | 's';
+/** Edge handles (drag to resize) and a corner handle (click to turn 90 degrees) on the selected placed object. */
+function Handles({ r, cx, cz, h, onGrab, onRotate }: { r: EditRect; cx: number; cz: number; h: number; onGrab: (side: Side) => void; onRotate?: () => void }) {
+  const y = Math.min(h, 6) + 0.6, s = Math.max(1.1, Math.min(2.4, Math.max(r.w, r.d) / 14));
+  const at: [Side, number, number][] = [['e', r.x + r.w, r.y + r.d / 2], ['w', r.x, r.y + r.d / 2], ['n', r.x + r.w / 2, r.y + r.d], ['s', r.x + r.w / 2, r.y]];
+  const edges = useMemo(() => new THREE.EdgesGeometry(new THREE.BoxGeometry(s, s, s)), [s]);
+  useEffect(() => () => edges.dispose(), [edges]);
+  return (
+    <group userData={{ noExport: true }}>
+      {at.map(([side, x, yy]) => (
+        <mesh key={side} position={[x - cx, y, cz - yy]} renderOrder={30} onPointerDown={(e) => { e.stopPropagation(); onGrab(side); }}
+          onPointerOver={() => { document.body.style.cursor = side === 'e' || side === 'w' ? 'ew-resize' : 'ns-resize'; }} onPointerOut={() => { document.body.style.cursor = ''; }}>
+          <boxGeometry args={[s, s, s]} />
+          <meshBasicMaterial color="#ffffff" depthTest={false} />
+          <lineSegments geometry={edges} renderOrder={31}><lineBasicMaterial color="#1f4a36" depthTest={false} /></lineSegments>
+        </mesh>
+      ))}
+      {onRotate && (
+        <mesh position={[r.x + r.w - cx + s * 1.4, y, cz - r.y - r.d - s * 1.4]} rotation={[Math.PI / 2, 0, 0]} renderOrder={30}
+          onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onRotate(); }}
+          onPointerOver={() => { document.body.style.cursor = 'pointer'; }} onPointerOut={() => { document.body.style.cursor = ''; }}>
+          <torusGeometry args={[s * 0.7, s * 0.22, 8, 24]} />
+          <meshBasicMaterial color="#6fa24e" depthTest={false} />
+        </mesh>
+      )}
+    </group>
+  );
+}
+
+export default function Model3D({ concept, siteW, siteD, setback, layers, selected, onSelect, aerialId, edit, onMove, view, context, editor, cooling = 'liquid', compassRef, envelope, comps }: {
   concept: Concept; siteW: number; siteD: number; setback: number; layers: Layers; selected: string | null;
   onSelect: (code: string | null) => void; aerialId: string | null; edit: boolean; onMove: (m: MoveEdit) => void; view: ViewPreset;
-  context: { url: string; lat: number; lon: number } | null;
+  context: { url: string; lat: number; lon: number } | null; editor?: Editor3D;
+  /** brief cooling type (draws CDUs or CRAHs), the toolbar's north arrow, and the brief's building envelope size */
+  cooling?: string; compassRef?: React.RefObject<HTMLElement | null>; envelope?: { w: number; d: number };
+  /** CoStar properties around the site, drawn as blocks (Layers > Context) */
+  comps?: { parcelId: string | null; lat: number; lon: number } | null;
 }) {
   const cx = siteW / 2, cz = siteD / 2;
   const b = concept.building;
@@ -316,7 +482,17 @@ export default function Model3D({ concept, siteW, siteD, setback, layers, select
     // frame once per concept so the camera does not jump while editing
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [concept.id, siteW, siteD]);
-  const building = useMemo(() => buildBuilding(concept, layers.racks, only, zOf), [concept, layers.racks, only, zOf]);
+  const draw: Draw = useMemo(() => ({ racks: layers.racks, walls: layers.walls ?? true, columns: layers.columns ?? true, slabs: layers.slabs ?? true,
+    isolate: !!layers.isolate, units: layers.units ?? true, equipment: layers.equipment ?? true, cooling }),
+  [layers.racks, layers.walls, layers.columns, layers.slabs, layers.isolate, layers.units, layers.equipment, cooling]);
+  const building = useMemo(() => buildBuilding(concept, draw, only, zOf), [concept, draw, only, zOf]);
+  // section: cut the building through its middle (east-west) and drop the half nearer the camera. Three's z is the
+  // site's -y, so the kept (north) half is z <= the cut line. Zooming keeps the cut; any other view clears it.
+  const [section, setSection] = useState(false);
+  useEffect(() => { if (view.preset === 'section') setSection(true); else if (view.preset !== 'zoomIn' && view.preset !== 'zoomOut') setSection(false); }, [view]);
+  const cutZ = cz - (b.y + b.d / 2);
+  const clip = useMemo(() => (section ? [new THREE.Plane(new THREE.Vector3(0, 0, -1), cutZ)] : null), [section, cutZ]);
+  const exits = useMemo(() => (layers.tags && layers.labelMode === 'all' && !layers.isolate && only !== 1 && only !== 2 ? exitsOf(concept) : []), [concept, layers.tags, layers.labelMode, layers.isolate, only]);
   const roofPanels = useMemo(() => (layers.roof > 0 && only === null ? buildRoof(concept, top + 1.1) : []), [concept, layers.roof, only, top]);
   const yard = useMemo(() => concept.yard.map((r) => ({ r, ...buildYard(r, concept) })), [concept]);
   const fence = useMemo(() => {
@@ -341,10 +517,43 @@ export default function Model3D({ concept, siteW, siteD, setback, layers, select
     e.stopPropagation();
     setDrag({ code: isYard(code) ? code : 'BUILDING', dx: 0, dy: 0, sx: p.x, sz: p.z });
   };
+  // resizing a placed object by one edge, and placing a new object under the pointer
+  const [size, setSize] = useState<{ code: string; side: Side; r0: EditRect; r: EditRect } | null>(null);
+  const [hover, setHover] = useState<{ x: number; y: number } | null>(null);
+  const placing = editor?.placing ?? null;
+  const site = (p: THREE.Vector3) => ({ x: p.x + cx, y: cz - p.z });
   const move = (e: ThreeEvent<PointerEvent>) => {
-    if (!drag) return;
     const p = ground(e);
-    if (p) setDrag({ ...drag, dx: Math.round(p.x - drag.sx), dy: Math.round(drag.sz - p.z) });
+    if (!p) return;
+    if (placing) setHover(site(p));
+    if (size) {
+      const q = site(p), { r0 } = size, min = 0.3, snap = (n: number) => Math.round(n * 2) / 2;
+      const r = { ...r0 };
+      if (size.side === 'e') r.w = Math.max(min, snap(q.x - r0.x));
+      if (size.side === 'w') { r.x = Math.min(snap(q.x), r0.x + r0.w - min); r.w = r0.x + r0.w - r.x; }
+      if (size.side === 'n') r.d = Math.max(min, snap(q.y - r0.y));
+      if (size.side === 's') { r.y = Math.min(snap(q.y), r0.y + r0.d - min); r.d = r0.y + r0.d - r.y; }
+      setSize({ ...size, r });
+    }
+    if (drag) setDrag({ ...drag, dx: Math.round(p.x - drag.sx), dy: Math.round(drag.sz - p.z) });
+  };
+  useEffect(() => {
+    if (!size) return;
+    const up = () => {
+      const { code, r, r0 } = size;
+      if (r.w !== r0.w || r.d !== r0.d || r.x !== r0.x || r.y !== r0.y) editor?.onResize?.(code, r);
+      setSize(null); document.body.style.cursor = '';
+    };
+    window.addEventListener('pointerup', up);
+    return () => window.removeEventListener('pointerup', up);
+  }, [size, editor]);
+  const drop = (e: ThreeEvent<PointerEvent>) => {
+    if (!placing || !editor?.onPlace) return;
+    const p = ground(e);
+    if (!p) return;
+    e.stopPropagation();
+    const q = site(p);
+    editor.onPlace(Math.round(q.x - placing.w / 2), Math.round(q.y - placing.d / 2));
   };
   useEffect(() => {
     if (!drag) return;
@@ -371,21 +580,24 @@ export default function Model3D({ concept, siteW, siteD, setback, layers, select
 
   return (
     <Canvas dpr={[1, 2]} camera={{ position: [frame.target[0] + frame.span * 0.62, frame.span * 0.72, frame.target[2] + frame.span * 0.86], fov: 36, near: 1, far: 14000 }}
-      onPointerMissed={() => onSelect(null)} style={{ cursor: drag ? 'grabbing' : edit ? 'grab' : 'auto' }}>
+      onPointerMissed={() => { if (!placing) onSelect(null); }} style={{ cursor: drag ? 'grabbing' : placing ? 'copy' : edit ? 'grab' : 'auto' }}>
+      <Grab onScene={editor?.onScene} />
       <color attach="background" args={['#e7ebe4']} />
       <fog attach="fog" args={['#e7ebe4', frame.span * 5, frame.span * 16]} />
       <hemisphereLight args={['#ffffff', '#a4b09d', 0.8]} />
       <directionalLight position={[reach * 0.9, reach * 1.25, reach * 0.55]} intensity={2.0} />
       <directionalLight position={[-reach * 0.6, reach * 0.5, -reach * 0.8]} intensity={0.35} />
-      <Rig view={view} target={frame.target} span={frame.span} />
+      <Rig view={view} target={frame.target} span={frame.span} sec={{ x: b.x + b.w / 2 - cx, z: cutZ, w: b.w }} />
+      <CompassSync el={compassRef} />
 
       {/* ground: the real aerial of the site, or the Vexcel 3D mesh of the surroundings */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.12, 0]} onPointerMove={move}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.12, 0]} onPointerMove={move} onPointerUp={drop} userData={{ noExport: true }}>
         <planeGeometry args={[8000, 8000]} />
         <meshStandardMaterial color="#dce2d6" roughness={1} transparent={!!context} opacity={context ? 0 : 1} depthWrite={!context} />
       </mesh>
-      {showAerial && <Safe><Suspense fallback={null}><Aerial id={aerialId!} half={half} /></Suspense></Safe>}
-      {context && <Safe><Suspense fallback={null}><VexcelContext url={context.url} lat={context.lat} lon={context.lon} /></Suspense></Safe>}
+      {showAerial && <group userData={{ noExport: true }}><Safe><Suspense fallback={null}><Aerial id={aerialId!} half={half} /></Suspense></Safe></group>}
+      {context && <group userData={{ noExport: true }}><Safe><Suspense fallback={null}><VexcelContext url={context.url} lat={context.lat} lon={context.lon} /></Suspense></Safe></group>}
+      {comps && <group userData={{ noExport: true }}><Safe><Suspense fallback={null}><CostarComps3D parcelId={comps.parcelId} lat={comps.lat} lon={comps.lon} radiusM={900} /></Suspense></Safe></group>}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.04, 0]}>
         <planeGeometry args={[siteW, siteD]} />
         <meshStandardMaterial color={showAerial || context ? '#f4f6f1' : '#d5dece'} transparent opacity={showAerial ? 0.18 : context ? 0.5 : 1} roughness={1} />
@@ -408,27 +620,41 @@ export default function Model3D({ concept, siteW, siteD, setback, layers, select
           </mesh>
         )}
         <GroundShadow r={{ x: b.x - 0.45, y: b.y - 0.45, w: b.w + 0.9, d: b.d + 0.9 }} h={top + 1} cx={cx} cz={cz} />
-        <Boxes boxes={building.solid} cx={cx} cz={cz} onPick={onSelect} onDown={down} />
-        <Boxes boxes={building.glow} cx={cx} cz={cz} kind="glow" />
-        <Boxes boxes={building.glass} cx={cx} cz={cz} kind="glass" />
+        <Boxes boxes={building.solid} cx={cx} cz={cz} onPick={onSelect} onDown={down} clip={clip} />
+        <Boxes boxes={building.glow} cx={cx} cz={cz} kind="glow" clip={clip} />
+        <Boxes boxes={building.glass} cx={cx} cz={cz} kind="glass" clip={clip} />
         {layers.roof > 0 && only === null && (
           <>
             <mesh position={pos(b, top + 0.95)}>
               <boxGeometry args={[b.w + 0.9, 0.3, b.d + 0.9]} />
-              <meshStandardMaterial color="#f1f3ee" transparent opacity={layers.roof} depthWrite={layers.roof > 0.95} roughness={0.9} />
+              <meshStandardMaterial color="#f1f3ee" transparent opacity={layers.roof} depthWrite={layers.roof > 0.95} roughness={0.9} clippingPlanes={clip} />
             </mesh>
-            <Boxes boxes={roofPanels} cx={cx} cz={cz} />
+            <Boxes boxes={roofPanels} cx={cx} cz={cz} clip={clip} />
           </>
         )}
         {sel && !isYard(sel.code) && shown(sel) && (
-          <mesh position={pos(sel, zOf(sel.level ?? 0) + WALL / 2 + 0.2)}>
+          <mesh position={pos(sel, zOf(sel.level ?? 0) + WALL / 2 + 0.2)} userData={{ noExport: true }}>
             <boxGeometry args={[sel.w + 0.3, WALL + 0.5, sel.d + 0.3]} />
-            <meshStandardMaterial color="#2f9a63" transparent opacity={0.22} depthWrite={false} />
+            <meshStandardMaterial color="#2f7fd0" transparent opacity={0.24} depthWrite={false} />
           </mesh>
         )}
-        {layers.tags && concept.rooms.filter((r) => shown(r) && (TAGGED.includes(r.type) || r.code === selected)).map((r) => (
-          <Tag key={r.code} text={r.name} at={pos(r, zOf(r.level ?? 0) + WALL + 2.5)} strong={r.code === selected} />
-        ))}
+        <Boxes boxes={building.cols} cx={cx} cz={cz} clip={clip} />
+        {editor?.bad?.BUILDING && (
+          <>
+            <Shell r={b} h={top + 1.4} color="#d2483b" opacity={0.2} cx={cx} cz={cz} outline="#b3362b" />
+            <Tag text={editor.bad.BUILDING[0]} at={pos(b, top + 9)} tone="bad" />
+          </>
+        )}
+        {(layers.tags || selected) && concept.rooms.filter((r) => shown(r) && r.type !== 'corridor' && (r.code === selected || (layers.tags && !layers.isolate && (layers.labelMode === 'all' || TAGGED.includes(r.type))))).map((r) => {
+          const z0 = zOf(r.level ?? 0) + WALL, z1 = z0 + (layers.labelMode === 'all' ? 3 : 6);
+          return (
+            <group key={r.code} userData={{ noExport: true }}>
+              <Line points={[pos(r, z0), pos(r, z1)]} color={r.code === selected ? '#2f7fd0' : '#4d5a51'} lineWidth={1.2} />
+              <Tag text={layers.labelMode === 'all' ? r.code : r.name} at={pos(r, z1 + 1.2)} strong={r.code === selected} />
+            </group>
+          );
+        })}
+        {exits.map((x, i) => <Tag key={`exit${i}`} text="EXIT" at={[x.x - cx + (x.side === 'e' ? 2 : x.side === 'w' ? -2 : 0), 1.5, cz - x.y + (x.side === 'n' ? -2 : x.side === 's' ? 2 : 0)]} tone="ghost" />)}
       </group>
 
       {/* outdoor plant: each item moves on its own */}
@@ -450,20 +676,75 @@ export default function Model3D({ concept, siteW, siteD, setback, layers, select
               </mesh>
             </group>
           ))}
-          {selected === r.code && (
-            <mesh position={pos(r, 2.2)}>
-              <boxGeometry args={[r.w + 0.4, 4.4, r.d + 0.4]} />
-              <meshStandardMaterial color="#2f9a63" transparent opacity={0.2} depthWrite={false} />
-            </mesh>
+          {selected === r.code && !editor?.bad?.[r.code] && (
+            <Shell r={r} h={Math.max(2, (r.h ?? SHADOW_H[r.type] ?? 3) + 0.6)} color="#2f7fd0" opacity={0.22} cx={cx} cz={cz} outline={edit ? '#1d5fa3' : undefined} />
           )}
-          {layers.tags && <Tag text={r.name} at={pos(r, 9)} strong={r.code === selected} />}
+          {editor?.bad?.[r.code] && (
+            <Shell r={r} h={Math.max(2, (r.h ?? SHADOW_H[r.type] ?? 3) + 0.8)} color="#d2483b" opacity={selected === r.code ? 0.34 : 0.24} cx={cx} cz={cz} outline="#b3362b" />
+          )}
+          {editor?.bad?.[r.code] ? <Tag text={`${r.code}: ${editor.bad[r.code][0]}`} at={pos(r, 11)} tone="bad" />
+            : layers.tags && <Tag text={r.name} at={pos(r, 9)} strong={r.code === selected} />}
         </group>
       ))}
 
+      {edit && sel && editor?.resizable?.(sel.code) && !drag && (() => {
+        const r = size?.code === sel.code ? size.r : sel;
+        const h = sel.h ?? SHADOW_H[sel.type] ?? 3;
+        return (
+          <>
+            {size?.code === sel.code && <Shell r={r} h={Math.max(2, h + 0.6)} color="#6fa24e" opacity={0.3} cx={cx} cz={cz} outline="#1f4a36" />}
+            {size?.code === sel.code && <Tag text={`${r.w.toFixed(1)} x ${r.d.toFixed(1)} m`} at={pos(r, 12)} tone="ghost" />}
+            <Handles r={r} cx={cx} cz={cz} h={h}
+              onGrab={(side) => setSize({ code: sel.code, side, r0: { x: sel.x, y: sel.y, w: sel.w, d: sel.d }, r: { x: sel.x, y: sel.y, w: sel.w, d: sel.d } })}
+              onRotate={editor.onRotate ? () => editor.onRotate!(sel.code) : undefined} />
+          </>
+        );
+      })()}
+      {editor?.toolbar && sel && !drag && !size && concept.yard.some((y) => y.code === sel.code) && (
+        <Html position={[sel.x + sel.w / 2 - cx, Math.max(4, (sel.h ?? SHADOW_H[sel.type] ?? 3) + 3), cz - sel.y - sel.d / 2]} zIndexRange={[40, 0]} style={{ pointerEvents: 'auto' }}
+          calculatePosition={(el, camera, size) => { // keep the toolbar inside the view
+            const v = new THREE.Vector3().setFromMatrixPosition(el.matrixWorld).project(camera);
+            const x = (v.x * 0.5 + 0.5) * size.width, y = (-v.y * 0.5 + 0.5) * size.height;
+            return [Math.max(126, Math.min(size.width - 126, x)), Math.max(215, Math.min(size.height - 70, y))];
+          }}>
+          <div style={{ transform: 'translate(-50%, calc(-100% - 14px))' }}>{editor.toolbar}</div>
+        </Html>
+      )}
+      {editor?.ghostBar && editor.ghosts?.[0] && (() => {
+        const g = editor.ghosts[0];
+        return (
+          <Html position={[g.x + g.w / 2 - cx, Math.max(4, (g.h ?? 3) + 5), cz - g.y - g.d / 2]} zIndexRange={[40, 0]} style={{ pointerEvents: 'auto' }}
+            calculatePosition={(el, camera, size) => {
+              const v = new THREE.Vector3().setFromMatrixPosition(el.matrixWorld).project(camera);
+              const x = (v.x * 0.5 + 0.5) * size.width, y = (-v.y * 0.5 + 0.5) * size.height;
+              return [Math.max(110, Math.min(size.width - 110, x)), Math.max(40, Math.min(size.height - 120, y))];
+            }}>
+            <div style={{ transform: 'translate(-50%, 14px)' }}>{editor.ghostBar}</div>
+          </Html>
+        );
+      })()}
+      {editor?.ghosts?.map((g) => (
+        <group key={g.code}>
+          <Shell r={g} h={Math.max(1.5, g.h ?? SHADOW_H[g.type] ?? 3)} color="#c9ec7a" opacity={0.42} cx={cx} cz={cz} outline="#6fa24e" />
+          <Tag text={`Proposal: ${g.name}`} at={pos(g, Math.max(4, (g.h ?? 3) + 5))} tone="ghost" />
+        </group>
+      ))}
+      {placing && hover && (
+        <Shell r={{ x: hover.x - placing.w / 2, y: hover.y - placing.d / 2, w: placing.w, d: placing.d }} h={2.5} color="#6fa24e" opacity={0.35} cx={cx} cz={cz} outline="#1f4a36" />
+      )}
+      {layers.dims && (
+        <>
+          <Measure a={[b.x, b.y - 8]} b={[b.x + b.w, b.y - 8]} label={`Building ${b.w.toFixed(1)} m`} cx={cx} cz={cz} />
+          <Measure a={[b.x - 8, b.y]} b={[b.x - 8, b.y + b.d]} label={`${b.d.toFixed(1)} m`} cx={cx} cz={cz} />
+          {setback > 0 && <Measure a={[siteW / 2, 0]} b={[siteW / 2, setback]} label={`Setback ${setback} m`} cx={cx} cz={cz} color="#6f8f79" />}
+          {envelope && <Tag text={`Envelope ${envelope.w.toFixed(0)} x ${envelope.d.toFixed(0)} m · site ${siteW.toFixed(0)} x ${siteD.toFixed(0)} m`} at={[0, 2, cz - setback + 4]} />}
+        </>
+      )}
+      {layers.equipIds && layers.yard && concept.equipment.map((e) => <Tag key={e.code} text={e.code} at={[e.x + e.w / 2 - cx, 5.2, cz - e.y - e.d / 2]} />)}
       {(['power', 'cooling', 'data'] as const).map((k, ki) => layers[k] && concept.routes[k].map((line, i) => (
         <Line key={`${k}${i}`} points={line.map(([x, y]) => [x - cx, top + 1.6 + ki * 0.5, cz - y] as [number, number, number])} color={ROUTE_COLOR[k]} lineWidth={2.5} />
       )))}
-      <OrbitControls makeDefault enabled={!drag} target={frame.target} maxPolarAngle={Math.PI / 2.06} minDistance={10} maxDistance={frame.span * 7} />
+      <OrbitControls makeDefault enabled={!drag && !size} target={frame.target} maxPolarAngle={Math.PI / 2.06} minDistance={10} maxDistance={frame.span * 7} />
     </Canvas>
   );
 }

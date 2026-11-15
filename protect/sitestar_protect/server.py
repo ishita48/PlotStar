@@ -8,19 +8,44 @@ POST /api/sim/key/{k}        drive the built-in fake board (only with --sim)
 POST /api/badge/{uid}        simulate a card tap at the lobby panel (manager / any card)
 POST /api/badges/manager/{uid}   make this card the manager card (saved to config/badges.json)
 WS   /ws                     snapshot pushed 4x per second
+
+Security: when PROTECT_TOKEN is set, every /api/* request and the /ws socket must carry it (header X-Protect-Token,
+or ?token= on the socket) unless the request comes straight from this computer. Requests through a tunnel or from
+another machine always need it. The operator page this server serves on localhost keeps working without it.
 """
 from __future__ import annotations
 
 import asyncio
+import hmac
+import os
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 STATIC = Path(__file__).resolve().parent / "static"
+LOOPBACK = {"127.0.0.1", "::1", "localhost"}
+# A tunnel (cloudflared) also connects from loopback, but always adds these headers.
+PROXY_HEADERS = ("cf-connecting-ip", "cf-ray", "x-forwarded-for", "x-forwarded-host")
+
+
+def _token() -> str:
+    return os.getenv("PROTECT_TOKEN", "").strip()
+
+
+def _direct_local(host: Optional[str], headers) -> bool:
+    return host in LOOPBACK and not any(h in headers for h in PROXY_HEADERS)
+
+
+def token_ok(given: Optional[str], host: Optional[str], headers) -> bool:
+    """True when no token is configured, the caller is this computer directly, or the token matches."""
+    want = _token()
+    if not want or _direct_local(host, headers):
+        return True
+    return bool(given) and hmac.compare_digest(given.encode(), want.encode())
 
 
 class Reply(BaseModel):
@@ -39,6 +64,14 @@ class Project(BaseModel):
 
 def create_app(ctrl, sim_board=None) -> FastAPI:
     app = FastAPI(title="SiteStar PROTECT")
+    @app.middleware("http")
+    async def require_token(request: Request, call_next):
+        if request.url.path.startswith("/api/") and request.method != "OPTIONS":
+            host = request.client.host if request.client else None
+            if not token_ok(request.headers.get("x-protect-token"), host, request.headers):
+                return JSONResponse({"error": "PROTECT token required"}, status_code=401)
+        return await call_next(request)
+
     app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
     @app.get("/")
@@ -133,6 +166,11 @@ def create_app(ctrl, sim_board=None) -> FastAPI:
 
     @app.websocket("/ws")
     async def ws(sock: WebSocket):
+        host = sock.client.host if sock.client else None
+        given = sock.headers.get("x-protect-token") or sock.query_params.get("token")
+        if not token_ok(given, host, sock.headers):
+            await sock.close(code=1008)
+            return
         await sock.accept()
         try:
             while True:

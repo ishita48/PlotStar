@@ -4,20 +4,22 @@ import type { GateResult } from '@/lib/types';
 export type RoomType =
   | 'data_hall' | 'electrical' | 'battery' | 'mechanical' | 'corridor' | 'support' | 'network' | 'loading' | 'reserve'
   | 'yard_sub' | 'yard_gen' | 'yard_cool' | 'yard_water' | 'yard_bess' | 'yard_solar' | 'yard_parking' | 'yard_wall'
-  | 'yard_trees' | 'yard_guard';
+  | 'yard_trees' | 'yard_guard' | 'yard_fence' | 'yard_cooling' | 'sensor' | 'custom';
 
 /** A row of rack positions. `v` marks a row that runs north-south (after the building is rotated). */
 export interface RackRow { x: number; y: number; w: number; d: number; n: number; cap: number; v?: boolean }
 export interface Room {
   code: string; name: string; type: RoomType; x: number; y: number; w: number; d: number; h?: number;
-  area_m2?: number; need_m2?: number; added?: boolean; level?: number; z?: number; hall?: number; racks?: number; positions?: number; mw?: number; rows?: RackRow[];
+  area_m2?: number; need_m2?: number; added?: boolean; source?: string; level?: number; z?: number; hall?: number; racks?: number; positions?: number; mw?: number; rows?: RackRow[];
 }
-export interface Check { name: string; ok: boolean; detail: string }
+export interface Check { name: string; ok: boolean; detail: string; required?: boolean; codes?: string[] }
 export type Factor = 'money' | 'people' | 'planet' | 'resources';
 
 export interface Concept {
   id: string; name: string; strategy: string; feasible: boolean; rank: number; score: number;
   scores: Record<Factor, number>; advantage: string; tradeoff: string;
+  /** which of the explored variants this is, a one-line reason with real numbers, and whether the user edited it */
+  variant?: { strategy: string; rotated: boolean; plant_side: string }; why?: string; edited?: boolean; removed?: string[];
   building: { x: number; y: number; w: number; d: number; h: number; storeys: number; floor_h: number };
   rotated: boolean;
   rooms: Room[]; yard: Room[];
@@ -31,12 +33,13 @@ export interface Concept {
     generators: number;
   };
   money: {
-    capex: number; shell: number; equipment: number; distribution: number; interconnect: number; added: number; energy_per_year: number;
+    capex: number; shell: number; equipment: number; distribution: number; interconnect: number; added: number; uncosted?: string[]; energy_per_year: number;
     land: number; total_investment: number; revenue_per_year: number; npv: number; npv_p10: number; npv_p50: number; npv_p90: number;
     payback_years: number | null; months_to_power: number; analysis_years: number;
     energy_per_year_flat: number; opex_per_year: number; water_per_year: number; ten_year: number;
   };
-  people: { noise_at_boundary_dba: number; noise_at_home_dba: number | null; generator_to_boundary_m: number; home_distance_m: number | null; noise_wall: boolean };
+  /** noise and generator distance are null when the generator yard has been removed */
+  people: { noise_at_boundary_dba: number | null; noise_at_home_dba: number | null; generator_to_boundary_m: number | null; home_distance_m: number | null; noise_wall: boolean };
   planet: {
     co2_t_per_year: number; co2_t_per_year_flat: number; embodied_t: number; roof_solar_kwp: number; canopy_solar_kwp: number; roof_solar_mwh: number;
     roof_solar_share: number; solar_avoided_t: number;
@@ -68,12 +71,17 @@ export interface StudioResult {
 }
 
 export type AddedType = 'yard_bess' | 'yard_solar' | 'yard_water' | 'yard_parking' | 'yard_wall' | 'yard_trees' | 'yard_guard';
+/** Everything the design editor can place (the engine measures all of them; custom objects are not costed). */
+export type PlaceType = AddedType | 'yard_fence' | 'yard_cooling' | 'sensor' | 'custom';
+export interface AddedItem { code: string; type: PlaceType; x: number; y: number; w: number; d: number; name?: string; h?: number; source?: string }
 /** The user's changes to one concept. Sent with every request so the engine re-measures the edited layout. */
 export interface ConceptEdit {
   building: { dx: number; dy: number };
   rotate: boolean;
   yard: Record<string, { x: number; y: number }>;
-  added: { code: string; type: AddedType; x: number; y: number; w: number; d: number }[];
+  added: AddedItem[];
+  /** codes of generated yard items the user deleted; the engine fails the checks that needed them */
+  removed?: string[];
 }
 export type Edits = Record<string, ConceptEdit>;
 
@@ -110,6 +118,10 @@ export const TYPE_STYLE: Record<RoomType, { fill: string; stroke: string; label:
   yard_wall: { fill: '#b5bcb4', stroke: '#4d564f', label: 'Noise wall' },
   yard_trees: { fill: '#cfe0c6', stroke: '#4f7f55', label: 'Tree buffer' },
   yard_guard: { fill: '#efe6cf', stroke: '#8a8062', label: 'Gatehouse' },
+  yard_fence: { fill: '#c9cec8', stroke: '#4d564f', label: 'Fence' },
+  yard_cooling: { fill: '#d5e6ef', stroke: '#3d7391', label: 'Extra heat rejection' },
+  sensor: { fill: '#e3f3c4', stroke: '#1f4a36', label: 'HAVEN sensor' },
+  custom: { fill: '#efe9f6', stroke: '#6f6596', label: 'Custom object' },
 };
 
 export const ROUTE_COLOR = { power: '#c26a12', cooling: '#2f7fb0', data: '#7a5fc0' } as const;
@@ -134,6 +146,10 @@ export const WHY: Record<RoomType, string> = {
   yard_wall: 'A noise wall you added. Within 20 m of the generator yard it is counted as an 8 dBA reduction (a team assumption).',
   yard_trees: 'A planted buffer you added. It stays open land and adds landscaping cost.',
   yard_guard: 'A gatehouse you added at the site entrance.',
+  yard_fence: 'A fence line you added. It is measured for clashes and setbacks.',
+  yard_cooling: 'Extra outdoor heat rejection you added, on top of the yard sized from the IT load.',
+  sensor: 'A HAVEN sensor you placed. It is small and only checked for position.',
+  custom: 'An object you described. The engine measures it for clashes, setbacks and coverage but does not cost it.',
 };
 
 export const money = (n: number) =>

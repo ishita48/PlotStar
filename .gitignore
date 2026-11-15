@@ -33,7 +33,9 @@ venv/
 .DS_Store
 Thumbs.db
 
-# Tello bridge: saved camera frames stay on the demo laptop
+# Tello bridge: hotspot settings, the drone's remembered address and saved camera frames stay on the demo laptop
+.hotspot
+.drone.json
 captures/
 services/api/agent_workspace/notes/*
 
@@ -56,3 +58,12 @@ web/data/costar-sites.json
 web/data/media/
 bridge/.cache/
 bridge/.env
+
+# go-live.ps1 logs
+.geostar-live/
+
+# Vercel CLI link
+.vercel
+
+.vercel
+.env*

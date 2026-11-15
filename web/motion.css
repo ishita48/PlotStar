@@ -191,6 +191,15 @@
 .dr-off .fine { color: rgba(240, 239, 236, 0.6); max-width: 300px; margin: 0 auto; }
 .dr-off-art { width: 128px; height: 128px; margin: 0 auto 6px; filter: drop-shadow(0 20px 14px rgba(0, 0, 0, 0.5)); animation: hover 3.8s ease-in-out infinite; }
 .dr-off-art .drone { width: 100%; height: 100%; }
+.dr-hotspot { justify-self: center; margin-top: 10px; padding: 9px 18px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.35); background: rgba(255, 255, 255, 0.08); color: #fff; font: inherit; font-size: 14px; cursor: pointer; transition: background 0.2s, border-color 0.2s; }
+.dr-hotspot:hover:not(:disabled) { background: rgba(255, 255, 255, 0.16); border-color: rgba(255, 255, 255, 0.6); }
+.dr-hotspot:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.dr-hotspot:disabled { opacity: 0.55; cursor: default; }
+.dr-off .dr-hotspot-msg:empty { display: none; }
+.dr-off.hotspot { overflow-y: auto; place-content: safe center; }
+.dr-off.hotspot .dr-off-art { width: 72px; height: 72px; margin-bottom: 0; }
+@media (max-width: 560px) { .dr-off.hotspot .dr-off-art { display: none; } }
+.dr-off .dr-hotspot-msg.err { color: #ff9a9a; }
 @keyframes hover { 0%, 100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-9px) rotate(2deg); } }
 .dr-hud { position: absolute; inset: 0; pointer-events: none; color: #fff; font-family: var(--mono); font-size: 11px; letter-spacing: 0.07em; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
 .dr-hud .c { position: absolute; width: 24px; height: 24px; border: 2px solid rgba(255, 255, 255, 0.92); }

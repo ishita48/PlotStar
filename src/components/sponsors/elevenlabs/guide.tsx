@@ -220,6 +220,24 @@ function GuideInner({ body, conceptId, selected, stage, market, hasSite, onApply
     }
   }
   function stop() { endSession(); setOpen(false); setPointer(null); setCompact(false); }
+
+  // The Hey Geo circle is the voice home: with "Voice: ElevenLabs" chosen in Geo's settings it starts and stops this
+  // conversation (window event "geostar:guide" { action }), and shows its state (window event "geostar:guide-state").
+  const control = useRef({ start, stop, open });
+  control.current = { start, stop, open };
+  useEffect(() => {
+    const onControl = (e: Event) => {
+      const action = (e as CustomEvent<{ action?: string }>).detail?.action;
+      const c = control.current;
+      if (action === 'start' || (action === 'toggle' && !c.open)) void c.start();
+      else if (action === 'stop' || action === 'toggle') c.stop();
+    };
+    window.addEventListener('geostar:guide', onControl);
+    return () => window.removeEventListener('geostar:guide', onControl);
+  }, []);
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('geostar:guide-state', { detail: { open, status, speaking: isSpeaking, error } }));
+  }, [open, status, isSpeaking, error]);
   function send(e: React.FormEvent) { e.preventDefault(); if (typed.trim() && live) { sendUserMessage(typed.trim()); setLines((l) => [...l.slice(-5), { who: 'you', text: typed.trim() }]); setTyped(''); } }
 
   const label = status === 'connecting' ? 'Connecting…' : !live ? 'Talk to GeoStar' : isSpeaking ? 'Speaking' : muted ? 'Muted' : 'Listening';
@@ -236,11 +254,8 @@ function GuideInner({ body, conceptId, selected, stage, market, hasSite, onApply
         </div>
       )}
 
-      {!open ? (
-        <button className={s.orbBtn} onClick={() => void start()} data-guide-ui aria-label="Talk to the GeoStar guide">
-          <AudioLines size={16} /> Talk to GeoStar
-        </button>
-      ) : (
+      {/* No launcher of its own: the Hey Geo circle starts this conversation when Geo's voice is set to ElevenLabs. */}
+      {!open ? null : (
         compact ? (
         <section className={s.pill} data-guide-ui aria-label="GeoStar voice guide, collapsed" style={place}
           onPointerDown={onDragStart} onPointerMove={onDragMove} onPointerUp={(e) => { if (!onDragEnd() && !(e.target as Element).closest('button')) setCompact(false); }}>

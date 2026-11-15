@@ -173,3 +173,45 @@
 .st-page {
   padding-bottom: 96px;
 }
+
+/* ---------- top bar: Deal desk, More menu, account */
+.st-top-nav { align-items: center; flex-wrap: nowrap; }
+.st-more { position: relative; }
+.st-more-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 60;
+  min-width: 210px;
+  display: grid;
+  padding: 6px;
+  border: 1px solid var(--st-line);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 18px 40px -20px rgba(16, 20, 17, 0.35);
+}
+.st-more-menu a,
+.st-top-nav .st-more-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  font-family: var(--ps-sans, inherit);
+  font-size: 13.5px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--st-ink);
+  text-align: left;
+}
+.st-more-menu a:hover,
+.st-top-nav .st-more-menu button:hover { background: var(--st-tint); color: var(--st-ink); }
+.st-more-menu hr { margin: 4px 6px; border: 0; border-top: 1px solid var(--st-line-2); }
+.st-top-nav .st-more-menu .st-more-reset { color: #b3362b; }
+.st-top-nav .gs-account-link,
+.st-top-nav .gs-account-cta { font-family: var(--ps-sans, inherit); font-size: 13px; letter-spacing: 0; text-transform: none; }
+.st-top-nav a.gs-account-cta { background: #101411; border-color: #101411; color: #fff; }
+.st-top-nav a.gs-account-cta:hover { background: var(--gs-brand); border-color: var(--gs-brand); color: #fff; }

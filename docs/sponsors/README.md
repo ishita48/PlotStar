@@ -9,7 +9,7 @@ GeoStar's own engines (layout, screening, public data, grid, optimizer) are in `
 
 | Sponsor | What it does in GeoStar | Backend | Frontend | Notes |
 |---|---|---|---|---|
-| **CoStar** | Real Houston and LA properties, sale comps, underwriting, tenancy, homes, redevelopment; the GeoStar CoStar **MCP server** (15 tools) | `sponsors/costar/` | `sponsors/costar/` (dossier, deal desk, existing vs proposed) | [costar.md](costar.md), [data dictionary](costar-data-dictionary.md) |
+| **CoStar** | Real Houston and LA properties, sale comps, underwriting, tenancy, homes, redevelopment; the GeoStar CoStar **MCP server** (15 tools) | `sponsors/costar/` | `sponsors/costar/` (dossier, deal desk, ranked list, comps in 3D, citation chips, existing vs proposed) | [costar.md](costar.md), [data dictionary](costar-data-dictionary.md) |
 | **Matterport** (CoStar) | Site walk: pin notes in 3D and measure inside a building's scan; measurements fill the conversion check | `sponsors/matterport/` | `sponsors/matterport/site-walk.tsx` | [matterport.md](matterport.md) |
 | **Vexcel** | Aerial photos under every plan and 3D model; 3D city mesh context | `sponsors/vexcel/` | `sponsors/vexcel/` | [vexcel.md](vexcel.md) |
 | **LangChain** | Deep Agents orchestrator + six specialists on LangGraph, traced in LangSmith; one chat agent across the Studio; live Agent Intelligence graph | `sponsors/langchain/` | `sponsors/langchain/` | [langchain.md](langchain.md) |
@@ -17,7 +17,7 @@ GeoStar's own engines (layout, screening, public data, grid, optimizer) are in `
 | **Google Gemini** | Embeddings for Atlas Vector Search; number-checked concept summaries | `sponsors/gemini/` | (server only) | [gemini.md](gemini.md) |
 | **ElevenLabs** | Voice guide ("Talk to GeoStar") and text-to-speech | `sponsors/elevenlabs/` | `sponsors/elevenlabs/` | [elevenlabs.md](elevenlabs.md) |
 | **Amazon (AWS)** | Bedrock as an optional model provider; container deployment notes | `sponsors/amazon/` | (none) | [amazon.md](amazon.md). Not used by the live demo |
-| **ChatOverflow** | Field notes shared between coding agents while building GeoStar | (dev tool) | (none) | [chatoverflow.md](chatoverflow.md) |
+| **ChatOverflow** | Field notes shared between coding agents while building GeoStar, shown on `/studio/built-with`; failed integration calls are looked up on ChatOverflow and the matching note ids are attached to the error | `sponsors/chatoverflow/` | `sponsors/chatoverflow/` | [chatoverflow.md](chatoverflow.md) |
 
 The models behind the agents are Anthropic Claude (`claude-sonnet-5-5` orchestrator, `claude-haiku-5-5` specialists).
 

@@ -134,7 +134,8 @@ class Ctx:
     def run(self, brief: dict[str, Any]) -> dict[str, Any]:
         r = self.req
         return layout_engine.generate(brief, r.get("site") or {}, self.grid(), r.get("priorities") or {},
-                                      r.get("assumptions") or {}, r.get("edits") or {})
+                                      r.get("assumptions") or {}, r.get("edits") or {},
+                                      keep=[r["concept_id"]] if r.get("concept_id") else None)
 
     @property
     def base(self) -> dict[str, Any]:
@@ -144,7 +145,7 @@ class Ctx:
 
     def concept(self, result: dict | None = None) -> dict:
         res = result or self.base
-        return (next((c for c in res["concepts"] if c["id"] == self.concept_id), None)
+        return (next((c for c in res["concepts"] if c["id"] == layout_engine._alias(self.concept_id or "")), None)
                 or next(c for c in res["concepts"] if c["rank"] == 1))
 
     @property
@@ -201,7 +202,7 @@ def _fmt(v: Any, unit: str, d: int) -> str:
 
 def consequences(before: dict, after: dict, concept_id: str | None) -> dict[str, Any]:
     """Before/after for one concept between two engine runs. Pure arithmetic on engine outputs."""
-    cb = next((c for c in before["concepts"] if c["id"] == concept_id), None) or before["concepts"][0]
+    cb = next((c for c in before["concepts"] if c["id"] == layout_engine._alias(concept_id or "")), None) or before["concepts"][0]
     ca = next((c for c in after["concepts"] if c["id"] == cb["id"]), None) or after["concepts"][0]
     rows = []
     for label, get, unit, d, lower in _METRICS:

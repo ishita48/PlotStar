@@ -2,6 +2,7 @@
 
 POST /agents/site-evaluation       Studio generate body (+ stage) -> {run_id}; the orchestrator scores the site
 POST /agents/chat                  question + the Studio's live state -> {run_id}; one conversational agent everywhere
+POST /agents/debate                finance, community and grid specialists argue the concept choice in rounds -> {run_id}
 GET  /agents/runs                  recent runs
 GET  /agents/runs/{id}             snapshot: nodes, plan, findings, evidence (without raw data), score, answer
 GET  /agents/runs/{id}/stream      server-sent events: node, plan, evidence, finding, score, proposal, answer, status
@@ -21,7 +22,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from app.sponsors.langchain.deep_agents import agents, runtime
+from app.sponsors.langchain.deep_agents import agents, debate, runtime
 from app.routers.studio import GenerateIn
 
 router = APIRouter(prefix="/agents", tags=["agents"])
@@ -63,6 +64,16 @@ def chat(q: ChatIn) -> dict[str, Any]:
     req = _req(q) | dict(selected=q.selected, facility_id=q.facility_id,
                          last_score={k: (q.last_score or {}).get(k) for k in ("verdict", "score")} if q.last_score else None)
     run = agents.start_chat(q.question, req, f"chat-{q.thread_id}", q.stage)
+    return {"run_id": run.id, "status": run.status}
+
+
+class DebateIn(EvaluateIn):
+    question: str | None = Field(None, max_length=300)
+
+
+@router.post("/debate")
+def start_debate(q: DebateIn) -> dict[str, Any]:
+    run = debate.start(_req(q), q.question)
     return {"run_id": run.id, "status": run.status}
 
 

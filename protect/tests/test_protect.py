@@ -494,3 +494,36 @@ def test_connect_endpoint(tmp_path):
     assert r.status_code == 200 and r.json()["facility"]["id"] == "studio-wind-1"
     assert client.get("/api/state").json()["team_app"]["facility_id"] == "studio-wind-1"
     assert client.post("/api/haven/link", json={"id": "Bad Id", "name": "x"}).status_code == 400
+
+
+def _token_client(tmp_path, client_addr=None):
+    from fastapi.testclient import TestClient
+    from sitestar_protect.haven_bridge import HavenBridge
+    from sitestar_protect.server import create_app
+    b = load_building(); m = Messenger(None)
+    c = ProtectController(b, NullLink(), m, badges_path=tmp_path / "badges.json",
+                          haven=HavenBridge(None, link_path=tmp_path / "link.json"))
+    kw = {"client": client_addr} if client_addr else {}
+    return TestClient(create_app(c), **kw)
+
+
+def test_token_required_on_api_when_set(tmp_path, monkeypatch):
+    monkeypatch.setenv("PROTECT_TOKEN", "t" * 48)
+    client = _token_client(tmp_path)
+    assert client.get("/api/state").status_code == 401
+    assert client.get("/api/state", headers={"X-Protect-Token": "wrong"}).status_code == 401
+    assert client.post("/api/haven/link", json={"id": "studio-x", "name": "X"}).status_code == 401
+    ok = client.get("/api/state", headers={"X-Protect-Token": "t" * 48})
+    assert ok.status_code == 200 and "team_app" in ok.json()
+    assert client.get("/").status_code == 200  # the operator page itself is not an /api route
+
+
+def test_token_not_needed_without_it_or_from_this_computer(tmp_path, monkeypatch):
+    monkeypatch.delenv("PROTECT_TOKEN", raising=False)
+    assert _token_client(tmp_path).get("/api/state").status_code == 200
+    monkeypatch.setenv("PROTECT_TOKEN", "t" * 48)
+    local = _token_client(tmp_path, ("127.0.0.1", 50000))
+    assert local.get("/api/state").status_code == 200  # Sid's own operator page
+    # the same loopback address through a tunnel still needs the token
+    assert local.get("/api/state", headers={"cf-connecting-ip": "203.0.113.9"}).status_code == 401
+    assert local.get("/api/state", headers={"cf-ray": "abc", "X-Protect-Token": "t" * 48}).status_code == 200
