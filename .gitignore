@@ -61,3 +61,9 @@ bridge/.env
 
 # go-live.ps1 logs
 .geostar-live/
+
+# Vercel CLI link
+.vercel
+
+.vercel
+.env*
