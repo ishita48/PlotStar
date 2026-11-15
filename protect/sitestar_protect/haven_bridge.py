@@ -44,7 +44,7 @@ class HavenBridge:
     # ------------------------------------------------------------------ API
     def incident(self, kind: str, title: str) -> None:
         if self.base and kind in KIND_FOR:
-            self._q.put({"action": "trigger", "kind": KIND_FOR[kind], "_why": title})
+            self._q.put({"action": "trigger", "kind": KIND_FOR[kind], "live": True, "_why": title})
 
     def approved(self) -> None:
         if self.base:
@@ -57,7 +57,8 @@ class HavenBridge:
     def snapshot(self) -> dict:
         f = self.facility or {}
         return {"url": self.base, "ok": self.ok, "error": self.error, "facility": f.get("name"),
-                "facility_id": f.get("id"), "last": self.last, "log": self.log[-8:]}
+                "facility_id": f.get("id") or os.environ.get("HAVEN_FACILITY"), "last": self.last,
+                "log": self.log[-8:]}
 
     # -------------------------------------------------------------- plumbing
     def _http(self, method: str, path: str, body: Optional[dict] = None) -> dict:

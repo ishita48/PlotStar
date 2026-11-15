@@ -49,6 +49,10 @@ def cmd_run(a) -> int:
     lobby_port = a.lobby or ("none" if a.sim else "auto")
     lobby = NullLink() if lobby_port == "none" else SerialLink(
         lobby_port, on_line=lambda ln: ref["c"].on_lobby_line(ln), role="lobby")
+    if isinstance(lobby, SerialLink):
+        # The UNO R4 WiFi recovers from a RESET only while its port stays open; reopening it mid-boot
+        # wedges it. So never auto-reconnect it on silence (the ESP32 keeps its watchdog).
+        lobby.silent_timeout = None
     from .haven_bridge import HavenBridge
 
     if a.haven_facility:

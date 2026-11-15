@@ -56,6 +56,8 @@ def create_app(ctrl, sim_board=None) -> FastAPI:
 
     @app.post("/api/manager/reply")
     def reply(body: Reply):
+        if body.text.strip().upper() in ("YES", "NO"):     # Approve / Decline on the dashboard
+            ctrl.acknowledge_alarm(body.channel or "dashboard")
         ctrl.messenger.receive(body.text, body.sender or "manager", body.channel or "dashboard")
         return {"ok": True}
 

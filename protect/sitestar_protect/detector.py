@@ -105,6 +105,7 @@ class Detector:
         self.active: dict[str, Incident] = {}
         self.all: list[Incident] = []
         self._vfault_since: Optional[float] = None
+        self._vsw_seen = False      # the micro switch has been pressed at least once = it is mounted
 
     def _conditions(self, r: Reading) -> dict[str, bool]:
         hw = self.b.hardware_map
@@ -112,8 +113,11 @@ class Detector:
         rh = self.h.series("rh", HUMIDITY_WINDOW_S)
         if len(rh) >= 2:
             rh_spike = (rh[-1][1] - min(v for _, v in rh)) >= HUMIDITY_SPIKE_PTS
-        # The valve reports what it was told; the micro switch reports what it actually did.
-        if r.vsw is False and not r.valve_open:
+        # The valve reports what it was told; the micro switch reports what it actually did. Only trust
+        # the switch once it has been pressed at least once (a loose, unmounted switch is never pressed).
+        if r.vsw:
+            self._vsw_seen = True
+        if self._vsw_seen and r.vsw is False and not r.valve_open:
             self._vfault_since = self._vfault_since or r.ts
         else:
             self._vfault_since = None

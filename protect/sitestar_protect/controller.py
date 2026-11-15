@@ -197,8 +197,21 @@ class ProtectController:
         print(f"[lobby] badge {uid} tapped ({'manager card' if role == 'manager' else 'not a manager card'})")
         self.last_badge = {"uid": uid, "role": role, "t": time.time(), "result": "..."}
         self._log(f"badge {uid} tapped at the lobby", "lobby")
+        if role == "manager":
+            self.acknowledge_alarm("manager card")
         if self.commander:
             self.commander.handle_badge(uid, role)
+
+    def _alarm_needs_sounder(self) -> bool:
+        """Smoke and a jammed valve keep the sounder on whatever a manager says."""
+        return any(i.kind in ("smoke", "valve_fault") for i in self.detector.active.values())
+
+    def acknowledge_alarm(self, by: str) -> None:
+        """A manager has seen the leak: stop the sounder (the valve stays shut, the incident stays open)."""
+        with self.lock:
+            if self.buzz and not self._alarm_needs_sounder():
+                self.buzz = 0
+                self._log(f"leak alarm acknowledged ({by})", by)
 
     def badge_result(self, uid: str, result: str, icon: str, text: str, secs: float = 6.0) -> None:
         """Called by the commander once it has decided what a tap means."""
@@ -283,7 +296,10 @@ class ProtectController:
                 below = self.building.below.get(inc.room)
                 if below in self.room_state:
                     self._room(below, 1)
-                self.buzz = max(self.buzz, 1)
+                # Full alarm, not a chirp: it keeps sounding until the probe is wiped dry or a
+                # manager acknowledges (card tap, or Approve / Decline on the dashboard).
+                self.buzz = 2
+                acts.append("leak alarm ON until the probe is dry or a manager card is tapped")
             elif inc.kind == "smoke":
                 self.strobe, self.buzz, self.fan = True, 2, 0.0
                 acts += ["strobe ON", "alarm sounder ON", "cooling fan OFF (stop smoke spread)",
@@ -335,6 +351,8 @@ class ProtectController:
                 below = self.building.below.get(inc.room)
                 if below in self.room_state:
                     self._room(below, 0)
+                if not self._alarm_needs_sounder():
+                    self.buzz = 0                        # probe wiped dry: leak alarm off
             if not self.detector.active:
                 self.buzz = 0
                 if self.fan > 0 and inc.kind in ("overheat", "humidity_spike"):

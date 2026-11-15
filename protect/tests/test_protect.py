@@ -232,6 +232,11 @@ def test_smoke_shuts_fire_door_and_reopens_after(tmp_path):
 def test_valve_switch_catches_a_jammed_valve(tmp_path):
     c, m = rig(tmp_path)
     t0 = time.time()
+    c.ingest(reading(valve_open=False, vsw=False, ts=t0 - 10))
+    c.ingest(reading(valve_open=False, vsw=False, ts=t0 - 7))
+    assert not c.detector.all                                 # switch never pressed yet: not mounted, no alarm
+    c.ingest(reading(valve_open=False, vsw=True, ts=t0 - 5))  # now it has been seen pressed: trust it
+    c.ingest(reading(valve_open=True, vsw=False, ts=t0 - 3))
     c.ingest(reading(valve_open=False, vsw=False, ts=t0))
     assert not c.detector.all                                 # grace period while the servo moves
     c.ingest(reading(valve_open=False, vsw=False, ts=t0 + 2.0))
@@ -404,3 +409,48 @@ def test_joystick_steps_cut_live_and_silences_alarm(tmp_path):
     c.ingest(reading(jy=2050, jsw=True, ts=t0 + 2))           # press = ACK
     link = RecLink(); c.link = link; c.tick()
     assert "buzz=0" in link.sent[0]
+
+
+def test_warnings_need_no_approval(tmp_path):
+    c, m = rig(tmp_path)
+    for rh in (46, 47, 50, 55, 61):
+        c.ingest(reading(rh=float(rh)))
+    inc = next(i for i in c.detector.all if i.kind == "humidity_spike")
+    assert wait_for(lambda: inc.agent_state == "done")
+    assert not c.commander.pending
+
+
+def test_leak_alarm_sounds_until_probe_is_dry(tmp_path):
+    c, m = rig(tmp_path)
+    c.ingest(reading())
+    c.ingest(reading(leak=2600, wet=True, valve_open=False))
+    assert c.buzz == 2                                        # full alarm, not a chirp
+    for _ in range(5):                                        # still wet: keeps sounding
+        c.ingest(reading(leak=2600, wet=True, valve_open=False))
+    assert c.buzz == 2
+    c.ingest(reading(valve_open=False))                       # probe wiped dry
+    assert c.buzz == 0
+
+
+def test_manager_card_acknowledges_leak_alarm_while_still_wet(tmp_path):
+    c, m = rig(tmp_path)
+    c.make_manager_card("20111B5C")
+    c.ingest(reading(leak=2600, wet=True, valve_open=False))
+    assert c.buzz == 2
+    c.on_badge("A1B2C3D4")                                    # not a manager card: keeps sounding
+    assert c.buzz == 2
+    c.on_badge("20111B5C")
+    assert c.buzz == 0
+    assert c.want_valve_open is False                         # valve stays shut, incident stays open
+    assert c.detector.active
+    c.ingest(reading(leak=2600, wet=True, valve_open=False))  # still wet: stays quiet once acknowledged
+    assert c.buzz == 0
+
+
+def test_manager_card_does_not_silence_smoke(tmp_path):
+    c, m = rig(tmp_path)
+    c.make_manager_card("20111B5C")
+    c.ingest(reading())
+    c.ingest(reading(beam=200, smoke=True))
+    c.on_badge("20111B5C")
+    assert c.buzz == 2

@@ -98,7 +98,7 @@ static const uint16_t DOOR_OPEN_US     = 1900;  // door held open (like a magnet
 static const uint16_t DOOR_CLOSED_US   = 1000;   // door swung shut
 // Servos run from the ESP32's VIN pin (USB 5V). Ramp slowly, one servo at a time, and go limp once
 // in position, so the current spikes never pull USB down far enough to reset the board.
-static const uint16_t SERVO_STEP_US    = 8;     // per step
+static const uint16_t SERVO_STEP_US    = 20;    // per 15 ms step: ~0.7 s for the 90-degree valve swing
 static const uint16_t SERVO_STEP_MS    = 15;    // ~0.5 s for a full 90-degree move
 static const uint16_t SERVO_HOLD_MS    = 300;   // keep pulsing this long after arriving, then go limp
 static const bool     HAS_BUTTON       = false; // true once the button + 10k pull-up are wired (else GPIO36
@@ -107,7 +107,8 @@ static const bool     DISABLE_BROWNOUT = true;  // USB-powered servos dip the 3.
 static const uint32_t LEAK_DRY_MS      = 3000;  // must read dry this long before "cleared"
 static const float    SMOKE_ON_FRAC    = 0.55f; // beam below 55 % of clear baseline = smoke
 static const float    SMOKE_OFF_FRAC   = 0.75f;
-static const float    FAN_MIN_DUTY     = 0.38f;
+static const float    FAN_MIN_DUTY     = 0.62f;   // on ~5 V USB minus the L293D's ~1.8 V drop, less than this stalls the motor
+static const uint16_t FAN_KICK_MS      = 250;     // full-power burst when starting from a stop (breaks static friction)
 static const float    THERM_R_FIXED = 10000.0f, THERM_R25 = 10000.0f, THERM_BETA = 3950.0f;
 static const uint32_t LINK_TIMEOUT_MS  = 3000;
 
@@ -201,7 +202,11 @@ static void fanTask() {
   float step = 0.02f;                                   // full speed in ~1 s
   if (fanApplied < fanLevel) fanApplied = min(fanLevel, fanApplied + step);
   else if (fanApplied > fanLevel) fanApplied = max(fanLevel, fanApplied - 4 * step);   // slowing down is safe
+  static uint32_t kickUntil = 0; static bool wasStopped = true;
+  if (fanApplied >= 0.05f && wasStopped) kickUntil = millis() + FAN_KICK_MS;
+  wasStopped = fanApplied < 0.05f;
   float duty = fanApplied < 0.05f ? 0.0f : FAN_MIN_DUTY + fanApplied * (1.0f - FAN_MIN_DUTY);
+  if (millis() < kickUntil) duty = 1.0f;
   pwmWrite(PIN_FAN_EN, CH_FAN, (uint32_t)(duty * 255));
 }
 Ticker roomMux;
@@ -347,6 +352,7 @@ bool rfidOk = false;
 char lastUid[24] = ""; uint32_t lastUidMs = 0;
 static void rfidInit() {
   rfid.PCD_Init();
+  rfid.PCD_SetAntennaGain(rfid.RxGain_max);   // clone boards read far better at max gain
   byte v = rfid.PCD_ReadRegister(MFRC522::VersionReg);
   bool ok = !(v == 0x00 || v == 0xFF);
   if (ok && !rfidOk) Serial.printf("RFID ready chip=0x%02X\n", v);
@@ -356,6 +362,9 @@ static void pollRfid() {
   static uint32_t lastInit = 0;
   if (!HAS_RFID) return;
   if (!rfidOk) { if (millis() - lastInit > 3000) { lastInit = millis(); rfidInit(); } return; }  // plugged in later? keep trying
+  // Clone RC522s can go deaf after a while (motor/servo noise on the supply): re-initialise every 5 s
+  // while no card is being read. Costs ~2 ms, invisible to the demo.
+  if (millis() - lastInit > 5000) { lastInit = millis(); rfidInit(); }
   if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) return;
   char uid[24]; int n = 0;
   for (byte i = 0; i < rfid.uid.size && n < 21; i++) n += snprintf(uid + n, sizeof uid - n, "%02X", rfid.uid.uidByte[i]);
