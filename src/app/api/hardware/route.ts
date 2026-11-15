@@ -3,7 +3,7 @@
 // forwards grid controls and approvals, and connects the kit to a project ("link").
 import { z } from 'zod';
 import { guardOrigin, HttpError, readJSON, routeError } from '@/lib/http';
-import { linkHardware, PROTECT_BASE as BASE } from '@/lib/hardware/protect';
+import { linkHardware, protectFetch } from '@/lib/hardware/protect';
 
 export const dynamic = 'force-dynamic';
 const projectSchema = z.object({
@@ -20,7 +20,7 @@ type Incident = {
 
 export async function GET() {
   try {
-    const r = await fetch(`${BASE}/api/state`, { cache: 'no-store', signal: AbortSignal.timeout(2500) });
+    const r = await protectFetch('/api/state', { signal: AbortSignal.timeout(2500) });
     if (!r.ok) return Response.json({ online: false }, { headers: { 'Cache-Control': 'no-store' } });
     const s = await r.json();
     const power = s.power ?? {};
@@ -85,7 +85,7 @@ export async function POST(req: Request) {
     if (!make) throw new HttpError(400, 'Unknown hardware action.');
     const depth = Number.isInteger(body.depth) && body.depth! >= 10 && body.depth! <= 90 ? body.depth : undefined;
     const [path, payload] = make(depth);
-    const r = await fetch(`${BASE}${path}`, {
+    const r = await protectFetch(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),

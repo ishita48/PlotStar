@@ -7,37 +7,31 @@ import {
   type ProtectionState,
 } from './engine';
 
-// Additive storage in the existing SQLite database. Parameterized SQL also works with
-// the current generated Prisma client while an original demo is running on Windows.
-export async function ensureTable() {
-  await db.$executeRaw`CREATE TABLE IF NOT EXISTS "ProtectionWorkspace" ("id" TEXT NOT NULL PRIMARY KEY, "snapshot" TEXT NOT NULL, "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)`;
-}
+// One row per facility in the ProtectionWorkspace model: the facility's whole HAVEN state as JSON. Plain Prisma calls,
+// so the same code runs on SQLite (local) and Postgres (Neon, on Vercel).
 export async function loadProtection(facility: Facility): Promise<ProtectionState> {
-  await ensureTable();
-  const rows = await db.$queryRaw<
-    { snapshot: string }[]
-  >`SELECT "snapshot" FROM "ProtectionWorkspace" WHERE "id" = ${facility.id}`;
-  return rows[0] ? JSON.parse(rows[0].snapshot) : initialProtectionState(facility);
+  const row = await db.protectionWorkspace.findUnique({ where: { id: facility.id }, select: { snapshot: true } });
+  return row ? JSON.parse(row.snapshot) : initialProtectionState(facility);
 }
 export async function changeProtection(
   facility: Facility,
   revision: number,
   command: ProtectionAction,
 ) {
-  await ensureTable();
   return db.$transaction(async (tx) => {
-    const rows = await tx.$queryRaw<
-      { snapshot: string }[]
-    >`SELECT "snapshot" FROM "ProtectionWorkspace" WHERE "id" = ${facility.id}`;
-    const previous: ProtectionState = rows[0]
-      ? JSON.parse(rows[0].snapshot)
-      : initialProtectionState(facility);
+    const row = await tx.protectionWorkspace.findUnique({ where: { id: facility.id }, select: { snapshot: true } });
+    const previous: ProtectionState = row ? JSON.parse(row.snapshot) : initialProtectionState(facility);
     if (previous.revision !== revision)
       throw new Error(
         'This facility changed in another window. Reload its latest state before retrying.',
       );
     const next = transitionProtection(previous, command);
-    await tx.$executeRaw`INSERT INTO "ProtectionWorkspace" ("id", "snapshot", "updatedAt") VALUES (${facility.id}, ${JSON.stringify(next)}, CURRENT_TIMESTAMP) ON CONFLICT("id") DO UPDATE SET "snapshot" = excluded."snapshot", "updatedAt" = CURRENT_TIMESTAMP`;
+    const snapshot = JSON.stringify(next);
+    await tx.protectionWorkspace.upsert({
+      where: { id: facility.id },
+      create: { id: facility.id, snapshot },
+      update: { snapshot },
+    });
     return next;
   });
 }
