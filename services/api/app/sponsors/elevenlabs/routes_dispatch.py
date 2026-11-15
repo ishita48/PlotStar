@@ -10,6 +10,8 @@ GET  /haven/dispatch/call/{call_id}  call status and transcript
 """
 from __future__ import annotations
 
+import hmac
+import os
 import re
 from typing import Any, Literal
 
@@ -48,8 +50,20 @@ def status() -> dict[str, Any]:
 LOCAL = re.compile(r"^https?://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$")
 
 
+def _dispatch_token() -> str:
+    from dotenv import dotenv_values
+    from app import config
+    return (os.getenv("DISPATCH_TOKEN") or dotenv_values(config.REPO_ROOT / ".env").get("DISPATCH_TOKEN") or "").strip()
+
+
 def _local_only(request: Request) -> None:
-    """Real phone calls only from the operator's own machine: never through a public tunnel or a hosted page."""
+    """Real phone calls: from the operator's own machine, or from the GeoStar site's server, which proves itself
+    with the shared DISPATCH_TOKEN (and only calls when the facility has an active fire or leak incident).
+    A browser or anyone else reaching this API through the public tunnel is refused."""
+    want = _dispatch_token()
+    given = request.headers.get("x-dispatch-token") or ""
+    if want and given and hmac.compare_digest(given.encode(), want.encode()):
+        return
     origin = request.headers.get("origin") or ""
     tunnelled = any(h in request.headers for h in ("cf-connecting-ip", "cf-ray", "x-forwarded-for"))
     if tunnelled or (origin and not LOCAL.match(origin)):

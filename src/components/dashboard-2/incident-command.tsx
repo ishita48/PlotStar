@@ -460,6 +460,7 @@ function EmergencyDispatch({
         </div>
         <LiveEmergencyCall
           status={dispatch}
+          facility={state.facility}
           incident={{
             incident_id: primary.id,
             incident: primary.name,

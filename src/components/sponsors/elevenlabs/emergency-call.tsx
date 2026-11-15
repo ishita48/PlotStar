@@ -49,7 +49,12 @@ export function useDispatchStatus(): DispatchStatus | null {
 
 const DONE = new Set(['done', 'failed']);
 
-export function LiveEmergencyCall({ status, incident }: { status: DispatchStatus; incident: DispatchIncident }) {
+export function LiveEmergencyCall({ status, incident, facility }: {
+  status: DispatchStatus;
+  incident: DispatchIncident;
+  /** The facility whose saved HAVEN state the server checks for an active fire or leak before it dials. */
+  facility: { id: string; name: string; city: string; type: string };
+}) {
   const [confirming, setConfirming] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -94,13 +99,14 @@ export function LiveEmergencyCall({ status, incident }: { status: DispatchStatus
     setPlacing(true);
     setError(null);
     try {
-      const r = await fetch(`${PUBLIC_DATA_API}/haven/dispatch/call`, {
+      // The site's own server checks the incident is real and holds the calling secret (src/app/api/haven/call).
+      const r = await fetch('/api/haven/call', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(incident),
+        body: JSON.stringify({ facility }),
       });
       const d = await r.json();
-      if (!r.ok || !d.conversation_id) throw new Error(d.detail || 'The call could not be placed.');
+      if (!r.ok || !d.conversation_id) throw new Error(d.error || d.detail || 'The call could not be placed.');
       setCall({ id: d.conversation_id, startedAt: d.started_at });
       setCallStatus('initiated');
       setTurns([]);
