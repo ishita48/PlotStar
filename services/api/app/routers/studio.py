@@ -12,11 +12,13 @@ import threading
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
-import httpx
 from pydantic import BaseModel, Field
 
-from .. import assumptions as A
-from .. import config, grid, layout_engine, store
+from app.engine import assumptions as A
+from app import config
+from app.engine import grid, layout_engine
+from app.sponsors.gemini import client as gemini
+from app.sponsors.mongodb import store
 
 router = APIRouter(tags=["studio"])
 
@@ -170,11 +172,7 @@ def explain(q: ExplainIn) -> dict[str, Any]:
               "Say what it costs, what it is good at, and its main trade-off. All figures are estimates; say so once.\n\n"
               + "\n".join(f"- {k}: {v}" for k, v in facts.items()))
     try:
-        res = httpx.post(f"https://generativelanguage.googleapis.com/v1beta/models/{config.GEMINI_MODEL}:generateContent",
-                         headers={"x-goog-api-key": config.GEMINI_API_KEY},
-                         json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=25)
-        res.raise_for_status()
-        text = "".join(part.get("text", "") for part in res.json()["candidates"][0]["content"]["parts"]).strip()
+        text = gemini.generate(prompt)
     except Exception as e:  # network, quota or an unexpected response shape: keep the built-in text
         out["written_by"] += f" Gemini was not reachable ({type(e).__name__})."
         return out

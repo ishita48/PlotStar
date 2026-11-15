@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from app import optimizer as O
+from app.engine import optimizer as O
 
 PRICE = [30.0] * 24
 PRICE[18] = 200.0  # one expensive evening hour

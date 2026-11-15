@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { AgentView } from '@/components/studio/agent-view';
+import { AgentView } from '@/components/sponsors/langchain/agent-view';
 import '../studio.css';
 import '../agents.css';
 import './agent.css';

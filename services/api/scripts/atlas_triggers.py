@@ -122,7 +122,7 @@ def main() -> int:
     print("TRIGGERS:", [(t["name"], t["type"], "disabled" if t.get("disabled") else "enabled") for t in final])
     try:  # tell the API's in-app worker which rules Atlas now owns
         sys.path.insert(0, str(ROOT / "services" / "api"))
-        from app import atlas
+        from app.sponsors.mongodb import atlas
         db = atlas._db()
         if db is not None:
             db.meta.update_one({"_id": "atlas_triggers"}, {"$set": {"app_id": app["_id"], "triggers": [t["name"] for t in final], "at": atlas._now()}}, upsert=True)

@@ -8,10 +8,10 @@ from datetime import date
 import pytest
 from fastapi.testclient import TestClient
 
-from app.costar import comps as C
-from app.costar import market as M
-from app.costar import valuation as V
-from app.costar.loader import Enums
+from app.sponsors.costar import comps as C
+from app.sponsors.costar import market as M
+from app.sponsors.costar import valuation as V
+from app.sponsors.costar.loader import Enums
 from app.db import db_ready, session
 
 ENUMS = Enums({

@@ -1,7 +1,7 @@
 'use client';
 // Import your own design: drop a DXF, a blueprint image or a PDF, see it in 2D and 3D, move shapes, set the footprint,
 // pin suggestions on the drawing, then let GeoStar build the brief inside that footprint (POST /blueprint/build).
-// Geometry comes from services/api/app/cad_import.py (DXF) or Claude vision (images, PDFs); the layouts come from the
+// Geometry comes from services/api/app/engine/cad_import.py (DXF) or Claude vision (images, PDFs); the layouts come from the
 // layout engine. Nothing here invents numbers.
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from 'react';
 import dynamic from 'next/dynamic';

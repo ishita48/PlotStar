@@ -10,9 +10,9 @@ import pytest
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
 
-from app.deep import runtime, scoring
-from app.deep.agents import Findings, verify
-from app.deep.runtime import ORCHESTRATOR, Recorder, Run, costar_view
+from app.sponsors.langchain.deep_agents import runtime, scoring
+from app.sponsors.langchain.deep_agents.agents import Findings, verify
+from app.sponsors.langchain.deep_agents.runtime import ORCHESTRATOR, Recorder, Run, costar_view
 
 
 class FakeModel(GenericFakeChatModel):
@@ -153,7 +153,7 @@ def test_verification_flags_numbers_no_tool_returned():
 
 
 def test_costar_tools_are_served_over_mcp():
-    from app.deep.mcp_client import MCP
+    from app.sponsors.langchain.deep_agents.mcp_client import MCP
     if not MCP.ensure(timeout=60):
         pytest.skip(f"CoStar MCP unavailable here: {MCP.error}")
     names = {t.name for t in MCP.tools}

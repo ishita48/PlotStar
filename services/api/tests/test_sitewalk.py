@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from app import sitewalk
+from app.sponsors.matterport import sitewalk
 
 
 @pytest.fixture()

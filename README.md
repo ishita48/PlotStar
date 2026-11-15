@@ -151,18 +151,37 @@ Tests cover distinct scoring, brief parsing, dimensions and bounds, cost arithme
 
 ## Project layout
 
+Every sponsor has its own folder on both sides; see **[docs/sponsors/](docs/sponsors/README.md)** for the map.
+
 ```text
-src/app/                   Next.js pages and API routes
-src/components/            Landing, dashboard, Discover, Design, Protect, report, map, 2D/3D
-src/components/ui/         shadcn-style reusable Button with Radix Slot and CVA
-src/lib/engine.ts          Validated brief, ranking, geometry, financial and assistant calculations
-src/lib/monitoring.ts      Sensor plan, threshold processing, incident response and reset
-src/lib/llm.ts             Optional schema-validated language interpretation
-src/lib/report.ts          Shared HTML/PDF report content
-prisma/schema.prisma      Project, Sensor, Incident, Simulation, Message and amenity cache
-prisma/seed.ts             Idempotent demonstrations
-hardware/                 ESP32 example firmware
-tests/                    Calculation, API, SSE, hardware, browser and mobile tests
+services/api/app/                FastAPI backend (Python)
+  main.py, config.py, db.py        app wiring and settings
+  routers/                         GeoStar's own endpoints: studio, screening, projects, design import, optimizer, live grid
+  engine/                          GeoStar's deterministic engines: layout, screening, public data, ERCOT grid, optimizer
+  sponsors/costar/                 CoStar extract, intelligence tools, the CoStar MCP server, deal room, CoStar routes
+  sponsors/matterport/             site walk: notes pinned in 3D and measurements inside Matterport scans
+  sponsors/vexcel/                 aerial imagery and 3D city meshes
+  sponsors/langchain/              Deep Agents orchestrator + specialists (deep_agents/), copilot, research and deal agents
+  sponsors/mongodb/                Atlas: schema, search, vectors, geo, change streams, triggers, project store
+  sponsors/gemini/                 embeddings and concept summaries
+  sponsors/elevenlabs/             voice guide and text-to-speech
+  sponsors/amazon/                 Bedrock (optional model provider)
+services/api/tests/              backend tests (pytest)
+src/app/                         Next.js pages and API routes (/, /studio, /studio/agent, /studio/data, /explore, /dashboard-2)
+src/components/studio/           the Studio: brief, plan, 3D model, import, design
+src/components/sponsors/<name>/  sponsor UI: langchain (Agent Intelligence, Ask GeoStar), costar, matterport, vexcel,
+                                 mongodb (Data page), elevenlabs (voice guide)
+src/components/dashboard-2/      Smart Blocks: locate, design, protect, deploy (HAVEN command center)
+src/components/explore/          Live operations (/explore)
+src/components/workspace/        the original /projects workspace
+src/components/landing/, ui/     landing page; shared UI and charts
+src/lib/                         engine, monitoring, report, HAVEN store, API client
+prisma/                          local SQLite schema and seed
+bridge/, web/                    Tello drone and live grid bridge; SiteStar website
+twin/, protect/, hardware/       digital twin, PROTECT building module, ESP32 firmware
+mobile/                          iPhone app
+docs/sponsors/, docs/planning/   per-sponsor notes; product planning documents
+tests/                           frontend unit and browser tests
 ```
 
 Local mutation routes enforce same-origin browser requests and Zod input bounds; telemetry uses a constant-time bearer-token comparison and explicit device bindings. These measures do not replace multi-user identity and access control. `npm audit` is clean at verification time; the pinned Prisma 6 toolchain uses a patched `deepmerge-ts` override, checked through schema setup and builds.
@@ -209,7 +228,7 @@ It replaces illustrative candidates with real CoStar properties; every value tra
 cd services/api
 python -m venv .venv
 .venv\Scripts\pip install -r requirements.txt
-.venv\Scripts\python -m app.costar.loader      # builds data/cache/plotstar.db (~3 s)
+.venv\Scripts\python -m app.sponsors.costar.loader      # builds data/cache/plotstar.db (~3 s)
 .venv\Scripts\python -m pytest -q
 .venv\Scripts\python -m uvicorn app.main:app --reload --port 8000   # http://localhost:8000/docs
 ```
@@ -219,7 +238,7 @@ energy / water / carbon / capex), `GET /assumptions`, `/searches` (saved searche
 `GET /audit/parcel/{id}/{field}` (evidence chain), `GET /data/summary`, `GET /matterport/models/{id}`
 (server-side proxy; the token never reaches the browser), `GET /vexcel/ortho/{id}.jpg` and `GET /vexcel/3d/root`
 (Vexcel key stays server-side; 3D Tiles are pruned to the cells around the site). Kit findings and schema:
-[docs/costar_data_dictionary.md](docs/costar_data_dictionary.md).
+[docs/sponsors/costar-data-dictionary.md](docs/sponsors/costar-data-dictionary.md).
 
 Every number carries a label: Measured, Sourced, Estimated, Simulated or Utility-confirmed. Missing data is
 Unknown, never guessed. The CoStar kit, `.env` and SQLite caches are gitignored.

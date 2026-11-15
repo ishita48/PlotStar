@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app import config
-from app.costar import building as B
+from app.sponsors.costar import building as B
 from app.db import db_ready, session
 from app.main import app
 
@@ -88,7 +88,7 @@ def test_bad_ids():
 
 
 def test_conversion_screening(parcel):
-    from app.costar.building import conversion
+    from app.sponsors.costar.building import conversion
     small, big = conversion(parcel["parcel_id"], 1, 20), conversion(parcel["parcel_id"], 400, 20)
     assert small["status"] in ("fits", "tight", "does not fit") and "not engineering feasibility" in small["note"]
     floor = lambda d: next(k for k in d["checks"] if k["name"].startswith("Floor area"))

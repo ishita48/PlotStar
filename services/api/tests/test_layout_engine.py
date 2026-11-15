@@ -5,7 +5,7 @@ import math
 
 import pytest
 
-from app import layout_engine as L
+from app.engine import layout_engine as L
 
 GRID = {"price": [30 + (i % 12) * 3 for i in range(24)], "carbon": [350 + (i % 6) * 20 for i in range(24)]}
 SITE = {"gates": [{"gate": "Residential proximity", "status": "Pass", "value": 400},

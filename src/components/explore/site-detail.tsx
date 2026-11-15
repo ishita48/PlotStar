@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { Box, ChevronDown, Printer, X } from 'lucide-react';
 import { vexcelOrthoUrl } from '@/lib/plotstar-api';
-import { MatterportPanel } from '../site-evidence';
+import { MatterportPanel } from '../workspace/site-evidence';
 import type { OptimizeResult } from './optimize-types';
 import { PlanPanel } from './plan-panel';
 import type { ExploreSite } from './types';

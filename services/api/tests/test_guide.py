@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from app import guide
+from app.sponsors.elevenlabs import guide
 from app.main import app
 
 

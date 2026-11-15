@@ -13,7 +13,7 @@ from typing import Any
 import httpx
 from fastapi import APIRouter
 
-from ..external import USER_AGENT, _cached, _store
+from app.engine.external import USER_AGENT, _cached, _store
 
 router = APIRouter(tags=["context"])
 H = {"User-Agent": USER_AGENT}

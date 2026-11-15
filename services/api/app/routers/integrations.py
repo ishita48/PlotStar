@@ -13,8 +13,8 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, HTTPException
 
-from .. import config
-from ..db import db_ready, session
+from app import config
+from app.db import db_ready, session
 
 router = APIRouter(tags=["integrations"])
 

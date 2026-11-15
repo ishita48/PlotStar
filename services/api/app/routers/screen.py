@@ -17,10 +17,10 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from .. import assumptions, external
-from ..db import db_ready, session
-from ..screening import Thresholds, load_homes, screen_parcel
-from ..siting import METHOD, assemble, candidate_pool
+from app.engine import assumptions, external
+from app.db import db_ready, session
+from app.engine.screening import Thresholds, load_homes, screen_parcel
+from app.engine.siting import METHOD, assemble, candidate_pool
 
 router = APIRouter(tags=["search"])
 
@@ -47,7 +47,7 @@ def init() -> None:
 
 def _require_db() -> None:
     if not db_ready():
-        raise HTTPException(503, "Parcel store is empty. Run: python -m app.costar.loader")
+        raise HTTPException(503, "Parcel store is empty. Run: python -m app.sponsors.costar.loader")
 
 
 class ThresholdsIn(BaseModel):

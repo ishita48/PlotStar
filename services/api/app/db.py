@@ -5,7 +5,7 @@ import sqlite3
 from contextlib import contextmanager
 from typing import Iterator
 
-from .config import DB_PATH
+from app.config import DB_PATH
 
 
 def connect() -> sqlite3.Connection:

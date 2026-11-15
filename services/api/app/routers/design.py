@@ -18,8 +18,8 @@ from typing import Any, Literal
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from .. import assumptions as A
-from .. import config
+from app.engine import assumptions as A
+from app import config
 
 router = APIRouter(tags=["design"])
 
