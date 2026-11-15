@@ -102,6 +102,11 @@ GUARD_CM = 50                # a forward move must leave at least this much room
 TOF_EMPTY_MM = 8000          # the sensor reports 8190 mm when nothing is in range
 TOF_FRESH_S = 3.0
 COUNTDOWN_S = 1.0
+# While the drone is still (hovering, or on the ground once connected) the dot matrix scrolls this.
+IDLE_TEXT = "GEO"
+IDLE_COLOR = "b"             # r red, b blue, p purple
+IDLE_SCROLL_HZ = 2.5         # how fast the text slides past (the kit takes 0.1-10)
+STOP_HOLD_S = 2.0            # the red X stays this long before the display goes back to GEO
 
 
 def _pattern(rows, color):
@@ -123,6 +128,9 @@ DISPLAY = {
     "toward": _pattern(["...##...", "...##...", "...##...", "...##...", "...##...", "........", "...##...", "........"], "r"),
     "stop": _pattern(["#......#", ".#....#.", "..#..#..", "...##...", "...##...", "..#..#..", ".#....#.", "#......#"], "r"),
     "flash": "p" * 64,
+    # What the pages draw for the scrolling GEO (they show one still frame), and the fallback
+    # for firmware that can't scroll text.
+    "G": _pattern(["..####..", ".#....#.", ".#......", ".#..###.", ".#....#.", ".#....#.", "..####..", "........"], "b"),
 }
 # What the display shows while each command runs (sideways mirrored, see above).
 SHOW_FOR = {"up": "up", "down": "down", "left": "right", "right": "left", "forward": "toward",
@@ -162,6 +170,9 @@ class Drone:
         self.ahead_mm = None
         self.ahead_at = 0.0
         self.display = None          # the 64-character pattern on the dot matrix, if any
+        self.display_name = None     # what is showing: a DISPLAY key, "idle" (scrolling GEO) or None
+        self._display_want = None    # what hold-to-fly wants showing; _display_loop puts it up
+        self._display_at = 0.0
         self.mock_ahead_cm = 220
         # Wi-Fi map: where the drone is (dead reckoning from its moves since take-off, cm:
         # x right, y forward, yaw clockwise from the take-off heading) and the signal there.
@@ -180,6 +191,7 @@ class Drone:
         threading.Thread(target=self._tof_loop, daemon=True).start()
         threading.Thread(target=self._wifi_loop, daemon=True).start()
         threading.Thread(target=self._rc_loop, daemon=True).start()
+        threading.Thread(target=self._display_loop, daemon=True).start()
         if not mock:
             from djitellopy import Tello  # imported lazily so --mock works without it
             try:
@@ -379,6 +391,9 @@ class Drone:
             return  # hovering and nothing held: stay off the air
         self.rc_now = [now + max(-RC_SLEW, min(RC_SLEW, w - now)) for now, w in zip(self.rc_now, want)]
         right, forward, up, clockwise = self.rc_now
+        blocked = held and self.rc_target[1] > 0 and want[1] == 0
+        self._display_want = "stop" if blocked and not any(self.rc_now) else \
+            self._glide_display(self.rc_now) if any(self.rc_now) else "idle"
         if not self.mock:
             self.tello.send_rc_control(right, forward, up, clockwise)
         # Dead reckoning for the Wi-Fi map; much rougher than the step moves.
@@ -386,6 +401,33 @@ class Drone:
         self.pos_x += (forward * math.sin(rad) + right * math.cos(rad)) * k
         self.pos_y += (forward * math.cos(rad) - right * math.sin(rad)) * k
         self.yaw = (self.yaw + clockwise * k) % 360
+
+    @staticmethod
+    def _glide_display(sticks):
+        """The arrow for the strongest stick, as people in front of the drone see it (see SHOW_FOR)."""
+        axis = max(range(4), key=lambda i: abs(sticks[i]))
+        v = sticks[axis]
+        return [("left" if v > 0 else "right"), ("toward" if v > 0 else "hover"),
+                ("up" if v > 0 else "down"), "hover"][axis]
+
+    def _display_loop(self):
+        """Puts up what hold-to-fly asked for, between commands, and takes the red X down again."""
+        while True:
+            time.sleep(0.1)
+            if not (self.connected and self.expansion) or self._stepping:
+                continue
+            if self.display_name == "stop" and self._display_want == "stop" \
+                    and time.time() - self._display_at > STOP_HOLD_S:
+                self._display_want = "idle"
+            want = self._display_want
+            if want == self.display_name or not self.command_lock.acquire(blocking=False):
+                continue
+            try:
+                self._show(want)
+            except Exception as exc:
+                print(f"Display update failed ({exc})")
+            finally:
+                self.command_lock.release()
 
     def command(self, action):
         self._last_command_at = time.time()
@@ -428,7 +470,7 @@ class Drone:
             else:
                 ACTIONS[action](self.tello)
             self._move_pose(action)
-            self._show(None if action == "land" else "hover")
+            self._show("idle")
             if self.expansion:
                 self._read_tof()  # the view ahead changed; don't wait for the next poll
         finally:
@@ -576,7 +618,7 @@ class Drone:
         self.expansion = reply.startswith("tof")
         print("Expansion kit (dot matrix + ToF):", "found" if self.expansion else "not attached")
         if self.expansion:
-            self._show(None)
+            self._show("idle")
 
     def _read_tof(self):
         """Distance ahead in mm from the ToF sensor; None when nothing is in range."""
@@ -616,8 +658,18 @@ class Drone:
                              f"bring the drone within {GUARD_CM} cm of it. Turn or back up first.")
 
     def _show(self, name):
-        """Puts a pattern on the dot matrix (None clears it)."""
+        """Puts a pattern on the dot matrix: a DISPLAY key, "idle" for the scrolling GEO, or None
+        to clear it. Call it holding command_lock (or from inside a command)."""
         if not self.expansion:
+            return
+        self.display_name = self._display_want = name
+        self._display_at = time.time()
+        if name == "idle":
+            self.display = DISPLAY["G"]
+            if not self.mock:
+                reply = self._ext(f"mled l {IDLE_COLOR} {IDLE_SCROLL_HZ} {IDLE_TEXT}")
+                if reply is not None and "error" in reply.lower():
+                    self._ext("mled g " + DISPLAY["G"])  # no scrolling text on this firmware
             return
         pattern = DISPLAY.get(name) if name else None
         self.display = pattern
@@ -629,12 +681,10 @@ class Drone:
         if not self.expansion or not self.command_lock.acquire(blocking=False):
             return
         try:
-            before = self.display
+            before = self.display_name
             self._show("flash")
             time.sleep(0.15)
-            self.display = before
-            if not self.mock:
-                self._ext("mled g " + (before or "0" * 64))
+            self._show(before)
         finally:
             self.command_lock.release()
 
