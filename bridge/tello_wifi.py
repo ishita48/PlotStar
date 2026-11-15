@@ -29,6 +29,7 @@ import argparse
 import getpass
 import ipaddress
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -140,6 +141,36 @@ def wifi_device() -> str:
 
 def current_ip(dev: str) -> str:
     return subprocess.run(["ipconfig", "getifaddr", dev], capture_output=True, text=True).stdout.strip()
+
+
+def default_interface() -> str | None:
+    """The interface the internet goes through (e.g. en0 Wi-Fi, or an iPhone's USB link), if any."""
+    out = subprocess.run(["route", "-n", "get", "default"], capture_output=True, text=True).stdout
+    match = re.search(r"interface:\s*(\S+)", out)
+    return match.group(1) if match else None
+
+
+def back_on_drone_wifi(ssids, wait=12) -> str | None:
+    """After a battery swap the Mac drifts to another Wi-Fi. This puts it back on the drone's own
+    Wi-Fi (192.168.10.x) when one of ssids is in range, but only while the internet goes through
+    another link (the iPhone's cable), so it never cuts the Mac off. Returns the SSID it joined."""
+    if sys.platform != "darwin" or not ssids:
+        return None
+    dev = wifi_device()
+    if current_ip(dev).startswith("192.168.10.") or default_interface() in (None, dev):
+        return None
+    for ssid in ssids:
+        out = subprocess.run(["networksetup", "-setairportnetwork", dev, ssid],
+                             capture_output=True, text=True, timeout=40)
+        msg = (out.stdout + out.stderr).strip()
+        if "Could not find network" in msg or "Failed to join network" in msg:
+            continue  # drone off or still booting; the next search tries again
+        deadline = time.time() + wait
+        while time.time() < deadline:
+            if current_ip(dev).startswith("192.168.10."):
+                return ssid
+            time.sleep(1)
+    return None
 
 
 def join_mac_wifi(dev: str, ssid: str, password: str | None, want_prefix: str | None, timeout=40) -> bool:

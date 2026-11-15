@@ -30,6 +30,7 @@ import ipaddress
 import json
 import math
 import re
+import subprocess
 import threading
 import time
 from collections import deque
@@ -55,6 +56,7 @@ RECONNECT_SECONDS = 5
 SEARCH_REPLY_S = 1.5         # how long a search waits for the drone to answer
 SEARCH_QUICK_TRIES = 12      # searches at RECONNECT_SECONDS before slowing to SEARCH_SLOW_S
 SEARCH_SLOW_S = 20
+REJOIN_EVERY_S = 10          # how often to try the drone's Wi-Fi again while the drone is missing
 STATE_TIMEOUT_S = 4          # no state packets for this long = drone gone
 KEEPALIVE_S = 8              # a Tello lands itself after 15 s without any command
 VIDEO_IDLE_S = 10            # close a /video stream that has had no frame for this long
@@ -101,11 +103,11 @@ ACTIONS = {
 GUARD_CM = 50                # a forward move must leave at least this much room ahead
 TOF_EMPTY_MM = 8000          # the sensor reports 8190 mm when nothing is in range
 TOF_FRESH_S = 3.0
+KIT_REPROBE_S = 15           # how often to look for the kit again when it didn't answer
 COUNTDOWN_S = 1.0
-# While the drone is still (hovering, or on the ground once connected) the dot matrix scrolls this.
-IDLE_TEXT = "GEO"
-IDLE_COLOR = "b"             # r red, b blue, p purple
-IDLE_SCROLL_HZ = 2.5         # how fast the text slides past (the kit takes 0.1-10)
+# While the drone is still (hovering, or on the ground once connected) the dot matrix spells GEO
+# one letter at a time, then goes dark so the word reads as a word: (DISPLAY key or None, seconds).
+IDLE_FRAMES = [("G", 0.6), ("E", 0.6), ("O", 0.6), (None, 1.25)]
 STOP_HOLD_S = 2.0            # the red X stays this long before the display goes back to GEO
 
 
@@ -128,9 +130,10 @@ DISPLAY = {
     "toward": _pattern(["...##...", "...##...", "...##...", "...##...", "...##...", "........", "...##...", "........"], "r"),
     "stop": _pattern(["#......#", ".#....#.", "..#..#..", "...##...", "...##...", "..#..#..", ".#....#.", "#......#"], "r"),
     "flash": "p" * 64,
-    # What the pages draw for the scrolling GEO (they show one still frame), and the fallback
-    # for firmware that can't scroll text.
+    # The letters of the idle GEO (IDLE_FRAMES).
     "G": _pattern(["..####..", ".#....#.", ".#......", ".#..###.", ".#....#.", ".#....#.", "..####..", "........"], "b"),
+    "E": _pattern([".######.", ".#......", ".#......", ".#####..", ".#......", ".#......", ".######.", "........"], "b"),
+    "O": _pattern(["..####..", ".#....#.", ".#....#.", ".#....#.", ".#....#.", ".#....#.", "..####..", "........"], "b"),
 }
 # What the display shows while each command runs (sideways mirrored, see above).
 SHOW_FOR = {"up": "up", "down": "down", "left": "right", "right": "left", "forward": "toward",
@@ -143,11 +146,15 @@ class Drone:
     """Wraps the Tello connection (or a simulated one in mock mode)."""
 
     def __init__(self, mock: bool, tello_ip: str | None = None, enabled: bool = True,
-                 last_ip: str | None = None, on_found=None):
-        """tello_ip None: search this computer's network for the drone (last_ip is tried too)."""
+                 last_ip: str | None = None, on_found=None, drone_ssids=()):
+        """tello_ip None: search this computer's network for the drone (last_ip is tried too).
+        drone_ssids: the drone's own Wi-Fi names, to put the Mac back on after a battery swap."""
         self.mock = mock
         self.search = tello_ip is None
         self.last_ip = last_ip
+        self.drone_ssids = list(drone_ssids)
+        self._join_at = 0.0          # last time the Mac was pointed at the drone's Wi-Fi
+        self._probe_at = 0.0         # last time the expansion kit was looked for
         self.on_found = on_found or (lambda ip: None)
         self.paused = False          # set while hotspot.py is switching this computer's Wi-Fi
         self.rc_target = (0, 0, 0, 0)  # sticks the page is holding: right, forward, up, clockwise
@@ -170,9 +177,10 @@ class Drone:
         self.ahead_mm = None
         self.ahead_at = 0.0
         self.display = None          # the 64-character pattern on the dot matrix, if any
-        self.display_name = None     # what is showing: a DISPLAY key, "idle" (scrolling GEO) or None
+        self.display_name = None     # what is showing: a DISPLAY key, "idle" (the GEO cycle) or None
         self._display_want = None    # what hold-to-fly wants showing; _display_loop puts it up
         self._display_at = 0.0
+        self._idle_step = 0          # which of IDLE_FRAMES is up while display_name is "idle"
         self.mock_ahead_cm = 220
         # Wi-Fi map: where the drone is (dead reckoning from its moves since take-off, cm:
         # x right, y forward, yaw clockwise from the take-off heading) and the signal there.
@@ -275,11 +283,30 @@ class Drone:
                     if self._misses > SEARCH_QUICK_TRIES:
                         wait = SEARCH_SLOW_S
                     self._report(f"{exc} Still looking.")
+                    if self._rejoin_drone_wifi():
+                        wait = 1
                 except Exception as exc:  # drone off, wrong Wi-Fi, etc.
                     self.error = str(exc)
                     self._report(f"Tello at {self.tello.address[0]} not reachable ({exc}); "
                                  f"retrying every {RECONNECT_SECONDS}s")
             time.sleep(wait)
+
+    def _rejoin_drone_wifi(self) -> bool:
+        """The drone vanished (battery swap, power-cycle) and the Mac drifted to another Wi-Fi:
+        point it back at the drone's own Wi-Fi, at most every REJOIN_EVERY_S (see
+        tello_wifi.back_on_drone_wifi for when it won't)."""
+        if self.mock or not self.drone_ssids or time.time() - self._join_at < REJOIN_EVERY_S:
+            return False
+        self._join_at = time.time()
+        try:
+            ssid = tello_wifi.back_on_drone_wifi(self.drone_ssids)
+        except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
+            self._report(f"Couldn't put this Mac back on the drone's Wi-Fi ({exc})")
+            return False
+        if ssid:
+            print(f"Put this Mac back on the drone's Wi-Fi ({ssid})")
+            self._misses = 0
+        return bool(ssid)
 
     def on_hotspot(self) -> bool:
         """Connected, and not on the drone's own Wi-Fi (which always uses 192.168.10.x)."""
@@ -411,7 +438,8 @@ class Drone:
                 ("up" if v > 0 else "down"), "hover"][axis]
 
     def _display_loop(self):
-        """Puts up what hold-to-fly asked for, between commands, and takes the red X down again."""
+        """Puts up what hold-to-fly asked for, between commands, takes the red X down again and
+        steps the idle GEO through its letters."""
         while True:
             time.sleep(0.1)
             if not (self.connected and self.expansion) or self._stepping:
@@ -420,10 +448,16 @@ class Drone:
                     and time.time() - self._display_at > STOP_HOLD_S:
                 self._display_want = "idle"
             want = self._display_want
-            if want == self.display_name or not self.command_lock.acquire(blocking=False):
+            next_letter = want == self.display_name == "idle" \
+                and time.time() - self._display_at >= IDLE_FRAMES[self._idle_step][1]
+            if (want == self.display_name and not next_letter) \
+                    or not self.command_lock.acquire(blocking=False):
                 continue
             try:
-                self._show(want)
+                if next_letter:
+                    self._idle_frame(self._idle_step + 1)
+                else:
+                    self._show(want)
             except Exception as exc:
                 print(f"Display update failed ({exc})")
             finally:
@@ -613,10 +647,13 @@ class Drone:
             return None
         return reply
 
-    def _probe_expansion(self):
+    def _probe_expansion(self, quiet=False):
+        """quiet: a retry from _tof_loop; only say something if the kit turned up."""
+        self._probe_at = time.time()
         reply = self._ext("tof?") or ""
         self.expansion = reply.startswith("tof")
-        print("Expansion kit (dot matrix + ToF):", "found" if self.expansion else "not attached")
+        if self.expansion or not quiet:
+            print("Expansion kit (dot matrix + ToF):", "found" if self.expansion else "not attached")
         if self.expansion:
             self._show("idle")
 
@@ -634,15 +671,21 @@ class Drone:
         return self.ahead_mm
 
     def _tof_loop(self):
-        """Keeps a fresh distance-ahead reading, between commands (never during one)."""
+        """Keeps a fresh distance-ahead reading, between commands (never during one). Looks for
+        the kit again now and then if it didn't answer on connect (the drone was mid-move, say)."""
         while True:
             time.sleep(0.5)
-            if not (self.connected and self.expansion):
+            reprobe = self.connected and not self.expansion and not self.mock \
+                and time.time() - self._probe_at > KIT_REPROBE_S
+            if not (self.connected and self.expansion) and not reprobe:
                 continue
             if not self.command_lock.acquire(blocking=False):
                 continue
             try:
-                self._read_tof()
+                if reprobe:
+                    self._probe_expansion(quiet=True)
+                else:
+                    self._read_tof()
             except Exception as exc:
                 print(f"ToF read failed ({exc})")
             finally:
@@ -658,23 +701,28 @@ class Drone:
                              f"bring the drone within {GUARD_CM} cm of it. Turn or back up first.")
 
     def _show(self, name):
-        """Puts a pattern on the dot matrix: a DISPLAY key, "idle" for the scrolling GEO, or None
+        """Puts a pattern on the dot matrix: a DISPLAY key, "idle" for the GEO cycle, or None
         to clear it. Call it holding command_lock (or from inside a command)."""
         if not self.expansion:
             return
         self.display_name = self._display_want = name
         self._display_at = time.time()
         if name == "idle":
-            self.display = DISPLAY["G"]
-            if not self.mock:
-                reply = self._ext(f"mled l {IDLE_COLOR} {IDLE_SCROLL_HZ} {IDLE_TEXT}")
-                if reply is not None and "error" in reply.lower():
-                    self._ext("mled g " + DISPLAY["G"])  # no scrolling text on this firmware
+            self._idle_frame(0)  # _display_loop steps through the rest
             return
         pattern = DISPLAY.get(name) if name else None
         self.display = pattern
         if not self.mock:
             self._ext("mled g " + (pattern or "0" * 64))
+
+    def _idle_frame(self, step):
+        """Puts up one frame of IDLE_FRAMES (a letter of GEO, or the dark pause after it)."""
+        self._idle_step = step % len(IDLE_FRAMES)
+        letter = IDLE_FRAMES[self._idle_step][0]
+        self.display = DISPLAY[letter] if letter else None
+        self._display_at = time.time()
+        if not self.mock:
+            self._ext("mled g " + (self.display or "0" * 64))
 
     def flash(self):
         """A short flash when a frame is captured."""
@@ -1125,7 +1173,7 @@ def main():
     remembered = bool(config) or bool(args.hotspot or args.tello_ssid)
     use_drone = not args.no_drone and (args.drone or args.tello_ip is not None or remembered)
     drone = Drone(mock=args.mock, tello_ip=args.tello_ip, enabled=use_drone, last_ip=config.get("last_ip"),
-                  on_found=lambda ip: hotspot.save_config(last_ip=ip))
+                  on_found=lambda ip: hotspot.save_config(last_ip=ip), drone_ssids=tello_ssids)
     grid = Grid(mock=args.mock or args.mock_grid)
     feed = ErcotFeed(enabled=not args.no_ercot)
     joiner = hotspot.HotspotJoiner(hotspot_name, tello_ssids, args.hotspot_password_file, mock=args.mock,
