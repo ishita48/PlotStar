@@ -2,8 +2,9 @@
 // Existing building (CoStar Matterport scan, observed) next to GeoStar's proposed concept (generated, conceptual).
 // The two are never mixed: each half carries its own strict label, and the scan's coverage is stated from measured area.
 import { useEffect, useState, type ReactNode } from 'react';
-import { Box, CircleAlert, Play } from 'lucide-react';
+import { Box, CircleAlert, MapPin, Play, Ruler } from 'lucide-react';
 import { PUBLIC_DATA_API } from '@/lib/plotstar-api';
+import { SiteWalk } from './site-walk';
 import s from './dossier.module.css';
 
 export interface ScanModel {
@@ -71,6 +72,7 @@ export function ExistingVsProposed({ parcelId, conceptSlot, mwIt, rackKw, onNote
     } catch { setSaving('error'); }
   }
   const [conv, setConv] = useState<ConversionResp | null>(null);
+  const [walking, setWalking] = useState(false);
 
   useEffect(() => {
     if (given) { setData(given); return; }
@@ -117,6 +119,11 @@ export function ExistingVsProposed({ parcelId, conceptSlot, mwIt, rackKw, onNote
                   </button>
                 )}
               </div>
+              {m.embed_url && (
+                <button className={`st-btn primary ${s.walkBtn}`} onClick={() => setWalking(true)}>
+                  <MapPin size={14} /> Site walk: pin notes <Ruler size={14} /> and measure in the scan
+                </button>
+              )}
               <p className={s.caption}>Existing building scan · observed · covers {m.scope}{m.scanned_sf ? ` (${m.scanned_sf.toLocaleString()} sf scanned${data.building_sf ? ` of ${data.building_sf.toLocaleString()} sf` : ''})` : ''}. {m.reason}</p>
             </>
           )}
@@ -156,6 +163,8 @@ export function ExistingVsProposed({ parcelId, conceptSlot, mwIt, rackKw, onNote
         </div>
       </div>
       <small className={s.src}>{data.source}. {data.embed_note}</small>
+      {walking && m && <SiteWalk parcelId={parcelId} modelId={m.model_id} siteName={data.name || data.address || parcelId} mwIt={mwIt} rackKw={rackKw}
+        onClose={() => { setWalking(false); if (mwIt) fetch(`${PUBLIC_DATA_API}/costar/conversion/${encodeURIComponent(parcelId)}?mw_it=${mwIt}&rack_kw=${rackKw ?? 20}`).then((r) => (r.ok ? r.json() : null)).then((d) => d && setConv(d)).catch(() => {}); }} />}
     </div>
   );
 }

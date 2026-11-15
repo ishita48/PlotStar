@@ -142,12 +142,13 @@ SPECIALISTS: list[dict[str, Any]] = [
          description="Retrieves and analyses the CoStar record for a property over the CoStar MCP server: building, land, "
                      "valuation and comps, occupancy, submarket, neighbours, redevelopment fit and data gaps. Use first in any site evaluation.",
          tools=["get_property_intelligence", "identify_data_gaps", "find_sales_comps", "analyze_occupancy", "analyze_submarket",
-                "find_adjacent_properties", "evaluate_conversion", "get_matterport_model", "search_costar_properties",
-                "find_off_market_candidates", "compare_property_portfolio"],
+                "find_adjacent_properties", "evaluate_conversion", "get_matterport_model", "site_walk_observations",
+                "search_costar_properties", "find_off_market_candidates", "compare_property_portfolio"],
          skills=True,
          prompt="You are GeoStar's Property Intelligence agent. Goal: determine whether a commercial property is suitable for "
                 "data center development, from CoStar evidence. For a site evaluation call get_property_intelligence and "
-                "identify_data_gaps, and find_sales_comps or evaluate_conversion when the task needs value or an existing building. "
+                "identify_data_gaps, and find_sales_comps or evaluate_conversion when the task needs value or an existing building; "
+                "call site_walk_observations for the team's notes and measurements from the Matterport scan. "
                 "Report land and building fit, value evidence, occupancy, redevelopment opportunity and the open diligence items."),
     dict(name="financial-feasibility", title="Financial Feasibility",
          role="Is it economically viable? Acquisition, build cost, NPV range, payback, sensitivity.",
@@ -163,7 +164,7 @@ SPECIALISTS: list[dict[str, Any]] = [
          role="Can the site be powered and cooled? Power, substation, water, flood, grid.",
          description="Evaluates infrastructure feasibility: facility power demand, distance to a >=138 kV substation, water "
                      "stress and cooling water, flood exposure, the ERCOT grid day, and blockers that need utility confirmation.",
-         tools=["screen_site", "resource_demand", "grid_conditions", "evaluate_conversion", "what_if"],
+         tools=["screen_site", "resource_demand", "grid_conditions", "evaluate_conversion", "site_walk_observations", "what_if"],
          prompt="You are GeoStar's Resource & Infrastructure agent. Goal: evaluate infrastructure feasibility. Call screen_site "
                 "and resource_demand; add grid_conditions for energy timing. Report facility load, substation distance, water "
                 "stress and flood status, water use, and what must be confirmed by the utility (grid capacity is never known "

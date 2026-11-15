@@ -154,3 +154,5 @@
 .scoreBar { flex: none; width: 64px; height: 6px; border-radius: 999px; background: #eef1ec; overflow: hidden; }
 .scoreBar i { display: block; height: 100%; background: var(--st-accent-2); border-radius: 999px; }
 .thr { font-weight: 400; color: var(--st-muted); }
+
+.walkBtn { margin-top: 10px; width: 100%; justify-content: center; }

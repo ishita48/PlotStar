@@ -325,6 +325,26 @@ def safety_playbook(kind: str) -> str:
                   sources=["GeoStar protection engine rules"], headline=f"{kind}: notify {', '.join(p['notify'])}.")
 
 
+def site_walk_observations() -> str:
+    """Your team's site walk of the existing building: notes pinned inside the Matterport scan (category, severity,
+    floor, text) and measurements drawn in it (clear height, column spacing, door and corridor widths). Measured by
+    people, not CoStar data. Use it for anything about the existing building's condition, structure or access."""
+    from .. import sitewalk
+    run = _run()
+    pid = (run.context.get("site") or {}).get("id")
+    if not (isinstance(pid, str) and pid.startswith("costar:")):
+        return _fail("No CoStar building is selected, so there is no site walk.")
+    d = sitewalk.summary(pid)
+    view = {"notes": [{k: n.get(k) for k in ("category", "severity", "floor", "text", "author", "created_at")} for n in d["notes"]][:40],
+            "measurements": [{k: m.get(k) for k in ("kind", "label", "length_m", "floor", "method")} for m in d["measurements"]][:40],
+            "binding_values": {k: {"value_m": v["value_m"], "need_m": v["need_m"], "count": v["count"]} for k, v in d["derived"].items()},
+            "counts": d["counts"]}
+    c = d["counts"]
+    return _reply("site_walk_observations", d, view, label=d["label"], sources=[f"Site walk ({d['stored']})"],
+                  headline=f"Site walk: {c['notes']} notes ({c['blockers']} blockers), {c['measurements']} measurements."
+                  if c["notes"] or c["measurements"] else "No site walk notes or measurements yet for this building.")
+
+
 # ------------------------------------------------------------------------------------------- orchestrator tools
 
 @traceable(run_type="chain", name="Computation / Weighted Site Score", tags=["computation", "deterministic"])
@@ -390,6 +410,7 @@ def geostar_tools() -> dict[str, BaseTool]:
         "what_if": _tool(what_if, "what_if", "GeoStar · What-If (engine re-run)", args_schema=copilot.WhatIf),
         "facility_protection_state": _tool(facility_protection_state, "facility_protection_state", "GeoStar · Protection State"),
         "safety_playbook": _tool(safety_playbook, "safety_playbook", "GeoStar · Safety Playbook", args_schema=PlaybookArgs),
+        "site_walk_observations": _tool(site_walk_observations, "site_walk_observations", "Matterport · Site Walk Notes"),
         "compute_site_score": _tool(compute_site_score, "compute_site_score", "Computation / Weighted Site Score", kind="computation"),
         "dispatch_safety_alert": _tool(dispatch_safety_alert, "dispatch_safety_alert", "Action / Dispatch Safety Alert",
                                        kind="action", args_schema=DispatchArgs),

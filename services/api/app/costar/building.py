@@ -226,12 +226,35 @@ def conversion(parcel_id: str, mw_it: float, rack_kw: float = 20.0, grid: dict[s
                        need=fac, have=round(mw, 2) if mw is not None else None, unit="MW",
                        basis=f"Facility load {fac:g} MW against the existing service ({method})." if mw is not None
                        else "CoStar records no electric service for this building."))
+    # what the team measured inside the Matterport scan (app/sitewalk.py) settles what CoStar does not record
+    from .. import sitewalk
+    walked = sitewalk.derived(sitewalk.items(parcel_id))
+    measured_names: set[str] = set()
+
+    def measured(kind: str, name: str, need: float) -> str:
+        d = walked[kind]
+        r = d["value_m"] / need
+        st = "fits" if r >= 1.1 else "tight" if r >= 0.98 else "does not fit"
+        checks.append(dict(name=name, status=st, need=round(need, 2), have=d["value_m"], unit="m", label="Measured",
+                           basis=f"Measured in the Matterport scan ({d['count']} measurement{'s' if d['count'] > 1 else ''}, "
+                                 f"the smallest is used){' by ' + d['by'] if d.get('by') else ''}. {d['why']}"))
+        measured_names.add(name)
+        return st
+
+    if "clear_height" in walked:
+        s_height = measured("clear_height", "Clear height (measured in the scan)", floor_h)
+    s_cols = measured("column_spacing", "Column spacing (measured in the scan)", walked["column_spacing"]["need_m"])         if "column_spacing" in walked else "unknown"
+    s_door = measured("door_width", "Delivery door width (measured in the scan)", walked["door_width"]["need_m"])         if "door_width" in walked else "unknown"
+    if "door_height" in walked:
+        measured("door_height", "Delivery door height (measured in the scan)", walked["door_height"]["need_m"])
+
     order = ["does not fit", "tight", "unknown", "fits"]
-    space = [s_floor, s_yard, s_height]
+    space = [s_floor, s_yard, s_height, s_cols, s_door]
     # the floor area decides; a known yard or height problem can only make it worse
     overall = "unknown" if s_floor == "unknown" else min((x for x in space if x != "unknown"), key=order.index)
-    missing = [dict(item=a, why=b) for a, b in MISSING_ALWAYS]
-    if clear_ft is None:
+    missing = [dict(item=a, why=b) for a, b in MISSING_ALWAYS
+               if not (a == "Structural grid and column spacing" and "column_spacing" in walked)]
+    if clear_ft is None and "clear_height" not in walked:
         missing.insert(0, dict(item="Clear height", why="Not recorded by CoStar for this building."))
     if mw is None:
         missing.insert(0, dict(item="Existing electric service", why="Amps and volts are not recorded by CoStar."))
@@ -242,5 +265,6 @@ def conversion(parcel_id: str, mw_it: float, rack_kw: float = 20.0, grid: dict[s
         max_racks = int(res["brief"]["racks"] * min(1.0, have_floor / need_floor))
     return dict(parcel_id=parcel_id, mw_it=mw_it, rack_kw=rack_kw, status=overall, checks=checks, missing=missing,
                 racks_needed=res["brief"]["racks"], racks_that_fit_by_area=max_racks, concept=best["name"],
+                measured=sorted(measured_names), site_walk={k: {kk: v[kk] for kk in ("value_m", "count", "need_m")} for k, v in walked.items()},
                 label="Estimated", note="Conceptual screening, not engineering feasibility. A structural and MEP survey decides.",
                 source=f"CoStar Data Extract, {p.get('source_file')} row {p.get('source_row')}; GeoStar layout engine")

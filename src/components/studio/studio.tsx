@@ -9,7 +9,7 @@ import {
   Briefcase, Building2, FileText, FileUp, MapPin, Move, RotateCcw, RotateCw, Sparkles, Square, Star, Trash2, Users,
 } from 'lucide-react';
 import { Brand } from '../brand';
-import { matterportEmbedUrl, PUBLIC_DATA_API, siteDetailUrl, vexcel3dRootUrl, vexcelMetaUrl, vexcelOrthoUrl } from '@/lib/plotstar-api';
+import { PUBLIC_DATA_API, siteDetailUrl, vexcel3dRootUrl, vexcelMetaUrl, vexcelOrthoUrl } from '@/lib/plotstar-api';
 import type { GateResult } from '@/lib/types';
 import type { ExploreSite } from '../explore/types';
 import { verdict } from '../explore/types';
@@ -18,6 +18,7 @@ import { Plan2D, type Layers } from './plan2d';
 import type { MoveEdit, ViewPreset } from './model3d';
 import { Copilot, type BriefPatch } from './copilot';
 import { AgentIntel } from './agents/agent-intel';
+import { SiteWalk } from './costar/site-walk';
 import { AgentStatusPill } from './agents/status-pill';
 import { isActive, useAgentRun } from './agents/use-agent-run';
 import { Guide } from './guide/guide';
@@ -479,6 +480,7 @@ export function Studio() {
   // Deep Agents: one shared run for the site evaluation and the conversation, shown live in Agent Intelligence
   const agentRun = useAgentRun();
   const [intelOpen, setIntelOpen] = useState(false);
+  const [walkModel, setWalkModel] = useState<string | null>(null);
   const [evalSite, setEvalSite] = useState<string | null>(null);
   const agentBusy = isActive(agentRun.state);
   const siteScore = agentRun.state.kind === 'site-evaluation' && evalSite === siteId ? agentRun.state.score : null;
@@ -634,7 +636,7 @@ export function Studio() {
                             </div>
                           ))}
                         </div>
-                        {tours.length > 0 && <a className="st-tour" href={matterportEmbedUrl(tours[0])} target="_blank" rel="noreferrer"><BoxIcon size={14} /> Walk the existing building in 3D · {tours.length} Matterport scan{tours.length > 1 ? 's' : ''}</a>}
+                        {tours.length > 0 && <button type="button" className="st-tour" onClick={() => setWalkModel(tours[0])}><BoxIcon size={14} /> Site walk: pin notes and measure the existing building · {tours.length} Matterport scan{tours.length > 1 ? 's' : ''}</button>}
                         {aerialId && (
                           <figure className="st-aerial">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -906,6 +908,7 @@ export function Studio() {
         facilityId={step >= 7 ? facility.id : null} lastScore={siteScore ? { verdict: siteScore.verdict, score: siteScore.score } : null}
         agent={agentRun} onOpenGraph={() => setIntelOpen(true)}
         onApply={applyPatch} onSelectSite={(id) => { const s = sites.find((x) => x.id === id); if (s) void pickSite(id); }} busy={busy} />
+      {walkModel && site && parcelId && <SiteWalk parcelId={parcelId} modelId={walkModel} siteName={siteLabel(site)} mwIt={brief.mw} rackKw={brief.rackKw} onClose={() => setWalkModel(null)} />}
       {intelOpen && <AgentIntel s={agentRun.state} onClose={() => setIntelOpen(false)} onDecide={(a) => void agentRun.decide(a)} />}
       <Guide body={result ? body(brief) : null} conceptId={concept?.id ?? null} selected={sel} stage={PAGES[step]} market={brief.market}
         hasSite={!!site} onApply={applyPatch} />
