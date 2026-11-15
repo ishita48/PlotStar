@@ -62,8 +62,9 @@ def consequences(q: ConsequenceIn) -> dict[str, Any]:
         b1 = type(q.brief)(**{**b0, **q.patch}).model_dump()  # validates the patched brief with the same limits
         grid = _grid()
         site, edits = q.site.model_dump(), {k: e.model_dump() for k, e in q.edits.items()}
-        before = layout_engine.generate(b0, site, grid, q.priorities, q.assumptions, edits)
-        after = layout_engine.generate(b1, site, grid, q.priorities, q.assumptions, edits)
+        keep = [q.concept_id] if q.concept_id else None  # compare the same concept before and after
+        before = layout_engine.generate(b0, site, grid, q.priorities, q.assumptions, edits, keep=keep)
+        after = layout_engine.generate(b1, site, grid, q.priorities, q.assumptions, edits, keep=keep)
     except ValueError as e:
         raise HTTPException(422, str(e)) from e
     return copilot.consequences(before, after, q.concept_id)

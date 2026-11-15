@@ -23,10 +23,17 @@ def run(**kw):
     return L.generate(brief(**kw), SITE, GRID, {"money": 1, "people": 1, "planet": 1, "resources": 1})
 
 
+def orig(**kw):
+    """The original placement (long halls, plant east, not rotated), pinned so tests compare like with like."""
+    return L.generate(brief(**kw), SITE, GRID, {}, keep=["long-halls"])["concepts"][0]
+
+
 def test_three_distinct_concepts_place_every_rack():
     r = run()
     assert r["brief"]["racks"] == 1000 and r["brief"]["halls"] == 4
-    assert [c["id"] for c in r["concepts"]] == ["long-halls", "service-bands", "opposed-banks"]
+    assert len(r["concepts"]) == 3 and r["ranking"]["explored"] == 24
+    assert len({c["variant"]["strategy"] for c in r["concepts"]}) == 3  # three different hall arrangements
+    assert all(c["why"] for c in r["concepts"])
     for c in r["concepts"]:
         assert c["metrics"]["placed_racks"] == 1000
         assert c["metrics"]["rack_positions"] >= 1000
@@ -99,7 +106,7 @@ def edited(edits):
 
 
 def test_user_edits_are_measured_and_checked_like_generated_geometry():
-    base = run()["concepts"][0]
+    base = orig()
     gen = next(y for y in base["yard"] if y["type"] == "yard_gen")
     # generators pushed to the site edge: louder at the boundary, and outside the setback
     moved = edited({"long-halls": {"yard": {"GEN": {"x": 320 - gen["w"] - 1, "y": gen["y"]}}}})
@@ -111,13 +118,17 @@ def test_user_edits_are_measured_and_checked_like_generated_geometry():
     assert not next(k for k in clash["checks"] if k["name"] == "Nothing overlaps")["ok"]
     assert clash["building"]["x"] == pytest.approx(base["building"]["x"] + 60, abs=0.01)
     assert clash["rooms"][0]["x"] == pytest.approx(base["rooms"][0]["x"] + 60, abs=0.01)
-    # edits to one concept leave the others alone
-    other = L.generate(brief(), SITE, GRID, {}, None, {"long-halls": {"building": {"dx": 60}}})["concepts"][1]
-    assert other["building"] == run()["concepts"][1]["building"]
+    # edits to one concept leave the others alone, and an edited concept stays among the three
+    both = ["long-halls", "service-bands"]
+    ed = L.generate(brief(), SITE, GRID, {}, None, {"long-halls": {"building": {"dx": 60}}}, keep=both)["concepts"]
+    plain = L.generate(brief(), SITE, GRID, {}, keep=both)["concepts"]
+    assert ed[0]["id"] == "long-halls-r0-east" and ed[0]["edited"]
+    sb = lambda cs: next(c for c in cs if c["id"] == "service-bands-r0-east")  # noqa: E731
+    assert sb(ed)["building"] == sb(plain)["building"]
 
 
 def test_added_battery_and_solar_change_cost_and_capacity():
-    base = run()["concepts"][0]
+    base = orig()
     add = edited({"long-halls": {"added": [
         {"code": "BESS-1", "type": "yard_bess", "x": 12, "y": 12, "w": 20, "d": 10},
         {"code": "PV-1", "type": "yard_solar", "x": 12, "y": 30, "w": 30, "d": 20}]}})
@@ -144,7 +155,7 @@ def test_storeys_stack_the_same_plan_and_keep_every_rack():
 
 
 def test_rotating_the_building_swaps_its_sides():
-    a = run()["concepts"][0]
+    a = orig()
     b = edited({"long-halls": {"rotate": True}})
     assert (b["building"]["w"], b["building"]["d"]) == pytest.approx((a["building"]["d"], a["building"]["w"]), abs=0.01)
     assert b["metrics"]["placed_racks"] == 1000
@@ -194,3 +205,35 @@ def test_a_noise_wall_and_other_added_items_count():
     assert not far_wall["people"]["noise_wall"]
     tank = edited({"long-halls": {"added": [{"code": "TANK-1", "type": "yard_water", "x": 12, "y": 12, "w": 10, "d": 10}]}})
     assert tank["money"]["added"] == 100 * 1800
+
+
+def test_the_three_follow_the_priorities_and_the_brief():
+    ids = lambda r: [c["id"] for c in r["concepts"]]  # noqa: E731
+    money = L.generate(brief(), SITE, GRID, {"money": 3, "people": 0.5, "planet": 0.5, "resources": 0.5})
+    people = L.generate(brief(), SITE, GRID, {"people": 3, "money": 0.5, "planet": 0.5, "resources": 0.5})
+    assert ids(money) != ids(people)
+    assert "Money" in money["concepts"][0]["why"] and "People" in people["concepts"][0]["why"]
+    bigger = L.generate(brief(mw_it=60, rack_kw=40, site_w=500, site_d=300), SITE, GRID, {})
+    assert bigger["brief"]["racks"] == 1500 and ids(bigger) != ids(run())
+    assert all(c["metrics"]["placed_racks"] == 1500 for c in bigger["concepts"])
+
+
+def test_mapped_obstacles_are_avoided_or_reported():
+    obs = [{"x": 200, "y": 60, "w": 60, "d": 80, "label": "Existing warehouse", "source": "test"}]
+    r = L.generate(brief(), {**SITE, "obstacles": obs}, GRID, {})
+    for c in r["concepts"]:
+        chk = next(k for k in c["checks"] if k["name"] == "Clear of mapped obstacles")
+        assert chk["ok"] and c["feasible"]
+    pinned = L.generate(brief(), {**SITE, "obstacles": obs}, GRID, {}, keep=["long-halls"])["concepts"][0]
+    assert not next(k for k in pinned["checks"] if k["name"] == "Clear of mapped obstacles")["ok"]
+    assert not pinned["feasible"]
+
+
+def test_removed_plant_fails_honestly_and_custom_objects_are_not_costed():
+    c = edited({"long-halls": {"removed": ["SUB-01", "GEN"], "added": [
+        {"code": "X1", "type": "custom", "name": "Visitor centre", "h": 5, "x": 20, "y": 20, "w": 15, "d": 10},
+        {"code": "S1", "type": "sensor", "x": 30, "y": 40, "w": 1, "d": 1}]}})
+    failed = {k["name"] for k in c["checks"] if not k["ok"]}
+    assert {"Grid connection on site", "Backup power covers the load"} <= failed and not c["feasible"]
+    assert c["people"]["noise_at_boundary_dba"] is None and not c["equipment"]
+    assert c["money"]["uncosted"] == ["Visitor centre"] and c["money"]["added"] == 350
