@@ -137,7 +137,7 @@ export function Dashboard() {
           <div className="topbar-right">
             <Button asChild variant="outline" size="sm">
               <Link href="/dashboard-2">
-                Open Dashboard 2 <ArrowUpRight size={14} />
+                Open the workspace <ArrowUpRight size={14} />
               </Link>
             </Button>
             <span className="saved-indicator">

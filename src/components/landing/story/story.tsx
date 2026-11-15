@@ -111,7 +111,7 @@ function TopBar({ chapter, onPalette }: { chapter: ChapterId | null; onPalette: 
       <button type="button" className="ps-kbd-btn" onClick={onPalette} aria-label="Open the command menu">
         <Search size={14} /><span>Jump to…</span><kbd>Ctrl K</kbd>
       </button>
-      <Link href="/dashboard-2" className="ps-btn ps-btn-ink ps-btn-sm">Start a project <ArrowRight size={14} /></Link>
+      <Link href="/studio" className="ps-btn ps-btn-ink ps-btn-sm">Start a project <ArrowRight size={14} /></Link>
       <i className="ps-read" aria-hidden="true" />
     </header>
   );
@@ -153,14 +153,14 @@ function Close() {
         <h2 id="ps-close-title">Every building starts as a plot.<br /><em>Start yours well.</em></h2>
         <p>Pick a project type, choose a city and GeoStar walks you from the map to the model to the sensors.</p>
         <div className="ps-actions ps-actions-c">
-          <Link href="/dashboard-2" className="ps-btn ps-btn-lime">Start a project <ArrowRight size={16} /></Link>
+          <Link href="/studio" className="ps-btn ps-btn-lime">Start a project <ArrowRight size={16} /></Link>
           <Link href="/explore" className="ps-btn ps-btn-ghost-light">Explore the map</Link>
         </div>
       </div>
       <footer className="ps-foot">
         <Wordmark />
         <nav aria-label="Product">
-          <Link href="/dashboard-2">Locate · Design · Protect</Link>
+          <Link href="/dashboard-2">Guided walkthrough</Link>
           <Link href="/projects">Projects dashboard</Link>
           <Link href="/explore">Explore</Link>
           <Link href="/studio">Data center studio</Link>
@@ -188,7 +188,7 @@ function Dock({ show, chapter, onPalette }: { show: boolean; chapter: ChapterId 
         ))}
       </ol>
       <button type="button" className="ps-dock-k" onClick={onPalette} aria-label="Open the command menu"><Command size={15} /></button>
-      <Link href="/dashboard-2" className="ps-btn ps-btn-ink ps-btn-sm">Start <ArrowRight size={14} /></Link>
+      <Link href="/studio" className="ps-btn ps-btn-ink ps-btn-sm">Start <ArrowRight size={14} /></Link>
     </div>
   );
 }
@@ -203,7 +203,8 @@ function Palette({ onClose, onType }: { onClose: () => void; onType: (id: TypeSt
   const jump = useCallback((id: string) => () => { onClose(); document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' }); }, [onClose]);
 
   const actions: Action[] = useMemo(() => [
-    { id: 'start', group: 'Go', label: 'Start a project', hint: 'Locate, Design, Protect', run: go('/dashboard-2') },
+    { id: 'start', group: 'Go', label: 'Start a project', hint: 'Find, design, protect', run: go('/studio') },
+    { id: 'walk', group: 'Go', label: 'Guided walkthrough', hint: 'Sample sites, every project type', run: go('/dashboard-2') },
     { id: 'explore', group: 'Go', label: 'Explore the map', hint: 'Real parcels, public data', run: go('/explore') },
     { id: 'studio', group: 'Go', label: 'Open the data center studio', run: go('/studio') },
     { id: 'projects', group: 'Go', label: 'Open the projects dashboard', run: go('/projects') },

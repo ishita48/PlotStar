@@ -12,7 +12,7 @@ test('Dashboard 2 Locate remains a standalone UI preview with no application API
   await page.goto('/dashboard-2');
   const steps = page.getByRole('navigation', { name: 'Locate steps' });
   const modules = page.getByRole('navigation', { name: 'Planning modules' });
-  await expect(page.getByText('UI PREVIEW', { exact: true })).toBeVisible();
+  await expect(page.getByText('Sample sites', { exact: true })).toBeVisible();
   await expect(page.getByRole('radio')).toHaveCount(6);
   await page.getByRole('radio', { name: /Solar farm/ }).check();
   await page
@@ -58,6 +58,7 @@ test('Dashboard 2 preview fits desktop and mobile through all three screens', as
   await page.getByRole('button', { name: 'Confirm selection' }).click();
   await page.screenshot({ path: 'output/qa/dashboard-2/finalize-desktop.png', fullPage: true });
   await page.getByRole('button', { name: 'Reset preview' }).click();
+  await page.getByRole('button', { name: 'Tap again to start over' }).click();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.screenshot({ path: 'output/qa/dashboard-2/describe-mobile.png', fullPage: true });

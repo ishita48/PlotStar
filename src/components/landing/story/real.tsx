@@ -72,8 +72,8 @@ export function RealHero({ type, onType, live }: { type: TypeStory; onType: (id:
           <p className="ps-ask-a" aria-live="polite"><span key={type.id}>{type.question}</span></p>
         </div>
         <div className="ps-actions" data-reveal>
-          <Link href="/dashboard-2" className="ps-btn ps-btn-ink">Start a project <ArrowRight size={16} /></Link>
-          <Link href="/studio" className="ps-btn ps-btn-soft">Data center studio</Link>
+          <Link href="/studio" className="ps-btn ps-btn-ink">Start a project <ArrowRight size={16} /></Link>
+          <Link href="/explore" className="ps-btn ps-btn-soft">Explore the map</Link>
         </div>
       </div>
       <aside className="ps-rhero-card ps-glass" aria-label="This parcel, screened live" data-reveal style={{ '--i': 3 } as CSSProperties}>
@@ -216,7 +216,7 @@ const DEEPER = [
   ['/studio/agent', 'How the AI works', 'Watch the Deep Agents evaluate a parcel, live.'],
   ['/studio/data', 'The data platform', 'Search, vectors, geo and change streams in Atlas.'],
   ['/explore', 'Explore the map', 'Real CoStar parcels, gated by public data.'],
-  ['/dashboard-2', 'Locate · Design · Protect', 'Every project type, end to end.'],
+  ['/dashboard-2', 'Guided walkthrough', 'Every project type, end to end, on sample sites.'],
 ] as const;
 
 export function Sources() {

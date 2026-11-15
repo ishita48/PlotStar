@@ -8,7 +8,7 @@ import {
   ArrowLeft, ArrowRight, Box as BoxIcon, LoaderCircle, Check, CircleAlert, CircleCheck, Coins, Columns2, Download, Droplets, Leaf, Lock,
   Briefcase, Building2, FileText, FileUp, MapPin, Move, RotateCcw, RotateCw, Sparkles, Square, Star, Trash2, Users,
 } from 'lucide-react';
-import { Brand } from '../brand';
+import { Star as GeoStarMark } from '../brand';
 import { PUBLIC_DATA_API, siteDetailUrl, vexcel3dRootUrl, vexcelMetaUrl, vexcelOrthoUrl } from '@/lib/plotstar-api';
 import type { GateResult } from '@/lib/types';
 import type { ExploreSite } from '../explore/types';
@@ -508,7 +508,10 @@ export function Studio() {
   return (
     <div className="st">
       <header className="st-top">
-        <Brand />
+        <Link href="/" className="st-mark" aria-label="GeoStar home">
+          <span className="st-mark-icon"><GeoStarMark /></span>
+          <span>Geo<b>Star</b></span>
+        </Link>
         <div className="st-top-title"><b>Studio</b><span>{dc ? `${brief.name} · ${brief.mw} MW IT${site ? ` · ${siteLabel(site)}` : ''}` : `${kindLabel} · ${brief.market} · concept model`}</span></div>
         <AgentStatusPill s={agentRun.state} onOpen={() => setIntelOpen(true)} />
         <nav className="st-top-nav">

@@ -332,7 +332,7 @@ function Timeline({ state }: { state: ProtectionState }) {
         ))}
       </ol>
       <p className="hv-note">
-        Shared threshold and response rules run locally in Smart Blocks’ backend. External HAVEN
+        Shared threshold and response rules run locally in GeoStar’s backend. External HAVEN
         uAgents, hardware, physical alarms and equipment controls are not connected.
       </p>
     </PrimaryCard>
