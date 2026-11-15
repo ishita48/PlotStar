@@ -36,6 +36,8 @@
 .st-dr-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .st-dr-key { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 40px; border: 1px solid var(--st-line); border-radius: 9px; background: #fff; color: var(--st-ink); font-size: 13px; font-weight: 500; cursor: pointer; transition: border-color 0.16s, background 0.16s, color 0.16s; }
 .st-dr-key:hover:not(:disabled) { border-color: var(--st-accent-2); background: var(--st-tint); color: var(--st-accent); }
+.st-dr-key.is-held { border-color: var(--st-accent); background: var(--st-tint); color: var(--st-accent); }
+.st-dr-key { touch-action: none; user-select: none; }
 .st-dr-key:disabled { opacity: 0.4; cursor: not-allowed; }
 .st-dr-key:focus-visible { outline: 2px solid var(--st-accent-2); outline-offset: 2px; }
 .st-dr-key.wide { background: var(--st-tint); border-color: #bdd0bf; color: var(--st-accent); font-weight: 600; }
