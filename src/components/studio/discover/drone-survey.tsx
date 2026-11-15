@@ -133,7 +133,7 @@ function StageEmpty({ phase, status, onContinue, busy }: { phase: Phase; status:
   const copy: Record<Phase, { title: string; body: string }> = {
     checking: { title: 'Checking for the drone', body: 'One moment.' },
     'bridge-offline': { title: 'Drone bridge offline', body: 'Start bridge/server.py on this laptop. Setup is under Connection below.' },
-    searching: { title: 'Looking for the Tello', body: status?.error ? 'The drone isn’t answering. Check it’s switched on and this laptop is on its TELLO-XXXXXX Wi-Fi.' : 'Connecting…' },
+    searching: { title: 'Looking for the Tello', body: status?.error ? 'The bridge is searching this laptop’s Wi-Fi for the drone. Check it’s switched on and that this laptop is on the drone’s own Wi-Fi (TELLO-XXXXXX, or RMTT-XXXXXX with the expansion pack) or on the hotspot the drone joined.' : 'Connecting…' },
     'no-video': { title: 'Connected, waiting for video', body: 'Tello EDUs only stream video on their own TELLO-XXXXXX Wi-Fi, not after joining a router.' },
     test: { title: 'Opening the stream', body: 'One moment.' },
     live: { title: 'Opening the camera', body: 'The first frame usually takes a few seconds.' },
@@ -162,13 +162,13 @@ function Connection({ status, phase }: { status: DroneStatus | null; phase: Phas
       <summary>Connection <span aria-hidden="true"><i className={bridgeOk ? 'ok' : ''} /><i className={droneOk ? 'ok' : ''} /><i className={videoOk ? 'ok' : ''} /></span></summary>
       <ul>
         <li><i className={bridgeOk ? 'ok' : ''} /><b>Bridge</b><span>{bridgeOk ? `Running at ${status?.url}${status?.mock ? ' in test mode (--mock)' : ''}` : `Not reachable at ${status?.url || 'http://127.0.0.1:8010'}`}</span></li>
-        <li><i className={droneOk ? 'ok' : ''} /><b>Drone</b><span>{status?.mock ? 'No drone: the bridge is simulating one' : droneOk ? `Tello at ${status?.ip}` : status?.error ? `Not answering at ${status?.ip || '192.168.10.1'}` : '—'}</span></li>
+        <li><i className={droneOk ? 'ok' : ''} /><b>Drone</b><span>{status?.mock ? 'No drone: the bridge is simulating one' : droneOk ? `Tello at ${status?.ip}` : status?.error ? status.error : '—'}</span></li>
         <li><i className={videoOk ? 'ok' : ''} /><b>Video</b><span>{phase === 'live' ? 'Streaming from the drone camera' : phase === 'test' ? 'Bridge test pattern, not a camera' : phase === 'no-video' ? 'No frames yet' : '—'}</span></li>
       </ul>
       <div className="st-dr-setup">
         <b>Fly from this laptop</b>
         <ol>
-          <li>Power on the Tello and join its TELLO-XXXXXX Wi-Fi.</li>
+          <li>Power on the Tello and join its TELLO-XXXXXX Wi-Fi (RMTT-XXXXXX with the expansion pack).</li>
           <li><code>pip install -r bridge/requirements.txt</code></li>
           <li><code>python bridge/server.py --drone</code> (serves on port 8010)</li>
         </ol>
