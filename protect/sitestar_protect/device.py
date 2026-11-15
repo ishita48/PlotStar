@@ -1,4 +1,5 @@
-"""Wire protocol for esp32_building.ino plus a USB serial link with auto-detect/reconnect."""
+"""Wire protocols for esp32_building.ino (board 1) and r4_lobby.ino (board 2, lobby panel), plus a
+USB serial link with auto-detect/reconnect."""
 from __future__ import annotations
 
 import threading
@@ -22,6 +23,11 @@ class Reading:
     pir: bool = False
     lvl: Optional[float] = None     # distance to sump water surface, cm (ultrasonic)
     valve_open: bool = True
+    vsw: Optional[bool] = None      # valve micro switch: True = pressed = valve physically shut; None = not fitted
+    door_open: bool = True          # fire door (servo 2)
+    jx: Optional[int] = None        # joystick (operator override): 0-4095, ~2048 at rest
+    jy: Optional[int] = None
+    jsw: bool = False               # joystick pressed
     bseq: int = 0
     up: int = 0
     ts: float = field(default_factory=time.time)
@@ -46,16 +52,59 @@ def parse_reading(line: str) -> Optional[Reading]:
             beam=int(kv.get("beam", 0)), base=max(1, int(kv.get("base", 1))), smoke=kv.get("smoke") == "1",
             t=_num(kv.get("t", "-")), rh=_num(kv.get("rh", "-")), pipe=_num(kv.get("pipe", "-")),
             pir=kv.get("pir") == "1", lvl=_num(kv.get("lvl", "-")),
-            valve_open=kv.get("valve", "1") == "1", bseq=int(kv.get("bseq", 0)), up=int(kv.get("up", 0)),
+            valve_open=kv.get("valve", "1") == "1",
+            vsw=None if kv.get("vsw", "-") == "-" else kv["vsw"] == "1", door_open=kv.get("door", "1") == "1",
+            jx=int(kv["jx"]) if kv.get("jx", "-").lstrip("-").isdigit() and kv["jx"] != "-1" else None,
+            jy=int(kv["jy"]) if kv.get("jy", "-").lstrip("-").isdigit() and kv["jy"] != "-1" else None,
+            jsw=kv.get("jsw") == "1",
+            bseq=int(kv.get("bseq", 0)), up=int(kv.get("up", 0)),
         )
     except ValueError:
         return None
 
 
-def encode_command(valve_open: bool, fan: float, strobe: bool, buzz: int, rooms: list[int], agent: int) -> bytes:
+def encode_command(valve_open: bool, fan: float, strobe: bool, buzz: int, rooms: list[int], agent: int,
+                   door_open: bool = True) -> bytes:
     r = ",".join(str(max(0, min(2, x))) for x in (rooms + [0, 0, 0, 0])[:4])
     return (f"A valve={int(valve_open)} fan={max(0.0, min(1.0, fan)):.2f} strobe={int(strobe)} "
-            f"buzz={int(buzz)} r={r} agent={int(agent)}\n").encode()
+            f"buzz={int(buzz)} r={r} agent={int(agent)} door={int(door_open)}\n").encode()
+
+
+# ------------------------------------------------------------- lobby panel
+PANEL_ICONS = ("idle", "drop", "fire", "check", "cross", "wait", "wrench", "bolt")
+PANEL_CHARS = set(" !$%-./0123456789:?ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+
+def parse_badge(line: str) -> Optional[str]:
+    """'C uid=20111B5C' -> '20111B5C'."""
+    line = line.strip()
+    if line.startswith("C uid="):
+        uid = line[6:].strip().upper()
+        return uid if uid and all(c in "0123456789ABCDEF" for c in uid) else None
+    return None
+
+
+def parse_key(line: str) -> Optional[str]:
+    """'K A' -> 'A' (operator console keypad)."""
+    line = line.strip()
+    if line.startswith("K ") and len(line) == 3 and line[2] in "0123456789ABCD*#":
+        return line[2]
+    return None
+
+
+def encode_console(watts: Optional[float], flash: bool, typed: str = "", fan: float = 0.0) -> bytes:
+    """7-segment: 'W 37' (whole watts, '-' = no reading), F 1 flashes it; typed digits show while entering;
+    S = fan duty % (the LED matrix spins its fan at that speed)."""
+    w = "-" if watts is None else str(int(round(watts)))
+    return f"W {w} F {int(flash)} T {typed or '-'} S {int(round(max(0.0, min(1.0, fan)) * 100))}\n".encode()
+
+
+def panel_text(text: str) -> str:
+    return "".join(c if c in PANEL_CHARS else " " for c in text.upper())[:90].strip()
+
+
+def encode_panel(icon: str, text: str) -> bytes:
+    return f"P icon={icon if icon in PANEL_ICONS else 'idle'} text={panel_text(text)}\n".encode()
 
 
 def encode_lines(lines: list[str]) -> bytes:
@@ -67,23 +116,34 @@ def encode_lines(lines: list[str]) -> bytes:
 
 
 # ----------------------------------------------------------------- serial link
+ARDUINO_VID = 0x2341          # the UNO R4 WiFi lobby panel; the ESP32 uses a CP210x / CH340 bridge
 USB_HINTS = ("usbserial", "slab_usbtouart", "wchusbserial", "cp210", "ch340", "ch910",
              "ttyusb", "ttyacm", "usbmodem", "silicon labs", "uart")
 
 
-def find_port() -> Optional[str]:
+def find_port(role: str = "building") -> Optional[str]:
+    """building -> first USB serial that is not an Arduino; lobby -> the Arduino (UNO R4 WiFi)."""
     from serial.tools import list_ports
 
     for p in list_ports.comports():
         text = f"{p.device} {p.description} {p.manufacturer or ''}".lower()
-        if any(h in text for h in USB_HINTS) and "bluetooth" not in text:
+        if not any(h in text for h in USB_HINTS) or "bluetooth" in text:
+            continue
+        is_arduino = getattr(p, "vid", None) == ARDUINO_VID or "arduino" in text
+        if (role == "lobby") == is_arduino:
             return p.device
     return None
 
 
 class SerialLink:
-    def __init__(self, port: str = "auto", baud: int = 115200, on_line: Optional[Callable[[str], None]] = None):
-        self.port_arg, self.baud, self.on_line = port, baud, on_line
+    def __init__(self, port: str = "auto", baud: int = 115200, on_line: Optional[Callable[[str], None]] = None,
+                 role: str = "building"):
+        self.port_arg, self.baud, self.on_line, self.role = port, baud, on_line, role
+        self.name = "ESP32" if role == "building" else "lobby panel (UNO R4)"
+        # Both boards talk at least every 2 s. Silence this long while "connected" means a stale or
+        # wedged USB link (seen on the UNO R4 WiFi after re-flashing): drop it and reconnect.
+        self.silent_timeout = 8.0
+        self.last_rx = 0.0
         self.port: Optional[str] = None
         self.hello: Optional[str] = None
         self._ser = None
@@ -108,9 +168,9 @@ class SerialLink:
     def _open(self) -> bool:
         import serial
 
-        port = find_port() if self.port_arg == "auto" else self.port_arg
+        port = find_port(self.role) if self.port_arg == "auto" else self.port_arg
         if not port:
-            self._warn("no ESP32 found on USB (data cable? driver?); retrying every 2 s")
+            self._warn(f"no {self.name} found on USB (data cable? driver?); retrying every 2 s")
             return False
         try:
             ser = serial.Serial(port, self.baud, timeout=0.2)
@@ -120,7 +180,8 @@ class SerialLink:
             return False
         with self._lock:
             self._ser, self.port, self._warned = ser, port, None
-        print(f"[serial] connected to ESP32 on {port}")
+            self.last_rx = time.time()
+        print(f"[serial] connected to {self.name} on {port}")
         return True
 
     def _run(self) -> None:
@@ -132,8 +193,16 @@ class SerialLink:
             try:
                 chunk = self._ser.read(256)
             except Exception:
-                print("[serial] ESP32 disconnected; retrying")
+                print(f"[serial] {self.name} disconnected; retrying")
                 self._close()
+                continue
+            if chunk:
+                self.last_rx = time.time()
+            elif self.silent_timeout and time.time() - self.last_rx > self.silent_timeout:
+                print(f"[serial] {self.name} silent for {self.silent_timeout:.0f} s; reconnecting")
+                self._close()
+                buf = b""
+                self._stop.wait(3.0)
                 continue
             buf += chunk
             while b"\n" in buf:
