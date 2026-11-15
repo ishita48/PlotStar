@@ -36,3 +36,8 @@ Thumbs.db
 # Tello bridge: saved camera frames stay on the demo laptop
 captures/
 services/api/agent_workspace/notes/*
+
+# from sid (twin + protect)
+twin/data/calibration.json
+hardware/firmware/**/build/
+protect/data/
