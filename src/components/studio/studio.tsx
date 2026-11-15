@@ -6,7 +6,7 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import {
   ArrowLeft, ArrowRight, Box as BoxIcon, LoaderCircle, Check, CircleAlert, CircleCheck, Coins, Columns2, Download, Droplets, Leaf, Lock,
-  Briefcase, Building2, FileText, FileUp, MapPin, Move, RotateCcw, RotateCw, Sparkles, Square, Star, Trash2, Users,
+  Briefcase, Building2, Database, FileText, FileUp, House, MapPin, Move, Network, Plus, Radio, RotateCcw, RotateCw, Sparkles, Square, Star, Trash2, Users,
 } from 'lucide-react';
 import { Star as GeoStarMark } from '../brand';
 import { PUBLIC_DATA_API, siteDetailUrl, vexcel3dRootUrl, vexcelMetaUrl, vexcelOrthoUrl } from '@/lib/plotstar-api';
@@ -506,25 +506,13 @@ export function Studio() {
   const nextLabel = ['Continue to discover', busy ? 'Generating…' : 'Generate layouts', 'Compare concepts', 'Review decision', 'Analyze concept', 'Save decision', 'Open the 3D model', 'Set up protection', 'Go to deploy', ''][step];
 
   return (
-    <div className="st">
-      <header className="st-top">
-        <Link href="/" className="st-mark" aria-label="GeoStar home">
-          <span className="st-mark-icon"><GeoStarMark /></span>
-          <span>Geo<b>Star</b></span>
-        </Link>
-        <div className="st-top-title"><b>Studio</b><span>{dc ? `${brief.name} · ${brief.mw} MW IT${site ? ` · ${siteLabel(site)}` : ''}` : `${kindLabel} · ${brief.market} · concept model`}</span></div>
-        <AgentStatusPill s={agentRun.state} onOpen={() => setIntelOpen(true)} />
-        <nav className="st-top-nav">
-          <Link href="/studio/agent">How the AI works</Link>
-          <Link href="/studio/data">Data</Link>
-          <button type="button" onClick={() => setDealDesk(true)}><Briefcase size={12} /> Deal desk</button>
-          <Link href="/explore">Live operations</Link>
-          <Link href="/">Home</Link>
-          <button type="button" className="st-reset" onClick={resetStudio} title="Clear the brief, site and layouts and start again"><RotateCcw size={12} /> Reset</button>
-        </nav>
-      </header>
-      <div className="st-body">
+    <div className="st st-shell">
         <aside className="st-rail">
+          <Link href="/" className="st-mark" aria-label="GeoStar home">
+            <span className="st-mark-icon"><GeoStarMark /></span>
+            <span className="st-mark-text"><span>Geo<b>Star</b></span><small>Find · Design · Protect</small></span>
+          </Link>
+          <button type="button" className="st-new" onClick={resetStudio} title="Clear the brief, site and layouts and start again"><Plus size={16} /> New project</button>
           <small className="st-eyebrow">Your workflow</small>
           <p className="st-rail-step">Step {rail + 1} of {STEPS.length}</p>
           <ol>
@@ -535,11 +523,25 @@ export function Studio() {
               </li>
             ))}
           </ol>
+          <small className="st-eyebrow st-rail-sec">Tools</small>
+          <nav className="st-rail-nav" aria-label="Tools">
+            <Link href="/studio/agent"><Network size={16} /><span><b>How the AI works</b><small>Agents and evidence</small></span></Link>
+            <Link href="/studio/data"><Database size={16} /><span><b>Data</b><small>MongoDB Atlas, live</small></span></Link>
+            <button type="button" onClick={() => setDealDesk(true)}><Briefcase size={16} /><span><b>Deal desk</b><small>CoStar sites and comps</small></span></button>
+            <Link href="/explore"><Radio size={16} /><span><b>Live operations</b><small>Grid and hardware</small></span></Link>
+          </nav>
           <div className="st-rail-foot">
             {dc ? <><b>{racks.toLocaleString()} racks · {halls} halls</b><span>{brief.redundancy} · {COOLING_LABEL[brief.cooling]}</span></>
               : <><b>{kindLabel}</b><span>{brief.market} · concept model</span></>}
           </div>
+          <Link href="/" className="st-rail-home"><House size={16} /> Back to home page</Link>
         </aside>
+
+        <div className="st-col">
+        <header className="st-top">
+          <div className="st-top-title"><b>Studio</b><span>{dc ? `${brief.name} · ${brief.mw} MW IT${site ? ` · ${siteLabel(site)}` : ''}` : `${kindLabel} · ${brief.market} · concept model`}</span></div>
+          <AgentStatusPill s={agentRun.state} onOpen={() => setIntelOpen(true)} />
+        </header>
 
         <main className="st-main">
           {error && <div className="st-error"><CircleAlert size={14} /> {error}</div>}
@@ -547,7 +549,8 @@ export function Studio() {
           {step === 0 && (
             <section className="st-page">
               <small className="st-eyebrow">01 · Define</small>
-              <h1>What are you building, and where?</h1>
+              <h1 className="st-hero">What are you building, <em>and where?</em></h1>
+              <p className="st-hero-lede">Say what you want to build. GeoStar finds where it can go, designs what goes on it, and protects it once it is built.</p>
               <div className="st-tabs">
                 {['What to build', 'Requirements', 'Site', 'Review brief'].map((t, i) => (
                   <button key={t} className={sub === i ? 'on' : ''} onClick={() => (i < 3 || site) && setSub(i)} disabled={(i > 0 && brief.kind !== 'data-center') || (i === 3 && !site)}><i>{i + 1}</i>{t}</button>
@@ -569,6 +572,13 @@ export function Studio() {
                   )}
                   {store && !store.available && <p className="st-small st-muted st-saved-note">Projects are not being saved to MongoDB: {store.reason}</p>}
                 </KindPicker>
+              )}
+              {sub === 0 && (
+                <ol className="st-steps" aria-label="How it works">
+                  <li><small>Step 1</small><b>Say what you are building</b><span>Pick a project type and a city.</span></li>
+                  <li><small>Step 2</small><b>GeoStar finds and designs</b><span>Real sites, three layouts, one decision.</span></li>
+                  <li><small>Step 3</small><b>HAVEN protects it</b><span>Sensors and alerts before the alarm rings.</span></li>
+                </ol>
               )}
 
               {sub === 1 && (
@@ -905,7 +915,14 @@ export function Studio() {
             </section>
           )}
         </main>
-      </div>
+      <footer className="st-foot">
+        <button className="st-btn" onClick={() => (step === 0 && sub > 0 ? setSub(sub - 1) : setStep(!dc && step === 7 ? 0 : ORDER[Math.max(0, ORDER.indexOf(step) - 1)]))} disabled={step === 0 && sub === 0}><ArrowLeft size={14} /> Back</button>
+        <span className="st-foot-note">{busy ? 'Working…' : step === 0 && !dc ? `Layouts are for data centers. ${kindLabel} opens its concept model in Design.` : step === 0 && !site ? 'Choose a site to continue.' : step === 0 && sub < 3 ? 'Review the brief to continue.' : step === 5 && !canNext ? 'Select a concept and give a reason.' : result?.note ?? ''}</span>
+        {step === 0 && dc && <button className="st-btn big" onClick={generateAndExplore} disabled={!canNext || busy}
+          title="Skip the drone survey and generate the three layouts now">{busy ? 'Generating…' : 'Skip discover'} <Sparkles size={14} /></button>}
+        {step < 9 && <button className="st-btn primary big" onClick={next} disabled={!canNext || busy}>{step === 1 && <Sparkles size={14} />}{nextLabel}{step !== 1 && <ArrowRight size={14} />}</button>}
+      </footer>
+        </div>
 
       <Copilot body={body(brief)} conceptId={concept?.id ?? null} selected={sel} stage={PAGES[step]} market={brief.market}
         facilityId={step >= 7 ? facility.id : null} lastScore={siteScore ? { verdict: siteScore.verdict, score: siteScore.score } : null}
@@ -922,13 +939,6 @@ export function Studio() {
       {importing && <ImportDesign body={body(brief)} onClose={() => setImporting(false)}
         onResult={(r, _notes: NotePreview[]) => { setResult(r); setBase(r); setEdits({}); setPreferred(null); setDecidedAt(null);
           setSel(null); setActiveId(r.concepts.find((c) => c.rank === 1)!.id); setImporting(false); setStep(2); }} />}
-      <footer className="st-foot">
-        <button className="st-btn" onClick={() => (step === 0 && sub > 0 ? setSub(sub - 1) : setStep(!dc && step === 7 ? 0 : ORDER[Math.max(0, ORDER.indexOf(step) - 1)]))} disabled={step === 0 && sub === 0}><ArrowLeft size={14} /> Back</button>
-        <span className="st-foot-note">{busy ? 'Working…' : step === 0 && !dc ? `Layouts are for data centers. ${kindLabel} opens its concept model in Design.` : step === 0 && !site ? 'Choose a site to continue.' : step === 0 && sub < 3 ? 'Review the brief to continue.' : step === 5 && !canNext ? 'Select a concept and give a reason.' : result?.note ?? ''}</span>
-        {step === 0 && dc && <button className="st-btn big" onClick={generateAndExplore} disabled={!canNext || busy}
-          title="Skip the drone survey and generate the three layouts now">{busy ? 'Generating…' : 'Skip discover'} <Sparkles size={14} /></button>}
-        {step < 9 && <button className="st-btn primary big" onClick={next} disabled={!canNext || busy}>{step === 1 && <Sparkles size={14} />}{nextLabel}{step !== 1 && <ArrowRight size={14} />}</button>}
-      </footer>
     </div>
   );
 }
