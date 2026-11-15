@@ -5,9 +5,10 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { AccountControls } from '../account/account-controls';
+import { MoreMenu } from './more-menu';
 import {
   ArrowLeft, ArrowRight, Box as BoxIcon, LoaderCircle, Check, CircleAlert, CircleCheck, Coins, Columns2, Droplets, Leaf, Lock,
-  Briefcase, Building2, FileText, FileUp, MapPin, Move, RotateCcw, Sparkles, Square, Star, Users,
+  Briefcase, Building2, FileText, FileUp, MapPin, Move, Sparkles, Square, Star, Users,
 } from 'lucide-react';
 import { Star as GeoStarMark } from '../brand';
 import { PUBLIC_DATA_API, siteDetailUrl, vexcel3dRootUrl, vexcelMetaUrl } from '@/lib/plotstar-api';
@@ -492,13 +493,9 @@ export function Studio() {
         <div className="st-top-title"><b>Studio</b><span>{dc ? `${brief.name} · ${brief.mw} MW IT${site ? ` · ${siteLabel(site)}` : ''}` : `${kindLabel} · ${brief.market} · concept model`}</span></div>
         <AgentStatusPill s={agentRun.state} onOpen={() => setIntelOpen(true)} />
         <nav className="st-top-nav">
-          <Link href="/studio/agent">How the AI works</Link>
-          <Link href="/studio/data">Data</Link>
           <button type="button" onClick={() => setDealDesk(true)}><Briefcase size={12} /> Deal desk</button>
-          <Link href="/explore">Live operations</Link>
-          <Link href="/">Home</Link>
+          <MoreMenu onReset={resetStudio} />
           <AccountControls />
-          <button type="button" className="st-reset" onClick={resetStudio} title="Clear the brief, site and layouts and start again"><RotateCcw size={12} /> Reset</button>
         </nav>
       </header>
       <div className="st-body">
