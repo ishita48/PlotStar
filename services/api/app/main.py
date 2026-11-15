@@ -23,6 +23,7 @@ from app.sponsors.costar import routes_intel as costar_intel
 from app.sponsors.costar import routes_land as costar_land
 from app.sponsors.costar import routes_site as costar_site
 from app.sponsors.costar import routes_sites as costar_sites
+from app.sponsors.elevenlabs import routes_dispatch as elevenlabs_dispatch
 from app.sponsors.elevenlabs import routes_guide as elevenlabs_guide
 from app.sponsors.elevenlabs import routes_voice as elevenlabs_voice
 from app.sponsors.langchain import routes_agents as langchain_agents
@@ -65,7 +66,7 @@ def health() -> dict:
 ROUTERS = (
     screen.router, costar_sites.router, data.router, projects.router, integrations.router, vexcel.router,
     optimize.router, livegrid.router, langchain_research.router, elevenlabs_voice.router, design.router, context.router,
-    studio.router, langchain_copilot.router, elevenlabs_guide.router, blueprint.router,
+    studio.router, langchain_copilot.router, elevenlabs_guide.router, elevenlabs_dispatch.router, blueprint.router,
     costar_building.router,     # CoStar building facts, Matterport scan scope, conversion check, site walk
     mongodb_atlas.router,       # MongoDB Atlas: schema, search, vectors, geo, analytics, change streams
     costar_land.router,         # comps, valuation, market
